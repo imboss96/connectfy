@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --color-utest-cyan: #00A3E0;
+  --color-utest-cyan-hover: #0092C8;
+  --color-utest-cyan-light: #38BDF8;
+  --color-utest-blue: #007AFF;
+  --color-utest-blue-hover: #0066EE;
+  --color-utest-blue-dark: #0056D6;
+  --color-utest-navy: #0B132B;
+  --color-utest-dark: #0B1120;
+  --color-utest-card: #131E35;
+  --color-utest-card-hover: #182542;
+  --color-utest-border: #1E2E4E;
+}
+
+html,
+body,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+  position: relative;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  background-color: #0B1120;
+  color: #F1F5F9;
+}
+
+/* Custom smooth scrollbar helper */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
