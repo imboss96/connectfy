@@ -1,0 +1,33 @@
+<svg width="1200" height="500" viewBox="0 0 1200 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="500" fill="#000000"/>
+  <defs>
+    <linearGradient id="ringGradient" x1="120" y1="80" x2="360" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1CB7FF"/>
+      <stop offset="0.55" stop-color="#0A9CE5"/>
+      <stop offset="1" stop-color="#39D0C7"/>
+    </linearGradient>
+    <linearGradient id="wordGradient" x1="430" y1="170" x2="980" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1EC9FF"/>
+      <stop offset="0.5" stop-color="#1AA9E7"/>
+      <stop offset="1" stop-color="#39D0C7"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(0 10)">
+    <path d="M338 120C238 120 168 191 168 291C168 391 238 462 338 462C403 462 457 433 494 390C477 371 462 351 451 330C423 372 382 402 338 402C289 402 252 367 252 291C252 215 289 180 338 180C381 180 420 207 451 248C462 227 477 206 494 188C458 145 404 120 338 120Z" fill="url(#ringGradient)"/>
+    <path d="M371 222C312 222 266 263 266 310C266 357 312 399 371 399C417 399 457 369 469 332L508 348C490 396 448 437 390 451C300 469 218 412 186 338C157 269 183 191 249 153C316 115 411 130 463 188L440 214C397 169 333 157 285 180C244 200 215 242 214 292C213 343 246 387 296 403C349 420 410 406 450 369L421 343C403 358 382 368 359 368C321 368 288 340 288 301C288 263 321 234 359 234C399 234 430 266 432 302L455 300C449 252 416 222 371 222Z" fill="#0B1220"/>
+    <path d="M563 277C563 236 589 203 631 203C673 203 699 236 699 277V290H620V287C620 273 622 261 634 256C642 252 651 252 660 252C674 252 691 256 704 270C717 285 724 298 724 316C724 354 694 384 650 384C609 384 579 356 579 315H563V277ZM620 329H704C703 343 697 355 685 363C675 371 662 375 649 375C628 375 613 367 604 356C595 345 590 334 620 329Z" fill="#0B1220" opacity="0.9"/>
+    <path d="M600 242C585 233 566 227 548 227C515 227 492 246 479 274C468 298 469 335 485 356C504 381 538 394 576 394C602 394 626 388 644 378L657 410C634 421 602 428 566 428C489 428 425 388 397 325C369 261 392 187 456 152C525 113 617 130 675 193L652 215C614 176 565 159 522 170C482 181 448 209 430 249C411 291 413 343 440 379C467 415 511 438 562 438C607 438 650 422 680 396L706 421C660 459 603 478 541 478C468 478 402 449 353 396C305 343 284 270 304 208C323 147 374 100 439 76C495 55 571 59 633 87C695 115 747 168 772 238C783 272 787 304 785 335C783 379 765 417 731 448L703 421C729 398 742 368 742 333C742 289 718 254 676 225C635 196 586 183 542 189C492 196 447 223 422 270L451 279C463 256 487 238 521 230C549 223 573 224 600 242Z" fill="url(#ringGradient)" opacity="0.9"/>
+    <circle cx="726" cy="146" r="22" fill="#0A9CE5"/>
+    <circle cx="786" cy="200" r="16" fill="#39D0C7"/>
+    <circle cx="786" cy="266" r="16" fill="#20B8FF"/>
+    <path d="M734 146H778" stroke="#7DE7FF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M782 200L724 244" stroke="#7DE7FF" stroke-width="5" stroke-linecap="round"/>
+    <path d="M782 266L726 286" stroke="#7DE7FF" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(0 0)">
+    <text x="438" y="320" fill="url(#wordGradient)" font-size="188" font-weight="900" font-family="Arial, Helvetica, sans-serif" letter-spacing="-8">Connectfy</text>
+    <text x="448" y="385" fill="#1EC9FF" font-size="38" font-weight="700" font-family="Arial, Helvetica, sans-serif" letter-spacing="10">BUILD • CONNECT • GROW</text>
+  </g>
+</svg>
