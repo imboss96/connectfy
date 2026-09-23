@@ -26,6 +26,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProjectIcon } from './ProjectIcon';
 import { Project, BugReport, TaskSubmission, AttachmentFile } from '../types';
 import { BugSubmissionModal } from './BugSubmissionModal';
 import { TaskSubmissionModal } from './TaskSubmissionModal';
@@ -129,7 +130,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             </button>
 
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <span className="text-2xl">{project.companyLogo || '🧪'}</span>
+              <ProjectIcon name={project.companyLogo} className="h-7 w-7 text-[#00A3E0]" />
               <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight break-words">
                 {project.title}
               </h1>
@@ -736,7 +737,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             <div className="space-y-3 text-xs">
               <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1 font-mono">
                 <div className="text-slate-400 text-[11px]">Primary Test Account:</div>
-                <div className="text-white">user: <span className="text-emerald-400">marketplace_contractor@crowdqa.sandbox</span></div>
+                <div className="text-white">user: <span className="text-emerald-400">marketplace_contractor@connectfy.sandbox</span></div>
                 <div className="text-white">pass: <span className="text-emerald-400">Freelance#2026!Key</span></div>
               </div>
 

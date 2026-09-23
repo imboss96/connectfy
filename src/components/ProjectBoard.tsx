@@ -25,6 +25,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Project, DeviceType, ProjectCategory, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
+import { ProjectIcon } from './ProjectIcon';
 
 interface ProjectBoardProps {
   onOpenWorkspace: (projectId: string) => void;
@@ -333,7 +334,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center space-x-3">
                     <span className="text-2xl p-2 bg-[#080D1A] rounded-xl border border-[#1E2E4E] shrink-0">
-                      {project.companyLogo || '🧪'}
+                      <ProjectIcon name={project.companyLogo} className="h-6 w-6 text-[#00A3E0]" />
                     </span>
                     <div>
                       <div className="flex items-center gap-2 mb-0.5">
@@ -494,7 +495,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
             <div className="p-5 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <span className="text-2xl">{viewingProject.companyLogo || '🧪'}</span>
+                <ProjectIcon name={viewingProject.companyLogo} className="h-7 w-7 text-[#00A3E0]" />
                 <div>
                   <div className="flex items-center gap-2">
                     {getTrackBadge(viewingProject.projectTrack)}

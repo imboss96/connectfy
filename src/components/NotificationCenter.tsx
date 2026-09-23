@@ -40,7 +40,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden text-slate-100 animate-fade-in">
+    <div className="theme-notifications fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 w-auto sm:w-96 max-w-[calc(100vw-1.5rem)] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden text-slate-100 animate-fade-in">
       {/* Header */}
       <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
         <div className="flex items-center space-x-2">

@@ -1,5 +1,5 @@
 {
-  "name": "uTest CrowdQA",
+  "name": "Connectfy",
   "description": "Crowdsourced freelance marketplace for functional QA cycles, AI data collection exercises, prompt evaluation & RLHF, usability studies, and special in-field projects with escrow payouts.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

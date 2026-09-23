@@ -250,8 +250,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
-      title: 'New Tester Application 📝',
-      message: `${testerProfile.name} (${testerProfile.tier} Tier, ${testerProfile.rating}★) applied for "${project?.title || 'Project'}".`,
+      title: 'New Tester Application',
+      message: `${testerProfile.name} (${testerProfile.tier} Tier, ${testerProfile.rating} rating) applied for "${project?.title || 'Project'}".`,
       type: 'status_update',
       relatedProjectId: projectId
     });
@@ -290,7 +290,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: app.testerId,
       targetRole: 'tester',
-      title: 'Application Approved! Test Invite Received 🎉',
+      title: 'Application Approved: Test Invite Received',
       message: `Congratulations! You've been approved and invited to test "${project?.title}". Accept the invite to begin testing!`,
       type: 'invite',
       relatedProjectId: app.projectId
@@ -341,7 +341,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
-      title: 'Tester Accepted Invite 🚀',
+      title: 'Tester Accepted Invite',
       message: `${app.testerName} has accepted the invitation and started testing for "${project?.title}".`,
       type: 'status_update',
       relatedProjectId: app.projectId
@@ -388,7 +388,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
-      title: `New ${bugData.severity} Defect Logged 🐞`,
+      title: `New ${bugData.severity} Defect Logged`,
       message: `${testerProfile.name} submitted "${bugData.title}" on ${bugData.device} for review.`,
       type: 'status_update',
       relatedProjectId: bugData.projectId,
@@ -471,7 +471,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: bug.testerId,
       targetRole: 'tester',
-      title: `Bounty Credited: +$${finalBounty.toFixed(2)} 💰`,
+      title: `Bounty Credited: +$${finalBounty.toFixed(2)}`,
       message: `Your defect report "${bug.title}" was approved by the client! $${finalBounty.toFixed(2)} has been credited to your available balance.`,
       type: 'earning',
       amount: finalBounty,
@@ -536,7 +536,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addNotification({
         userId: bug.testerId,
         targetRole: 'tester',
-        title: `Action Required: Changes Requested ⚠️`,
+        title: 'Action Required: Changes Requested',
         message: `The client requested clarification on "${bug.title}": ${feedback}`,
         type: 'revision',
         relatedProjectId: bug.projectId,
@@ -566,7 +566,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
-      title: `New Deliverable Submitted 📦`,
+      title: 'New Deliverable Submitted',
       message: `${testerProfile.name} submitted "${data.title}" for "${project?.title || 'Project'}" ($${rate.toFixed(2)} bounty).`,
       type: 'status_update',
       relatedProjectId: data.projectId,
@@ -643,7 +643,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: sub.testerId,
       targetRole: 'tester',
-      title: `Deliverable Approved: +$${finalBounty.toFixed(2)} 💰`,
+      title: `Deliverable Approved: +$${finalBounty.toFixed(2)}`,
       message: `Your task deliverable "${sub.title}" was approved by the client! $${finalBounty.toFixed(2)} credited to your wallet balance.`,
       type: 'earning',
       amount: finalBounty,
@@ -708,7 +708,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: sub.testerId,
       targetRole: 'tester',
-      title: `Action Required: Deliverable Revision ⚠️`,
+      title: 'Action Required: Deliverable Revision',
       message: `Client requested clarification on "${sub.title}": ${feedback}`,
       type: 'revision',
       relatedProjectId: sub.projectId,
@@ -763,7 +763,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerProfile.id,
       targetRole: 'tester',
-      title: `Payout Processed: $${amount.toFixed(2)} 🏦`,
+      title: `Payout Processed: $${amount.toFixed(2)}`,
       message: `Your payment of $${amount.toFixed(2)} via ${method} has been authorized and dispatched to ${destination}. Reference: ${ref}`,
       type: 'payout',
       amount
@@ -803,7 +803,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerProfile.id,
       targetRole: 'tester',
-      title: `New Test Cycle Available: "${newProj.title}" 🔔`,
+      title: `New Test Cycle Available: "${newProj.title}"`,
       message: `${newProj.company} launched a new ${newProj.category} cycle with up to $${newProj.bountyStructure.critical} per critical defect. Apply now!`,
       type: 'status_update',
       relatedProjectId: newProj.id
@@ -841,7 +841,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerProfile.id,
       targetRole: 'tester',
-      title: 'Profile Settings Saved ✅',
+      title: 'Profile Settings Saved',
       message: 'Your tester profile information, hardware fleet, and cycle preferences have been updated.',
       type: 'status_update'
     });
@@ -852,7 +852,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: clientProfile.id,
       targetRole: 'client',
-      title: 'Client Settings Saved ✅',
+      title: 'Client Settings Saved',
       message: 'Your company profile, billing, and QA cycle criteria have been updated.',
       type: 'status_update'
     });
@@ -879,7 +879,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerProfile.id,
       targetRole: 'tester',
-      title: 'New Hardware Device Registered 📱',
+      title: 'New Hardware Device Registered',
       message: `"${deviceData.brand} ${deviceData.model} (${deviceData.os} ${deviceData.osVersion})" added to your testing fleet.`,
       type: 'status_update'
     });

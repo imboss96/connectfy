@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Project, AttachmentFile, ProjectTrack } from '../types';
+import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 
 interface TaskSubmissionModalProps {
   project: Project;
@@ -63,31 +64,34 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
   const isFieldTrack = project.projectTrack === 'special_field';
   const isUxTrack = project.projectTrack === 'ux_research';
 
-  const handleFileUpload = (files: FileList | null) => {
+  const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const newAtts: AttachmentFile[] = [];
 
-    Array.from(files).forEach((file) => {
-      // Mocking realistic preview url
-      let url = 'https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=600&auto=format&fit=crop&q=80';
-      if (file.type.startsWith('audio/')) {
-        url = 'https://cdn.freesound.org/previews/560/560533_11861866-lq.mp3';
-      } else if (file.type.startsWith('image/')) {
-        url = URL.createObjectURL(file);
-      }
+    if (!isCloudinaryConfigured) {
+      setError('Cloudinary is not configured. Add the upload settings before attaching deliverables.');
+      return;
+    }
 
-      newAtts.push({
+    try {
+      const newAtts = await Promise.all(Array.from(files).map(async (file) => {
+        const result = await uploadToCloudinary(file);
+        return {
         id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
         name: file.name,
         size: file.size,
         type: file.type || 'application/octet-stream',
-        url,
+        url: result.secure_url,
+        publicId: result.public_id,
+        resourceType: result.resource_type,
         uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-      });
-    });
+        };
+      }));
 
-    setAttachments((prev) => [...prev, ...newAtts]);
-    setError('');
+      setAttachments((prev) => [...prev, ...newAtts]);
+      setError('');
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Deliverable upload failed.');
+    }
   };
 
   const handleRemoveAttachment = (id: string) => {

@@ -13,6 +13,7 @@ import {
   X,
   AlertTriangle,
   FileText,
+  ClipboardCheck,
   Smartphone,
   ChevronRight,
   ShieldCheck,
@@ -28,6 +29,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProjectIcon } from './ProjectIcon';
 import {
   BugReport,
   TaskSubmission,
@@ -170,7 +172,7 @@ export const ClientDashboard: React.FC = () => {
     createProject({
       title: newTitle,
       company: newCompany || 'Enterprise Client',
-      companyLogo: newTrack === 'data_collection' ? '🎙️' : newTrack === 'ai_evaluation' ? '🧠' : newTrack === 'special_field' ? '📍' : '🚀',
+      companyLogo: newTrack === 'data_collection' ? 'voice' : newTrack === 'ai_evaluation' ? 'ai' : newTrack === 'special_field' ? 'location' : 'speed',
       category: newCategory,
       projectTrack: newTrack,
       paymentModel: newTrack === 'qa_functional' ? 'per_approved_bug' : newPaymentModel,
@@ -214,13 +216,13 @@ export const ClientDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="theme-client space-y-6">
       {/* Top Banner / Client KPI */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center space-x-3">
-              <span className="text-3xl">{clientProfile.companyLogo}</span>
+              <ProjectIcon name={clientProfile.companyLogo} className="h-8 w-8 text-[#00A3E0]" />
               <div>
                 <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   {clientProfile.company}
@@ -285,7 +287,7 @@ export const ClientDashboard: React.FC = () => {
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Sparkles className="w-4 h-4" />
+          <ClipboardCheck className="w-4 h-4" />
           <span>Submissions & Approvals ({totalPendingSubmissions})</span>
           {totalPendingSubmissions > 0 && (
             <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full text-[10px] font-bold">
@@ -882,7 +884,7 @@ export const ClientDashboard: React.FC = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-2.5">
                         <span className="text-2xl p-1.5 bg-slate-950 rounded-lg border border-slate-800">
-                          {proj.companyLogo || '🧪'}
+                          <ProjectIcon name={proj.companyLogo} className="h-7 w-7 text-[#00A3E0]" />
                         </span>
                         <div>
                           <h4 className="font-bold text-white text-sm">{proj.title}</h4>

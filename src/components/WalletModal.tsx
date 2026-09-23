@@ -12,6 +12,7 @@ import {
   Download,
   AlertCircle,
   FileCheck
+  , Globe2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { PayoutRequest } from '../types';
@@ -225,7 +226,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                 {testerProfile.approvedBugsCount} approved bugs in {testerProfile.completedCyclesCount} cycles
               </p>
               <div className="mt-4 pt-2 text-[11px] text-[#00A3E0] flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" /> Gold Tier (4.94★ rating)
+                <ShieldCheck className="w-3.5 h-3.5" /> Gold Tier (4.94 rating)
               </div>
             </div>
 
@@ -262,10 +263,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
-                      { id: 'PayPal', label: 'PayPal', icon: '🅿️', fee: 'No fee', speed: 'Instant' },
-                      { id: 'Payoneer', label: 'Payoneer', icon: '💳', fee: 'No fee', speed: '1-2 hrs' },
-                      { id: 'Wise', label: 'Wise', icon: '🌐', fee: '$0.45', speed: 'Same Day' },
-                      { id: 'Direct Bank Wire', label: 'Bank Wire', icon: '🏦', fee: '$1.50', speed: '1-3 days' }
+                      { id: 'PayPal', label: 'PayPal', icon: CreditCard, fee: 'No fee', speed: 'Instant' },
+                      { id: 'Payoneer', label: 'Payoneer', icon: CreditCard, fee: 'No fee', speed: '1-2 hrs' },
+                      { id: 'Wise', label: 'Wise', icon: Globe2, fee: '$0.45', speed: 'Same Day' },
+                      { id: 'Direct Bank Wire', label: 'Bank Wire', icon: Building2, fee: '$1.50', speed: '1-3 days' }
                     ].map((m) => (
                       <button
                         type="button"
@@ -277,7 +278,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                             : 'bg-[#111C33] border-[#1E2E4E] text-slate-300 hover:bg-slate-800/50'
                         }`}
                       >
-                        <div className="text-lg mb-1">{m.icon}</div>
+                        <m.icon className="mb-1 h-5 w-5 text-[#00A3E0]" />
                         <div className="text-xs font-semibold">{m.label}</div>
                         <div className="text-[10px] text-slate-400 flex justify-between mt-1">
                           <span>{m.speed}</span>

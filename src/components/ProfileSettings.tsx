@@ -34,6 +34,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProjectIcon } from './ProjectIcon';
 import { DeviceFleetItem, LanguageSkill } from '../types';
 
 interface ProfileSettingsProps {
@@ -323,7 +324,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in text-slate-100">
+    <div className="theme-settings space-y-6 animate-fade-in text-slate-100">
       
       {/* Top Banner & Header */}
       <div className="bg-[#0B132B] border border-[#1E2E4E] rounded-2xl p-4 sm:p-6 shadow-xl relative overflow-hidden">
@@ -361,7 +362,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                 </h1>
                 <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold rounded-md flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" />
-                  uTest Verified Member
+                  Connectfy Verified Member
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 max-w-xl">
@@ -438,7 +439,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         )}
       </div>
 
-      {/* Settings Navigation Tabs (uTest Style Horizontal Bar) */}
+      {/* Settings navigation tabs */}
       <div className="flex items-center space-x-1 bg-[#0B132B] p-1.5 rounded-2xl border border-[#1E2E4E] overflow-x-auto scrollbar-none">
         <button
           onClick={() => setCurrentTab('personal')}
@@ -541,7 +542,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
                 <div>
                   <label className="block text-slate-400 font-semibold mb-1">
-                    Primary Email (uTest Login)
+                    Primary Email (Connectfy Login)
                   </label>
                   <div className="relative">
                     <input
@@ -742,7 +743,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                uTest Matching Score: 96%
+                Connectfy Matching Score: 96%
               </h4>
               <div className="space-y-2 text-xs">
                 <div className="flex items-center justify-between text-slate-300">
@@ -776,7 +777,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Tab 2: Hardware Fleet (uTest Device Manager) */}
+          {/* Tab 2: Hardware Fleet */}
       {currentTab === 'devices' && (
         <div className="space-y-6">
           
@@ -1126,11 +1127,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* uTest Academy Track Certifications */}
+          {/* Connectfy Academy Track Certifications */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
               <Award className="w-4 h-4 text-amber-400" />
-              uTest Academy Accreditations & Badges
+              Connectfy Academy Accreditations & Badges
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1140,7 +1141,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                   className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex items-start space-x-3.5"
                 >
                   <span className="text-3xl p-2 bg-slate-900 rounded-xl border border-slate-800">
-                    {badge.icon}
+                    <ProjectIcon name={badge.icon} className="h-5 w-5 text-[#00A3E0]" />
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -1404,7 +1405,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
               <div className="space-y-2 text-xs text-slate-400">
                 <p>
-                  United States Internal Revenue Service regulations require CrowdQA to maintain current tax records for all freelance testers before issuing payouts.
+                  United States Internal Revenue Service regulations require Connectfy to maintain current tax records for all freelance testers before issuing payouts.
                 </p>
                 <button
                   type="button"
@@ -1419,7 +1420,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Tab 5: Testing Preferences & uTest Availability Toggles */}
+          {/* Tab 5: Testing Preferences & Availability Toggles */}
       {currentTab === 'preferences' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           

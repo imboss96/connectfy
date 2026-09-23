@@ -23,6 +23,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { Project, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
+import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
   const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions } = useApp();
@@ -225,7 +226,7 @@ export const AdminProjectManager: React.FC = () => {
                   {/* Left: Info */}
                   <div className="flex items-start space-x-3.5">
                     <span className="text-3xl p-2.5 rounded-xl bg-[#080D1A] border border-[#1E2E4E] shrink-0">
-                      {project.companyLogo || '🧪'}
+                      <ProjectIcon name={project.companyLogo} className="h-6 w-6 text-[#00A3E0]" />
                     </span>
 
                     <div className="space-y-1">

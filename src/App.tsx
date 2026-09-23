@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { ProjectBoard } from './components/ProjectBoard';
@@ -8,8 +8,11 @@ import { TestWorkspace } from './components/TestWorkspace';
 import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
+import { LandingPage } from './components/LandingPage';
+import { LoginPage } from './components/LoginPage';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 import {
-  Sparkles,
+  Route,
   Bug,
   DollarSign,
   Smartphone,
@@ -23,7 +26,11 @@ import {
   Plus
 } from 'lucide-react';
 
-const MainContent: React.FC = () => {
+interface MainContentProps {
+  onLogout: () => void;
+}
+
+const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
   const {
     role,
     activeTab,
@@ -41,16 +48,16 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B1120] text-slate-100 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
+    <div className="theme-shell min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B1120] text-slate-100 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
       {/* Top Navigation */}
-      <Navbar onOpenWallet={() => setIsWalletOpen(true)} />
+      <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} />
 
       {/* Freelance Scope Quick Bar - shown on tablet/desktop to avoid mobile horizontal blowout */}
-      <div className="hidden sm:block w-full max-w-full overflow-hidden bg-[#0B132B]/80 border-b border-[#1E2E4E] px-3 sm:px-4 py-2 text-xs text-slate-400">
+      <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#0B132B]/80 border-b border-[#1E2E4E] px-3 sm:px-4 py-2 text-xs text-slate-400 md:ml-64 md:w-[calc(100%-16rem)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto scrollbar-none min-w-0">
           <div className="flex items-center space-x-2 shrink-0">
             <span className="font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
-              <Sparkles className="w-3.5 h-3.5 text-[#00A3E0]" />
+              <Route className="w-3.5 h-3.5 text-[#00A3E0]" />
               <span>Marketplace Flow:</span>
             </span>
             <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 shrink-0">
@@ -80,7 +87,7 @@ const MainContent: React.FC = () => {
       </div>
 
       {/* Main Container with responsive padding and mobile bottom nav space */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden md:ml-64 md:w-[calc(100%-16rem)]">
         {/* If Active Workspace is open */}
         {activeWorkspaceProjectId ? (
           <TestWorkspace
@@ -298,11 +305,11 @@ const MainContent: React.FC = () => {
       />
 
       {/* Footer (hidden or compact on mobile) */}
-      <footer className="hidden md:block border-t border-[#1E2E4E] bg-[#0B132B]/80 py-6 text-center text-xs text-slate-500 mt-12">
+      <footer className="theme-footer hidden md:block border-t border-[#1E2E4E] bg-[#0B132B]/80 py-6 text-center text-xs text-slate-500 mt-12 md:ml-64 md:w-[calc(100%-16rem)]">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
-            <span className="text-[#00A3E0] font-black text-sm">uTest</span>
-            <span className="font-semibold text-slate-300">CrowdQA Platform by <strong className="text-[#007AFF]">Applause</strong></span>
+            <span className="text-[#00A3E0] font-black text-sm">Connectfy</span>
+            <span className="font-semibold text-slate-300">Freelance QA Marketplace</span>
             <span>•</span>
             <span>Automated Bounty Escrow & Multi-Rail Payout Gateway</span>
           </div>
@@ -320,7 +327,65 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <AppExperience />
     </AppProvider>
   );
 }
+
+const AppExperience: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLanding, setShowLanding] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    supabase.auth.getSession().then(({ data }) => setIsAuthenticated(Boolean(data.session)));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(Boolean(session));
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async (email: string, password: string) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Authentication is not configured. Add your Supabase URL and anon key to .env.local.');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    setIsAuthenticated(true);
+    setShowLanding(true);
+  };
+
+  const handleGoogleLogin = async () => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Google authentication is not configured. Add Supabase settings to .env.local first.');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin }
+    });
+    if (error) throw error;
+  };
+
+  const handleSignUp = async (name: string, email: string, password: string) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Account registration is not configured. Add your Supabase URL and anon key to .env.local.');
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } }
+    });
+    if (error) throw error;
+    if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
+    setIsAuthenticated(true);
+    setShowLanding(true);
+  };
+
+  const handleLogout = () => {
+    if (supabase) void supabase.auth.signOut();
+    setIsAuthenticated(false);
+    setShowLanding(false);
+  };
+
+  if (!isAuthenticated) return <LoginPage onLogin={handleLogin} onSignUp={handleSignUp} onGoogleLogin={handleGoogleLogin} />;
+
+  return showLanding ? (
+    <LandingPage onGetStarted={() => setShowLanding(false)} />
+  ) : (
+    <MainContent onLogout={handleLogout} />
+  );
+};

@@ -138,11 +138,11 @@ export const initialTesterProfile: TesterProfile = {
   academyBadges: [
     {
       id: 'acad-1',
-      title: 'uTest Academy Graduate',
+      title: 'Connectfy Academy Graduate',
       description: 'Mastered foundational exploratory methodologies and test cycle protocol.',
       completionDate: '2024-03-12',
       score: '100% Score',
-      icon: '🎓'
+      icon: 'academy'
     },
     {
       id: 'acad-2',
@@ -150,7 +150,7 @@ export const initialTesterProfile: TesterProfile = {
       description: 'Proficiency in SSL unpinning, HAR export, throttling, and websocket inspection.',
       completionDate: '2024-06-18',
       score: '98% Score',
-      icon: '📡'
+      icon: 'network'
     },
     {
       id: 'acad-3',
@@ -158,7 +158,7 @@ export const initialTesterProfile: TesterProfile = {
       description: 'Accredited for card chargebacks, 3DS flows, sandbox merchant setups, and FX rates.',
       completionDate: '2024-09-04',
       score: '99% Score',
-      icon: '💳'
+      icon: 'payment'
     },
     {
       id: 'acad-4',
@@ -166,7 +166,7 @@ export const initialTesterProfile: TesterProfile = {
       description: 'Deep stack trace symbolication, tombstone dumps, and iOS sysdiagnose reports.',
       completionDate: '2025-01-20',
       score: '97% Score',
-      icon: '⚡'
+      icon: 'speed'
     }
   ],
   paymentSettings: {
@@ -237,7 +237,7 @@ export const initialProjects: Project[] = [
     id: 'proj-fintech-01',
     title: 'FinFlow App v4.2 - 3D Secure 2.0 & Multi-Currency Checkout Cycle',
     company: 'FinFlow Technologies',
-    companyLogo: '💳',
+    companyLogo: 'card',
     category: 'Payment & Checkout',
     projectTrack: 'qa_functional',
     paymentModel: 'per_bug',
@@ -278,7 +278,7 @@ export const initialProjects: Project[] = [
     id: 'proj-ai-voice-05',
     title: 'Global Speech AI - Multilingual Conversational Voice Prompts Collection',
     company: 'NeuroVoice Labs',
-    companyLogo: '🎙️',
+    companyLogo: 'voice',
     category: 'AI Data Collection',
     projectTrack: 'data_collection',
     paymentModel: 'per_task_submission',
@@ -335,7 +335,7 @@ export const initialProjects: Project[] = [
     id: 'proj-ai-redteam-06',
     title: 'Gemini Multimodal Safety & Hallucination Adversarial Red Teaming',
     company: 'Synthetix AI Research',
-    companyLogo: '🤖',
+    companyLogo: 'ai',
     category: 'AI Model Evaluation',
     projectTrack: 'ai_evaluation',
     paymentModel: 'per_task_submission',
@@ -388,7 +388,7 @@ export const initialProjects: Project[] = [
     id: 'proj-field-pos-07',
     title: 'In-Store Tap-to-Pay POS Hardware & Contactless Terminal Mystery Audit',
     company: 'VeriPay Hardware Labs',
-    companyLogo: '📍',
+    companyLogo: 'location',
     category: 'Special In-Field',
     projectTrack: 'special_field',
     paymentModel: 'fixed_study',
@@ -444,7 +444,7 @@ export const initialProjects: Project[] = [
     id: 'proj-ux-savings-08',
     title: 'Crypto-Fiat Smart Savings App - 45-Min Moderated UX Think-Aloud Interview',
     company: 'KiteFi Design Labs',
-    companyLogo: '👥',
+    companyLogo: 'people',
     category: 'Usability',
     projectTrack: 'ux_research',
     paymentModel: 'hourly_session',
@@ -497,7 +497,7 @@ export const initialProjects: Project[] = [
     id: 'proj-stream-02',
     title: 'VividCinema 4K - Smart TV & Mobile Picture-in-Picture Crash Hunting',
     company: 'Vivid Media Labs',
-    companyLogo: '🎬',
+    companyLogo: 'movie',
     category: 'Functional',
     projectTrack: 'qa_functional',
     paymentModel: 'per_bug',
@@ -576,7 +576,7 @@ export const initialProjects: Project[] = [
     id: 'proj-ecom-04',
     title: 'OmniCart Retail - RTL Arabic Localization & Address Validation',
     company: 'OmniCart Enterprise',
-    companyLogo: '🛍️',
+    companyLogo: 'store',
     category: 'Localization',
     projectTrack: 'localization',
     paymentModel: 'per_bug',
@@ -827,7 +827,7 @@ export const initialNotifications: NotificationItem[] = [
     id: 'notif-1',
     userId: 'tester-ezra-01',
     targetRole: 'tester',
-    title: 'Cycle Invite Received! 🎉',
+    title: 'Cycle Invite Received',
     message: 'You have been approved and invited to test "VividCinema 4K - Smart TV & Mobile Crash Hunting". Reserve your test slot now!',
     type: 'invite',
     read: false,
@@ -838,7 +838,7 @@ export const initialNotifications: NotificationItem[] = [
     id: 'notif-2',
     userId: 'tester-ezra-01',
     targetRole: 'tester',
-    title: 'Bounty Credited: $75.00 💰',
+    title: 'Bounty Credited: $75.00',
     message: 'Bug report #101 "App crash during 3DS OTP timeout recovery" was approved by Sarah Chen. $75.00 credited to your available balance!',
     type: 'earning',
     read: false,
@@ -851,7 +851,7 @@ export const initialNotifications: NotificationItem[] = [
     id: 'notif-3',
     userId: 'client-finflow-01',
     targetRole: 'client',
-    title: 'New Bug Report Submitted 🐞',
+    title: 'New Bug Report Submitted',
     message: 'Ezra Bosire submitted a High severity defect: "Currency conversion rounding mismatch during split payments".',
     type: 'status_update',
     read: false,

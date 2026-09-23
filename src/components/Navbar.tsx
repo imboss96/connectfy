@@ -1,33 +1,36 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Bug,
-  DollarSign,
-  Bell,
-  Users,
-  ShieldCheck,
-  ChevronDown,
-  Layers,
   ArrowRightLeft,
-  RotateCcw,
-  Sparkles,
-  ExternalLink,
-  Menu,
-  X,
+  Bell,
   Briefcase,
+  Bug,
   FileCheck,
-  CheckCircle2,
+  Layers,
+  Menu,
+  RotateCcw,
+  ShieldCheck,
   Sliders,
-  Wallet
+  Users,
+  Wallet,
+  X,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { NotificationCenter } from './NotificationCenter';
-import { UTestLogo } from './UTestLogo';
+import { ConnectfyLogo } from './UTestLogo';
 
 interface NavbarProps {
   onOpenWallet: () => void;
+  onLogout: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet }) => {
+type NavItem = {
+  label: string;
+  tab: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
   const {
     role,
     setRole,
@@ -39,454 +42,140 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet }) => {
     setActiveWorkspaceProjectId,
     resetToSampleData
   } = useApp();
-
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Close notifications on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
-        setIsNotifOpen(false);
-      }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) setIsNotifOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Close mobile menu on escape key or resize to desktop
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setIsMobileMenuOpen(false);
-      }
+      if (window.innerWidth >= 768) setIsMobileMenuOpen(false);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const unreadCount = notifications.filter(
-    (n) => (n.targetRole === role || n.targetRole === 'tester') && !n.read
+    notification => (notification.targetRole === role || notification.targetRole === 'tester') && !notification.read
   ).length;
+
+  const navigateTo = (tab: string) => {
+    setActiveWorkspaceProjectId(null);
+    setActiveTab(tab as any);
+    setIsMobileMenuOpen(false);
+  };
 
   const handleRoleToggle = () => {
     const nextRole = role === 'tester' ? 'client' : 'tester';
     setRole(nextRole);
     setActiveWorkspaceProjectId(null);
-    if (nextRole === 'tester') {
-      setActiveTab('projects');
-    } else {
-      setActiveTab('client_submissions');
-    }
+    setActiveTab(nextRole === 'tester' ? 'projects' : 'client_submissions');
     setIsMobileMenuOpen(false);
   };
 
-  const navigateTo = (tab: any) => {
-    setActiveWorkspaceProjectId(null);
-    setActiveTab(tab);
-    setIsMobileMenuOpen(false);
-  };
+  const navItems: NavItem[] = role === 'tester'
+    ? [
+        { label: 'Browse Projects', tab: 'projects', icon: Bug },
+        { label: 'My Pipeline', tab: 'tasks', icon: Layers },
+        { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders }
+      ]
+    : role === 'admin'
+      ? [
+          { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck },
+          { label: 'Project Listings', tab: 'projects', icon: Briefcase },
+          { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck },
+          { label: 'Settings', tab: 'profile_settings', icon: Sliders }
+        ]
+      : [
+          { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
+          { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
+          { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
+          { label: 'Organization', tab: 'profile_settings', icon: Sliders }
+        ];
+
+  const personName = role === 'tester' ? testerProfile.name : clientProfile.name;
+  const personSubtitle = role === 'tester' ? `${testerProfile.tier} QA Tester` : role === 'admin' ? 'Operations & PM' : clientProfile.company;
+  const personAvatar = role === 'tester' ? testerProfile.avatar : clientProfile.avatar;
+
+  const renderNavItems = () => (
+    <nav className="space-y-1" aria-label="Primary navigation">
+      <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>
+      {navItems.map(({ label, tab, icon: Icon }) => (
+        <button
+          key={tab}
+          onClick={() => navigateTo(tab)}
+          className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
+            activeTab === tab ? 'bg-[#007AFF] text-white shadow-lg shadow-[#007AFF]/20' : 'text-slate-300 hover:bg-[#131E35] hover:text-white'
+          }`}
+        >
+          <Icon className={`h-4 w-4 shrink-0 ${activeTab === tab ? 'text-white' : 'text-[#38BDF8]'}`} />
+          <span>{label}</span>
+        </button>
+      ))}
+      {role === 'tester' && (
+        <button
+          onClick={() => { setIsMobileMenuOpen(false); onOpenWallet(); }}
+          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"
+        >
+          <span className="flex items-center gap-3"><Wallet className="h-4 w-4 text-emerald-400" />Wallet & Payouts</span>
+          <span className="font-black text-emerald-400">${testerProfile.availableBalance.toFixed(0)}</span>
+        </button>
+      )}
+    </nav>
+  );
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#0B132B]/95 backdrop-blur-md border-b border-[#1E2E4E] text-slate-100 w-full max-w-full overflow-hidden">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16 gap-1 sm:gap-4">
-            
-            {/* Real uTest Brand Logo & Tag */}
-            <div className="flex items-center space-x-2 shrink-0 min-w-0">
-              <button
-                onClick={() => navigateTo(role === 'tester' ? 'projects' : 'client_submissions')}
-                className="text-left group shrink-0"
-              >
-                <UTestLogo size="sm" />
-              </button>
+      <aside className="theme-sidebar fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-[#1E2E4E] bg-[#0B132B] px-4 py-5 md:flex">
+        <button onClick={() => navigateTo(role === 'tester' ? 'projects' : role === 'admin' ? 'admin_manager' : 'client_submissions')} className="mb-8 text-left">
+          <ConnectfyLogo size="sm" />
+        </button>
+        <div className="mb-6 rounded-2xl border border-[#1E2E4E] bg-[#111C33] p-3">
+          <div className="flex items-center gap-3">
+            <img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl border border-[#00A3E0]/40 object-cover" referrerPolicy="no-referrer" />
+            <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{personName}</p><p className="truncate text-[10px] text-slate-400">{personSubtitle}</p></div>
+          </div>
+          <button onClick={handleRoleToggle} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#1E2E4E] bg-[#080D1A] px-2 py-2 text-[10px] font-bold text-slate-300 transition hover:border-[#00A3E0]/50 hover:text-white">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-[#00A3E0]" />Switch to {role === 'tester' ? 'Client' : 'Tester'}
+          </button>
+        </div>
+        {renderNavItems()}
+        <div className="mt-auto border-t border-[#1E2E4E] pt-4">
+          <button onClick={() => navigateTo('profile_settings')} className="mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"><Sliders className="h-4 w-4 text-[#38BDF8]" />Account settings</button>
+          <button onClick={() => { if (confirm('Reset application state to initial sample data?')) resetToSampleData(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><RotateCcw className="h-4 w-4" />Reset sample data</button>
+          <button onClick={onLogout} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><LogOut className="h-4 w-4" />Log out</button>
+        </div>
+      </aside>
 
-              {/* Desktop Navigation Links */}
-              <nav className="hidden md:flex items-center space-x-1 text-xs font-semibold ml-2">
-                {role === 'tester' ? (
-                  <>
-                    <button
-                      onClick={() => navigateTo('projects')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'projects'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Browse Projects
-                    </button>
-                    <button
-                      onClick={() => navigateTo('tasks')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'tasks'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      My Pipeline
-                    </button>
-                    <button
-                      onClick={onOpenWallet}
-                      className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#131E35] transition"
-                    >
-                      Wallet & Payouts
-                    </button>
-                    <button
-                      onClick={() => navigateTo('profile_settings')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'profile_settings'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Profile & Fleet
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => navigateTo('client_submissions')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'client_submissions'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Review Submissions
-                    </button>
-                    <button
-                      onClick={() => navigateTo('client_applicants')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'client_applicants'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Freelancer Fleet
-                    </button>
-                    <button
-                      onClick={() => navigateTo('client_cycles')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'client_cycles'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Cycles & Budgets
-                    </button>
-                    <button
-                      onClick={() => navigateTo('profile_settings')}
-                      className={`px-3 py-1.5 rounded-lg transition ${
-                        activeTab === 'profile_settings'
-                          ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/25'
-                          : 'text-slate-300 hover:text-white hover:bg-[#131E35]'
-                      }`}
-                    >
-                      Organization
-                    </button>
-                  </>
-                )}
-              </nav>
+      <header className="theme-topbar sticky top-0 z-40 w-full border-b border-[#1E2E4E] bg-[#0B132B]/95 text-slate-100 backdrop-blur-md md:ml-64 md:w-[calc(100%-16rem)]">
+        <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="md:hidden"><ConnectfyLogo size="sm" showSubtitle={false} /></div>
+            <div className="hidden min-w-0 sm:block"><p className="text-xs font-semibold text-slate-400">{role === 'tester' ? 'Tester workspace' : role === 'admin' ? 'Operations workspace' : 'Client workspace'}</p><p className="truncate text-sm font-bold text-white">{activeTab === 'profile_settings' ? 'Account settings' : 'Manage your testing workflow'}</p></div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {role === 'tester' && <button onClick={onOpenWallet} className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-black text-emerald-400 transition hover:bg-emerald-500/20" title="Open payout wallet"><Wallet className="h-3.5 w-3.5" />${testerProfile.availableBalance.toFixed(0)}</button>}
+            <div className="relative" ref={notifRef}>
+              <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#1E2E4E] bg-[#131E35] text-slate-300 transition hover:text-white" title="Notifications"><Bell className="h-4 w-4" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">{unreadCount}</span>}</button>
+              <NotificationCenter isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} onActionClick={() => setIsNotifOpen(false)} />
             </div>
-
-            {/* Right Action Controls */}
-            <div className="flex items-center space-x-1 sm:space-x-2 shrink-0">
-              
-              {/* Role Switcher - shown on tablet/desktop */}
-              <button
-                onClick={handleRoleToggle}
-                className="hidden sm:flex items-center space-x-1 sm:space-x-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-xl transition bg-[#080D1A] border border-[#1E2E4E] text-slate-300 hover:text-white hover:border-[#00A3E0]/40"
-                title="Toggle between Tester and Client view"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5 text-[#00A3E0] shrink-0" />
-                <span className="hidden lg:inline text-slate-400 font-normal">Role:</span>
-                <span
-                  className={
-                    role === 'tester' ? 'text-amber-400 font-black' : 'text-[#00A3E0] font-black'
-                  }
-                >
-                  {role === 'tester' ? 'Tester' : 'Client'}
-                </span>
-              </button>
-
-              {/* Tester Wallet Pill */}
-              {role === 'tester' && (
-                <button
-                  onClick={onOpenWallet}
-                  className="flex items-center space-x-1 px-2 py-1 sm:px-2.5 sm:py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition text-emerald-400 shrink-0"
-                  title="Open Payout Wallet"
-                >
-                  <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                  <span className="text-xs font-black">
-                    ${testerProfile.availableBalance.toFixed(0)}
-                  </span>
-                  <span className="hidden md:inline text-[10px] text-emerald-300/80 font-medium">
-                    Payout
-                  </span>
-                </button>
-              )}
-
-              {/* Notification Bell Dropdown */}
-              <div className="relative shrink-0" ref={notifRef}>
-                <button
-                  onClick={() => setIsNotifOpen(!isNotifOpen)}
-                  className="p-1.5 sm:p-2 rounded-xl bg-[#131E35] border border-[#1E2E4E] hover:bg-slate-700/80 text-slate-300 hover:text-white transition relative min-w-[32px] sm:min-w-[36px] min-h-[32px] sm:min-h-[36px] flex items-center justify-center shrink-0"
-                  title="Notifications"
-                >
-                  <Bell className="w-4 h-4 text-slate-300" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-pulse">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                <NotificationCenter
-                  isOpen={isNotifOpen}
-                  onClose={() => setIsNotifOpen(false)}
-                  onActionClick={() => setIsNotifOpen(false)}
-                />
-              </div>
-
-              {/* Profile Avatar / Settings (Desktop) */}
-              <button
-                onClick={() => navigateTo('profile_settings')}
-                className={`hidden md:flex items-center space-x-2 pl-1.5 pr-2.5 py-1 rounded-xl transition border text-left shrink-0 ${
-                  activeTab === 'profile_settings'
-                    ? 'bg-[#007AFF] border-[#007AFF] text-white shadow-xs'
-                    : 'border-[#1E2E4E] hover:border-[#00A3E0]/40 bg-[#080D1A] text-slate-300'
-                }`}
-                title="Toggle Profile Settings"
-              >
-                <img
-                  src={role === 'tester' ? testerProfile.avatar : clientProfile.avatar}
-                  alt="Profile"
-                  className="w-7 h-7 rounded-full object-cover border border-[#00A3E0]/40 shrink-0"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="hidden lg:block">
-                  <span className="text-xs font-bold text-white block leading-tight truncate max-w-[90px]">
-                    {role === 'tester' ? testerProfile.name : clientProfile.name}
-                  </span>
-                  <span className="text-[10px] text-[#38BDF8] block leading-tight">
-                    {activeTab === 'profile_settings' ? 'Settings' : (role === 'tester' ? `${testerProfile.tier}` : clientProfile.company)}
-                  </span>
-                </div>
-              </button>
-
-              {/* Reset sample data button (Desktop) */}
-              <button
-                onClick={() => {
-                  if (confirm('Reset application state to initial sample data?')) {
-                    resetToSampleData();
-                  }
-                }}
-                className="hidden lg:flex p-2 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-[#131E35] transition shrink-0"
-                title="Reset state to sample data"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Mobile Hamburger Toggle */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-1.5 sm:p-2 rounded-xl bg-[#131E35] border border-[#1E2E4E] text-slate-300 hover:text-white transition min-w-[32px] sm:min-w-[36px] min-h-[32px] sm:min-h-[36px] flex items-center justify-center shrink-0"
-                aria-label="Toggle Navigation Menu"
-              >
-                {isMobileMenuOpen ? <X className="w-4 h-4 sm:w-5 sm:h-5" /> : <Menu className="w-4 h-4 sm:w-5 sm:h-5" />}
-              </button>
-
-            </div>
+            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#1E2E4E] bg-[#131E35] text-slate-300 md:hidden" aria-label="Toggle navigation menu">{isMobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}</button>
           </div>
         </div>
       </header>
 
-      {/* Mobile Menu Slide-down Drawer */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-x-0 top-14 sm:top-16 z-50 bg-[#0B132B] border-b border-[#1E2E4E] shadow-2xl animate-fade-in p-4 max-h-[calc(100vh-4rem)] overflow-y-auto space-y-4">
-          
-          {/* User Profile Card */}
-          <div className="p-3 bg-[#111C33] rounded-xl border border-[#1E2E4E] flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <img
-                src={role === 'tester' ? testerProfile.avatar : clientProfile.avatar}
-                alt="Profile"
-                className="w-10 h-10 rounded-xl object-cover border border-[#00A3E0]/40 shrink-0"
-                referrerPolicy="no-referrer"
-              />
-              <div>
-                <h4 className="text-sm font-bold text-white leading-tight">
-                  {role === 'tester' ? testerProfile.name : clientProfile.name}
-                </h4>
-                <p className="text-xs text-slate-400">
-                  {role === 'tester' ? `${testerProfile.tier} QA Tester` : clientProfile.company}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => navigateTo('profile_settings')}
-              className="px-3 py-1.5 bg-[#080D1A] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg flex items-center gap-1 transition border border-[#1E2E4E]"
-            >
-              <Sliders className="w-3.5 h-3.5 text-[#00A3E0]" />
-              <span>Settings</span>
-            </button>
-          </div>
-
-          {/* Role Switcher Banner */}
-          <div className="p-3 bg-gradient-to-r from-[#0B192C] via-[#111C33] to-[#0B192C] rounded-xl border border-[#00A3E0]/30 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-slate-400 block">Current Persona:</span>
-              <strong className={role === 'tester' ? 'text-amber-400 text-xs' : 'text-[#00A3E0] text-xs'}>
-                {role === 'tester' ? 'Freelance Tester View' : 'Enterprise Client Lead'}
-              </strong>
-            </div>
-            <button
-              onClick={handleRoleToggle}
-              className="px-3 py-1.5 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-lg flex items-center space-x-1.5 transition shadow"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>Switch to {role === 'tester' ? 'Client' : 'Tester'}</span>
-            </button>
-          </div>
-
-          {/* Navigation Links for Mobile */}
-          <div className="space-y-1 pt-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 block mb-1">
-              Navigation
-            </span>
-
-            {role === 'tester' ? (
-              <>
-                <button
-                  onClick={() => navigateTo('projects')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'projects'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Bug className="w-4 h-4 text-[#00A3E0]" />
-                  <span>Browse Projects & Cycles</span>
-                </button>
-
-                <button
-                  onClick={() => navigateTo('tasks')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'tasks'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Layers className="w-4 h-4 text-[#38BDF8]" />
-                  <span>My Active Pipeline & Invites</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    onOpenWallet();
-                  }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center justify-between text-slate-300 hover:bg-[#111C33] transition"
-                >
-                  <div className="flex items-center space-x-2.5">
-                    <Wallet className="w-4 h-4 text-emerald-400" />
-                    <span>Payout Wallet & Earnings</span>
-                  </div>
-                  <span className="text-emerald-400 font-bold">
-                    ${testerProfile.availableBalance.toFixed(2)}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => navigateTo('profile_settings')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'profile_settings'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Sliders className="w-4 h-4 text-[#00A3E0]" />
-                  <span>Tester Profile, Fleet & Toggles</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigateTo('client_submissions')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'client_submissions'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <FileCheck className="w-4 h-4 text-purple-400" />
-                  <span>Review Submissions & Tasks</span>
-                </button>
-
-                <button
-                  onClick={() => navigateTo('client_applicants')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'client_applicants'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Users className="w-4 h-4 text-[#00A3E0]" />
-                  <span>Freelancer Applicant Fleet</span>
-                </button>
-
-                <button
-                  onClick={() => navigateTo('client_cycles')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'client_cycles'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Briefcase className="w-4 h-4 text-[#38BDF8]" />
-                  <span>Cycles, Escrow & Budgets</span>
-                </button>
-
-                <button
-                  onClick={() => navigateTo('profile_settings')}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl font-medium text-xs flex items-center space-x-2.5 transition ${
-                    activeTab === 'profile_settings'
-                      ? 'bg-[#007AFF] text-white font-bold'
-                      : 'text-slate-300 hover:bg-[#111C33]'
-                  }`}
-                >
-                  <Sliders className="w-4 h-4 text-[#00A3E0]" />
-                  <span>Organization & Matrix Settings</span>
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Bottom Tools */}
-          <div className="pt-3 border-t border-[#1E2E4E] flex items-center justify-between">
-            <button
-              onClick={() => {
-                if (confirm('Reset application state to initial sample data?')) {
-                  resetToSampleData();
-                  setIsMobileMenuOpen(false);
-                }
-              }}
-              className="text-xs text-slate-400 hover:text-white flex items-center space-x-1.5 p-2 rounded-lg hover:bg-[#111C33] transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-              <span>Reset Sample Data</span>
-            </button>
-            <button
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="text-xs text-slate-400 hover:text-white p-2"
-            >
-              Close Menu
-            </button>
-          </div>
-        </div>
-      )}
+      {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 space-y-4 border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-16 md:hidden">
+        <div className="flex items-center justify-between rounded-xl border border-[#1E2E4E] bg-[#111C33] p-3"><div className="flex min-w-0 items-center gap-3"><img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl object-cover" referrerPolicy="no-referrer" /><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{personName}</p><p className="truncate text-xs text-slate-400">{personSubtitle}</p></div></div><button onClick={handleRoleToggle} className="ml-3 shrink-0 rounded-lg bg-[#007AFF] px-2.5 py-2 text-[10px] font-bold text-white"><ArrowRightLeft className="mr-1 inline h-3 w-3" />Switch role</button></div>
+        {renderNavItems()}
+        <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border-t border-[#1E2E4E] px-3 pt-3 text-xs font-semibold text-slate-500"><LogOut className="h-4 w-4" />Log out</button>
+      </div>}
     </>
   );
 };

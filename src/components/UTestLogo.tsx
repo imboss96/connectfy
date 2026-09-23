@@ -1,12 +1,12 @@
 import React from 'react';
 
-interface UTestLogoProps {
+interface ConnectfyLogoProps {
   className?: string;
   showSubtitle?: boolean;
   size?: 'sm' | 'md' | 'lg';
 }
 
-export const UTestLogo: React.FC<UTestLogoProps> = ({
+export const ConnectfyLogo: React.FC<ConnectfyLogoProps> = ({
   className = '',
   showSubtitle = true,
   size = 'md'
@@ -16,9 +16,9 @@ export const UTestLogo: React.FC<UTestLogoProps> = ({
 
   return (
     <div className={`flex items-center space-x-2.5 select-none ${className}`}>
-      {/* Real uTest Signature Cyan & Navy Icon Mark */}
+      {/* Connectfy cyan and navy brand mark */}
       <div
-        className={`${iconSize} rounded-xl bg-gradient-to-br from-[#00A3E0] to-[#007AFF] p-0.5 shadow-md shadow-[#00A3E0]/20 flex items-center justify-center shrink-0`}
+        className={`${iconSize} connectfy-mark rounded-xl bg-[#0b0e12] p-0.5 shadow-md shadow-[#00A3E0]/20 flex items-center justify-center shrink-0`}
       >
         <div className="w-full h-full bg-[#0B132B] rounded-[10px] flex items-center justify-center relative overflow-hidden">
           {/* Subtle cyan glow */}
@@ -50,21 +50,20 @@ export const UTestLogo: React.FC<UTestLogoProps> = ({
         </div>
       </div>
 
-      {/* Wordmark with authentic cyan 'u' and crisp white 'Test' */}
+      {/* Connectfy wordmark */}
       <div className="leading-none">
         <div className={`font-black tracking-tight flex items-baseline gap-0.5 ${fontSize}`}>
-          <span className="text-[#00A3E0] font-black">u</span>
-          <span className="text-white font-black">Test</span>
-          <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 bg-[#00A3E0]/15 text-[#38BDF8] border border-[#00A3E0]/30 rounded tracking-wider uppercase">
-            CrowdQA
+          <span className="connectfy-wordmark text-white font-black">Connectfy</span>
+          <span className="connectfy-badge ml-1.5 text-[9px] font-bold px-1.5 py-0.5 bg-[#00A3E0]/15 text-[#38BDF8] border border-[#00A3E0]/30 rounded tracking-wider uppercase">
+            CONNECTFY
           </span>
         </div>
         {showSubtitle && (
           <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
             <span>by</span>
-            <span className="text-[#007AFF] font-bold tracking-tight">Applause</span>
+            <span className="text-[#007AFF] font-bold tracking-tight">Quality Marketplace</span>
             <span className="text-slate-600">•</span>
-            <span>Freelance Marketplace</span>
+            <span>Test. Build. Connect.</span>
           </div>
         )}
       </div>

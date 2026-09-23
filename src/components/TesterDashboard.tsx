@@ -15,6 +15,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProjectIcon } from './ProjectIcon';
 
 interface TesterDashboardProps {
   onOpenWorkspace: (projectId: string) => void;
@@ -167,7 +168,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                       </h4>
                       <p className="text-xs text-slate-400">{project.company}</p>
                     </div>
-                    <span className="text-xl">{project.companyLogo || '🎬'}</span>
+                    <ProjectIcon name={project.companyLogo || 'movie'} className="h-5 w-5 text-[#00A3E0]" />
                   </div>
 
                   <p className="text-xs text-slate-300">
@@ -229,7 +230,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{project.companyLogo || '💳'}</span>
+                      <ProjectIcon name={project.companyLogo || 'card'} className="h-7 w-7 text-[#00A3E0]" />
                       <div>
                         <h4 className="text-sm font-bold text-white">{project.title}</h4>
                         <p className="text-xs text-slate-400">

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Project, BugSeverity, BugType, BugFrequency, AttachmentFile } from '../types';
+import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 
 interface BugSubmissionModalProps {
   project: Project;
@@ -78,24 +79,33 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
     setSteps(steps.filter((_, i) => i !== index));
   };
 
-  const handleFileUpload = (files: FileList | null) => {
+  const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+    if (!isCloudinaryConfigured) {
+      setError('Cloudinary is not configured. Add the upload settings before attaching evidence.');
+      return;
+    }
+
+    try {
+      const uploaded = await Promise.all(Array.from(files).map(async (file) => {
+        const result = await uploadToCloudinary(file);
         const newAttachment: AttachmentFile = {
           id: 'att-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
-          url: (e.target?.result as string) || '',
+          url: result.secure_url,
+          publicId: result.public_id,
+          resourceType: result.resource_type,
           uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
         };
-        setAttachments((prev) => [...prev, newAttachment]);
-      };
-      reader.readAsDataURL(file);
-    });
+        return newAttachment;
+      }));
+      setAttachments((prev) => [...prev, ...uploaded]);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Evidence upload failed.');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -9,6 +9,7 @@ import {
   Calendar,
   Users,
   Building,
+  CreditCard,
   CheckCircle2,
   FileText,
   ShieldCheck,
@@ -22,6 +23,7 @@ import {
   Globe
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { ProjectIcon } from './ProjectIcon';
 import {
   Project,
   ProjectCategory,
@@ -56,8 +58,8 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
   // Basic Details
   const [title, setTitle] = useState('');
-  const [company, setCompany] = useState(clientProfile.company || 'uTest Global QA Ops');
-  const [companyLogo, setCompanyLogo] = useState('🧪');
+  const [company, setCompany] = useState(clientProfile.company || 'Connectfy Global QA Ops');
+  const [companyLogo, setCompanyLogo] = useState('flask');
   const [track, setTrack] = useState<ProjectTrack>(defaultTrack);
   const [category, setCategory] = useState<ProjectCategory>('Functional');
   const [shortDescription, setShortDescription] = useState('');
@@ -106,7 +108,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     if (presetKey === 'fintech_qa') {
       setTitle('Fintech Mobile Banking: Cross-Border Transfers & Card Linking');
       setCompany('Apex Global Financial');
-      setCompanyLogo('💳');
+      setCompanyLogo('card');
       setTrack('qa_functional');
       setCategory('Payment & Checkout');
       setShortDescription('Execute exploratory and test-case regression on new biometric checkout and debit card authorization flow.');
@@ -124,7 +126,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     } else if (presetKey === 'voice_data') {
       setTitle('African Dialects Conversational Speech Dataset (Swahili & Sheng)');
       setCompany('SpeechForge AI Labs');
-      setCompanyLogo('🎙️');
+      setCompanyLogo('voice');
       setTrack('data_collection');
       setCategory('AI Data Collection');
       setShortDescription('Collect high-fidelity native voice recordings of spontaneous conversation and read prompts.');
@@ -140,7 +142,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     } else if (presetKey === 'ai_redteam') {
       setTitle('Multimodal LLM Adversarial Prompting & Red Teaming');
       setCompany('Cognitive Trust Labs');
-      setCompanyLogo('🧠');
+      setCompanyLogo('ai');
       setTrack('ai_evaluation');
       setCategory('AI Model Evaluation');
       setShortDescription('Probe safety boundaries and stress-test hallucination edge cases across 25 domain prompts.');
@@ -156,7 +158,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     } else if (presetKey === 'pos_audit') {
       setTitle('In-Field Retail POS Terminal & Tap-to-Pay Audit');
       setCompany('OmniPay Merchant Network');
-      setCompanyLogo('🏪');
+      setCompanyLogo('store');
       setTrack('special_field');
       setCategory('Special In-Field');
       setShortDescription('Perform mystery purchases at partner supermarket terminals and document receipt printouts and NFC latency.');
@@ -223,7 +225,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     createProject({
       title: title.trim(),
       company: company.trim(),
-      companyLogo: companyLogo || '🧪',
+      companyLogo: companyLogo || 'flask',
       category,
       projectTrack: track,
       paymentModel: isQA ? 'per_approved_bug' : 'per_task',
@@ -303,28 +305,28 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             onClick={() => applyPreset('fintech_qa')}
             className="px-2.5 py-1 rounded-lg bg-[#111C33] hover:bg-[#007AFF]/20 hover:text-[#00A3E0] border border-[#1E2E4E] text-[11px] text-slate-300 font-semibold transition"
           >
-            💳 Fintech QA Bounty
+            <CreditCard className="inline h-3.5 w-3.5 text-[#00A3E0]" /> Fintech QA Bounty
           </button>
           <button
             type="button"
             onClick={() => applyPreset('voice_data')}
             className="px-2.5 py-1 rounded-lg bg-[#111C33] hover:bg-purple-900/30 hover:text-purple-300 border border-[#1E2E4E] text-[11px] text-slate-300 font-semibold transition"
           >
-            🎙️ Voice Data Collection
+            <Mic className="inline h-3.5 w-3.5 text-purple-300" /> Voice Data Collection
           </button>
           <button
             type="button"
             onClick={() => applyPreset('ai_redteam')}
             className="px-2.5 py-1 rounded-lg bg-[#111C33] hover:bg-emerald-900/30 hover:text-emerald-300 border border-[#1E2E4E] text-[11px] text-slate-300 font-semibold transition"
           >
-            🧠 AI LLM Red Teaming
+            <Brain className="inline h-3.5 w-3.5 text-emerald-300" /> AI LLM Red Teaming
           </button>
           <button
             type="button"
             onClick={() => applyPreset('pos_audit')}
             className="px-2.5 py-1 rounded-lg bg-[#111C33] hover:bg-amber-900/30 hover:text-amber-300 border border-[#1E2E4E] text-[11px] text-slate-300 font-semibold transition"
           >
-            🏪 In-Field Retail POS Audit
+            <Building className="inline h-3.5 w-3.5 text-amber-300" /> In-Field Retail POS Audit
           </button>
         </div>
 
@@ -425,7 +427,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                   type="text"
                   value={companyLogo}
                   onChange={(e) => setCompanyLogo(e.target.value)}
-                  placeholder="e.g. 💳, 🎬, 🎙️, 🚀"
+                  placeholder="e.g. card, movie, voice, speed"
                   className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-3 py-2 text-white font-bold text-center focus:outline-none focus:border-[#007AFF]"
                 />
               </div>

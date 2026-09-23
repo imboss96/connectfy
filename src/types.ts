@@ -52,6 +52,8 @@ export interface AttachmentFile {
   size: number;
   type: string; // 'image/png', 'application/pdf', 'text/plain', etc.
   url: string; // base64 or object URL or mock URL
+  publicId?: string;
+  resourceType?: string;
   uploadedAt: string;
 }
 
