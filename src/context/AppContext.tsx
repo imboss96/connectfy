@@ -399,6 +399,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
+  const resolveTesterEmail = async (testerId: string, fallbackEmail = ''): Promise<string> => {
+    const normalizedFallback = fallbackEmail || testerProfile.email || '';
+    if (!testerId) return normalizedFallback;
+
+    if (normalizedFallback && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedFallback)) {
+      return normalizedFallback;
+    }
+
+    if (!isSupabaseConfigured || !supabase) return normalizedFallback;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', testerId)
+        .maybeSingle();
+
+      if (!error && data?.email) {
+        return data.email;
+      }
+    } catch (error) {
+      console.error('Unable to resolve tester email from profile:', error);
+    }
+
+    return normalizedFallback;
+  };
+
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'notifications');
     if (!saved) return [];
@@ -683,7 +710,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           inviteStatus: app.invite_status || undefined,
           acceptedInviteAt: app.accepted_invite_at ? new Date(app.accepted_invite_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
           lastInviteSentAt: app.last_invite_sent_at ? new Date(app.last_invite_sent_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
-          inviteHistory: normalizeInviteHistory(app.invite_history)
+          inviteHistory: normalizeInviteHistory(app.invite_history),
+          projectTitle: app.project?.title || undefined,
+          projectCompany: app.project?.company || undefined
         }));
 
         setApplications(mapped);
@@ -800,25 +829,86 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const triggerProjectEmail = async (type: 'application' | 'invite', projectId: string, testerId: string, testerName: string, testerEmail: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-    if (!testerEmail) return;
+    const resolvedTesterEmail = await resolveTesterEmail(testerId, testerEmail);
 
-    const actionUrl = `${window.location.origin}?project=${project.id}`;
+    if (!resolvedTesterEmail) {
+      console.warn('Project email blocked: missing tester email in profile.', { projectId, testerId, testerName });
+      return;
+    }
+
+    let project = projects.find(p => p.id === projectId);
+
+    if (!project && isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', projectId)
+          .maybeSingle();
+
+        if (!error && data) {
+          project = {
+            id: data.id,
+            title: data.title || 'Project Opportunity',
+            company: data.company || 'Connectfy',
+            shortDescription: data.short_description || '',
+            fullOverview: data.full_overview || '',
+            category: data.category || 'Functional',
+            projectTrack: data.project_track || undefined,
+            paymentModel: data.payment_model || undefined,
+            status: data.status || 'active',
+            deadline: data.deadline || '',
+            slotsTotal: Number(data.slots_total || 0),
+            slotsFilled: Number(data.slots_filled || 0),
+            totalBudget: Number(data.total_budget || 0),
+            budgetDisbursed: Number(data.budget_disbursed || 0),
+            clientId: data.client_id || '',
+            createdAt: data.created_at || new Date().toISOString(),
+            requiredDevices: Array.isArray(data.project_data?.requiredDevices) ? data.project_data.requiredDevices : [],
+            inScope: Array.isArray(data.project_data?.inScope) ? data.project_data.inScope : [],
+            outOfScope: Array.isArray(data.project_data?.outOfScope) ? data.project_data.outOfScope : [],
+            supportedCountries: Array.isArray(data.project_data?.supportedCountries) ? data.project_data.supportedCountries : [],
+            bountyStructure: data.project_data?.bountyStructure || { critical: 0, high: 0, medium: 0, low: 0, testCaseBounty: 0 },
+            taskUnitName: data.project_data?.taskUnitName,
+            taskRate: data.project_data?.taskRate,
+            deliverablesGuide: data.project_data?.deliverablesGuide,
+            companyLogo: data.project_data?.companyLogo,
+            fullOverview: data.full_overview || data.project_data?.fullOverview || '',
+            shortDescription: data.short_description || data.project_data?.shortDescription || '',
+            requiredDevices: Array.isArray(data.project_data?.requiredDevices) ? data.project_data.requiredDevices : [],
+            supportedCountries: Array.isArray(data.project_data?.supportedCountries) ? data.project_data.supportedCountries : [],
+            inScope: Array.isArray(data.project_data?.inScope) ? data.project_data.inScope : [],
+            outOfScope: Array.isArray(data.project_data?.outOfScope) ? data.project_data.outOfScope : [],
+            bountyStructure: data.project_data?.bountyStructure || { critical: 0, high: 0, medium: 0, low: 0, testCaseBounty: 0 }
+          } as Project;
+        }
+      } catch (fetchError) {
+        console.error('Project email trigger failed while fetching project details:', fetchError);
+      }
+    }
+
+    const resolvedProjectTitle = project?.title || 'Project Opportunity';
+    const resolvedProjectCompany = project?.company || 'Connectfy';
+    const resolvedProjectDescription = project?.fullOverview || project?.shortDescription || 'A project opportunity is ready for review.';
+    const actionUrl = `${window.location.origin}?project=${projectId}`;
 
     try {
-      await sendProjectEmail({
+      const sent = await sendProjectEmail({
         type,
-        toEmail: testerEmail,
+        toEmail: resolvedTesterEmail,
         toName: testerName || 'Tester',
-        projectTitle: project.title,
-        projectCompany: project.company,
-        projectDescription: project.fullOverview || project.shortDescription,
-        projectDeadline: project.deadline,
-        projectCategory: project.category,
+        projectTitle: resolvedProjectTitle,
+        projectCompany: resolvedProjectCompany,
+        projectDescription: resolvedProjectDescription,
+        projectDeadline: project?.deadline,
+        projectCategory: project?.category || 'Functional',
         actionUrl,
         projectLink: actionUrl
       });
+
+      if (!sent) {
+        console.warn('Project email was not sent; function invocation returned false.', { type, projectId, testerEmail: resolvedTesterEmail });
+      }
     } catch (error) {
       console.error('Project email trigger failed:', error);
     }
@@ -828,8 +918,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       targetRole: 'tester',
       title: type === 'application' ? 'Application Received' : 'Project Invite Sent',
       message: type === 'application'
-        ? `Your application for "${project.title}" has been received and the client has been notified.`
-        : `A project invite for "${project.title}" was sent to your email.`,
+        ? `Your application for "${resolvedProjectTitle}" has been received and the client has been notified.`
+        : `A project invite for "${resolvedProjectTitle}" was sent to your email.`,
       type: type === 'application' ? 'status_update' : 'invite',
       relatedProjectId: projectId
     });
@@ -838,9 +928,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // 1. Tester applies to project
   const applyToProject = async (projectId: string, devices: string[], experienceNote: string) => {
     const userContext = await getActiveUserContext();
+    let liveEmail = '';
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (!error && user?.email) {
+        liveEmail = user.email;
+      }
+    }
+
     const effectiveTesterId = testerProfile.id || userContext.userId || currentUserId;
     const effectiveTesterName = testerProfile.name || 'Tester';
-    const effectiveTesterEmail = testerProfile.email || userContext.email || '';
+    const effectiveTesterEmail = await resolveTesterEmail(effectiveTesterId, liveEmail || testerProfile.email || userContext.email || '');
 
     const existing = applications.find(a => a.projectId === projectId && a.testerId === effectiveTesterId);
     if (existing) return false;
@@ -888,8 +987,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       relatedProjectId: projectId
     });
 
-    if (project && effectiveTesterEmail) {
+    if (effectiveTesterEmail) {
       void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail);
+    } else {
+      console.warn('Application submitted without tester email; email trigger skipped.', {
+        projectId,
+        effectiveTesterId,
+        effectiveTesterName,
+        testerProfileEmail: testerProfile.email,
+        authEmail: userContext.email
+      });
     }
 
     return true;

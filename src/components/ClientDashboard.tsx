@@ -1346,39 +1346,39 @@ export const ClientDashboard: React.FC = () => {
                   <span className="font-semibold text-slate-300 block">Bounty Payout Structure ($ USD)</span>
                   <div className="grid grid-cols-4 gap-2 text-center">
                     <div>
-                      <label className="text-[10px] text-rose-400 block mb-0.5 font-bold">Critical</label>
+                      <label className="text-[10px] text-rose-500 block mb-0.5 font-bold">Critical</label>
                       <input
                         type="number"
                         value={newCritBounty}
                         onChange={(e) => setNewCritBounty(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-center text-slate-900"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-amber-400 block mb-0.5 font-bold">High</label>
+                      <label className="text-[10px] text-amber-600 block mb-0.5 font-bold">High</label>
                       <input
                         type="number"
                         value={newHighBounty}
                         onChange={(e) => setNewHighBounty(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-center text-slate-900"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-blue-400 block mb-0.5 font-bold">Medium</label>
+                      <label className="text-[10px] text-blue-600 block mb-0.5 font-bold">Medium</label>
                       <input
                         type="number"
                         value={newMedBounty}
                         onChange={(e) => setNewMedBounty(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-center text-slate-900"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-400 block mb-0.5 font-bold">Low</label>
+                      <label className="text-[10px] text-slate-600 block mb-0.5 font-bold">Low</label>
                       <input
                         type="number"
                         value={newLowBounty}
                         onChange={(e) => setNewLowBounty(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-center text-slate-900"
                       />
                     </div>
                   </div>
@@ -1388,30 +1388,30 @@ export const ClientDashboard: React.FC = () => {
                   <span className="font-semibold text-purple-300 block">Deliverables & Contractor Rate</span>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="text-[10px] text-slate-400 block mb-0.5 font-bold">Rate per Validated Batch ($)</label>
+                      <label className="text-[10px] text-slate-600 block mb-0.5 font-bold">Rate per Validated Batch ($)</label>
                       <input
                         type="number"
                         value={newTaskRate}
                         onChange={(e) => setNewTaskRate(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white font-bold text-emerald-400"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 font-bold text-emerald-600"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-400 block mb-0.5 font-bold">File Format</label>
+                      <label className="text-[10px] text-slate-600 block mb-0.5 font-bold">File Format</label>
                       <input
                         type="text"
                         value={newDeliverableFormat}
                         onChange={(e) => setNewDeliverableFormat(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-slate-900"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-400 block mb-0.5 font-bold">Sample Count</label>
+                      <label className="text-[10px] text-slate-600 block mb-0.5 font-bold">Sample Count</label>
                       <input
                         type="number"
                         value={newDeliverableCount}
                         onChange={(e) => setNewDeliverableCount(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white"
+                        className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-slate-900"
                       />
                     </div>
                   </div>

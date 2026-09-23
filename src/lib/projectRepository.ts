@@ -25,7 +25,6 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('projects')
     .select('id,title,company,short_description,full_overview,category,project_track,payment_model,status,deadline,slots_total,slots_filled,total_budget,budget_disbursed,project_data')
-    .eq('status', 'active')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -117,16 +116,12 @@ export async function fetchApplicationsFromSupabase() {
   const { data, error } = await supabase
     .from('applications')
     .select(`
-      id,
-      project_id,
-      tester_id,
-      status,
-      invite_status,
-      selected_devices,
-      experience_note,
-      applied_at,
-      last_invite_sent_at,
-      invite_history,
+      *,
+      project:project_id (
+        id,
+        title,
+        company
+      ),
       profiles:tester_id (
         id,
         name,

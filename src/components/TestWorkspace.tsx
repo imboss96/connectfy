@@ -116,14 +116,14 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in text-slate-700">
       {/* Top Banner Navigation */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 relative overflow-hidden w-full max-w-full">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 relative overflow-hidden w-full max-w-full shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="min-w-0">
             <button
               onClick={onBack}
-              className="inline-flex items-center space-x-1.5 text-xs text-slate-400 hover:text-white mb-3 transition"
+              className="inline-flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-900 mb-3 transition"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Active Opportunities</span>
@@ -131,12 +131,12 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
 
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <ProjectIcon name={project.companyLogo} className="h-7 w-7 text-[#00A3E0]" />
-              <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight break-words">
+              <h1 className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight break-words">
                 {project.title}
               </h1>
               {getTrackBadge()}
             </div>
-            <p className="text-xs text-slate-400 max-w-2xl">
+            <p className="text-xs text-slate-600 max-w-2xl">
               {project.shortDescription}
             </p>
           </div>
@@ -163,32 +163,32 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
         </div>
 
         {/* Live Project KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-800/80 text-xs">
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="text-slate-400 block text-[11px]">Bounties Earned to Date</span>
-            <span className="text-base sm:text-lg font-bold text-emerald-400">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-200 text-xs">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">Bounties Earned to Date</span>
+            <span className="text-base sm:text-lg font-bold text-emerald-600">
               ${totalEarnedInProject.toFixed(2)}
             </span>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="text-slate-400 block text-[11px]">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">
               {isQA ? 'Defects Logged' : 'Deliverables Submitted'}
             </span>
-            <span className="text-base sm:text-lg font-bold text-white">
+            <span className="text-base sm:text-lg font-bold text-slate-900">
               {isQA ? `${projectBugs.length} (${approvedBugs.length} approved)` : `${projectDeliverables.length} (${approvedDeliverables.length} approved)`}
             </span>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="text-slate-400 block text-[11px]">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">
               {isQA ? 'Max Critical Bounty' : 'Deliverable Rate'}
             </span>
-            <span className="text-base sm:text-lg font-bold text-purple-400">
+            <span className="text-base sm:text-lg font-bold text-violet-600">
               {isQA ? `$${project.bountyStructure.critical.toFixed(2)}` : `$${(project.taskRate || 40).toFixed(2)} / batch`}
             </span>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="text-slate-400 block text-[11px]">Project Deadline</span>
-            <span className="text-base sm:text-lg font-bold text-slate-200">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">Project Deadline</span>
+            <span className="text-base sm:text-lg font-bold text-slate-900">
               {project.deadline}
             </span>
           </div>
@@ -196,15 +196,15 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
       </div>
 
       {/* Sub tabs navigation */}
-      <div className="flex border-b border-slate-800 space-x-4 sm:space-x-6 text-xs sm:text-sm overflow-x-auto scrollbar-none pb-0.5">
+      <div className="flex border-b border-slate-200 space-x-4 sm:space-x-6 text-xs sm:text-sm overflow-x-auto scrollbar-none pb-0.5">
         {isQA ? (
           <>
             <button
               onClick={() => setActiveSubTab('bugs')}
               className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
                 activeSubTab === 'bugs'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
+                  ? 'border-blue-500 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               <Bug className="w-4 h-4" />
@@ -214,8 +214,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               onClick={() => setActiveSubTab('testcases')}
               className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
                 activeSubTab === 'testcases'
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
+                  ? 'border-blue-500 text-blue-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
               <CheckCircle2 className="w-4 h-4" />
@@ -227,8 +227,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             onClick={() => setActiveSubTab('deliverables')}
             className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
               activeSubTab === 'deliverables'
-                ? 'border-purple-500 text-purple-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-violet-500 text-violet-700'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
             <Upload className="w-4 h-4" />
@@ -240,8 +240,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
           onClick={() => setActiveSubTab('scope')}
           className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
             activeSubTab === 'scope'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'border-blue-500 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -254,8 +254,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white">Your Deliverable Submissions</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-sm font-bold text-slate-900">Your Deliverable Submissions</h3>
+              <p className="text-xs text-slate-600">
                 Track verification progress, review feedback, and automatic payout crediting
               </p>
             </div>
@@ -269,10 +269,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
           </div>
 
           {projectDeliverables.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
-              <Upload className="w-10 h-10 text-slate-600 mx-auto" />
-              <h4 className="text-sm font-bold text-white">No Deliverables Submitted Yet</h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
+            <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl space-y-3 shadow-sm">
+              <Upload className="w-10 h-10 text-slate-500 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-900">No Deliverables Submitted Yet</h4>
+              <p className="text-xs text-slate-600 max-w-md mx-auto">
                 Review the deliverable instructions in the Scope tab, record or assemble your data batch, and submit for client validation.
               </p>
               <button
@@ -287,7 +287,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               {projectDeliverables.map((sub) => (
                 <div
                   key={sub.id}
-                  className="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 transition hover:border-slate-700"
+                  className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3 transition hover:border-slate-300 shadow-sm"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
@@ -295,7 +295,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                         <span className="text-xs font-bold text-purple-400">
                           #{sub.id.toUpperCase().slice(-6)}
                         </span>
-                        <h4 className="text-sm font-bold text-white">{sub.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-900">{sub.title}</h4>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
                         Submitted on {sub.submittedAt}
@@ -333,7 +333,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                  <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
                     {sub.details}
                   </p>
 
@@ -377,7 +377,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                       {sub.attachments.map((att) => (
                         <div
                           key={att.id}
-                          className="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800 text-xs hover:border-slate-700 transition"
+                          className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs hover:border-slate-300 transition"
                         >
                           <div className="flex items-center space-x-2 truncate">
                             {att.type.startsWith('audio/') ? (
@@ -385,7 +385,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                             ) : (
                               <FileText className="w-4 h-4 text-blue-400 shrink-0" />
                             )}
-                            <span className="truncate text-slate-300 text-[11px] font-medium">{att.name}</span>
+                            <span className="truncate text-slate-700 text-[11px] font-medium">{att.name}</span>
                           </div>
                           <button
                             onClick={() => setSelectedAttachment(att)}
@@ -430,8 +430,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white">Your Defect Submissions</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-sm font-bold text-slate-900">Your Defect Submissions</h3>
+              <p className="text-xs text-slate-600">
                 Track status, inspection logs, and client bounty approval
               </p>
             </div>
@@ -445,10 +445,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
           </div>
 
           {projectBugs.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
-              <Bug className="w-10 h-10 text-slate-600 mx-auto" />
-              <h4 className="text-sm font-bold text-white">No Defects Logged Yet</h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
+            <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl space-y-3 shadow-sm">
+              <Bug className="w-10 h-10 text-slate-500 mx-auto" />
+              <h4 className="text-sm font-bold text-slate-900">No Defects Logged Yet</h4>
+              <p className="text-xs text-slate-600 max-w-md mx-auto">
                 Begin exploratory testing on your registered hardware. When you discover unexpected behavior or a crash, log it with reproducible steps.
               </p>
               <button
@@ -463,7 +463,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               {projectBugs.map((bug) => (
                 <div
                   key={bug.id}
-                  className="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 transition hover:border-slate-700"
+                  className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3 transition hover:border-slate-300 shadow-sm"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
@@ -471,7 +471,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                         <span className="text-xs font-bold text-blue-400">
                           #{bug.id.toUpperCase().slice(-6)}
                         </span>
-                        <h4 className="text-sm font-bold text-white">{bug.title}</h4>
+                        <h4 className="text-sm font-bold text-slate-900">{bug.title}</h4>
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
                         {bug.device} • {bug.osVersion} • {bug.featureArea}
@@ -522,9 +522,9 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                   </div>
 
                   {/* Steps */}
-                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 text-xs space-y-1.5">
-                    <span className="font-semibold text-slate-300 block">Steps to Reproduce:</span>
-                    <ol className="list-decimal list-inside space-y-1 text-slate-400">
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1.5">
+                    <span className="font-semibold text-slate-700 block">Steps to Reproduce:</span>
+                    <ol className="list-decimal list-inside space-y-1 text-slate-600">
                       {bug.stepsToReproduce.map((step, idx) => (
                         <li key={idx}>{step}</li>
                       ))}
@@ -533,13 +533,13 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
 
                   {/* Actual & Expected */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-                      <span className="font-semibold text-emerald-400 block mb-0.5">Expected Result:</span>
-                      <p className="text-slate-300">{bug.expectedResult}</p>
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="font-semibold text-emerald-700 block mb-0.5">Expected Result:</span>
+                      <p className="text-slate-700">{bug.expectedResult}</p>
                     </div>
-                    <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-                      <span className="font-semibold text-rose-400 block mb-0.5">Actual Result:</span>
-                      <p className="text-slate-300">{bug.actualResult}</p>
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="font-semibold text-rose-700 block mb-0.5">Actual Result:</span>
+                      <p className="text-slate-700">{bug.actualResult}</p>
                     </div>
                   </div>
 
@@ -553,7 +553,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                         <button
                           key={att.id}
                           onClick={() => setSelectedAttachment(att)}
-                          className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs flex items-center space-x-1 transition"
+                          className="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs flex items-center space-x-1 transition"
                         >
                           <FileText className="w-3 h-3 text-blue-400" />
                           <span>{att.name}</span>
@@ -564,13 +564,13 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
 
                   {/* Client Feedback */}
                   {bug.clientFeedback && (
-                    <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-xs space-y-1">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-300 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Client Review Note:
+                        <span className="font-semibold text-slate-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Client Review Note:
                         </span>
                       </div>
-                      <p className="text-slate-300 italic text-[11px]">
+                      <p className="text-slate-700 italic text-[11px]">
                         "{bug.clientFeedback}"
                       </p>
                     </div>
@@ -586,8 +586,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
       {isQA && activeSubTab === 'testcases' && (
         <div className="space-y-4">
           <div>
-            <h3 className="text-sm font-bold text-white">Curated Test Scenarios</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="text-sm font-bold text-slate-900">Curated Test Scenarios</h3>
+            <p className="text-xs text-slate-600">
               Execute prioritized test cases and submit your run verdicts for direct run bounty crediting
             </p>
           </div>
@@ -596,17 +596,17 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             {testCases.map((tc) => (
               <div
                 key={tc.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
               >
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-slate-400 uppercase">
+                    <span className="text-xs font-bold text-slate-500 uppercase">
                       {tc.id}
                     </span>
-                    <h4 className="text-sm font-bold text-white">{tc.title}</h4>
+                    <h4 className="text-sm font-bold text-slate-900">{tc.title}</h4>
                   </div>
                   {tc.notes && (
-                    <p className="text-xs text-slate-400 italic">
+                    <p className="text-xs text-slate-600 italic">
                       Note: {tc.notes}
                     </p>
                   )}
@@ -661,36 +661,36 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Deliverables Guide if non-QA */}
           {!isQA && project.deliverablesGuide ? (
-            <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4 md:col-span-2">
-              <div className="flex items-center space-x-2 text-purple-400 font-semibold text-sm">
+            <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 md:col-span-2 shadow-sm">
+              <div className="flex items-center space-x-2 text-violet-700 font-semibold text-sm">
                 <Info className="w-4 h-4" />
                 <span>Deliverable Specifications & Quality Gates</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-700 leading-relaxed">
                 {project.deliverablesGuide.instructions}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <span className="text-[11px] text-slate-400 block">Expected File Format</span>
-                  <span className="text-sm font-bold text-white">{project.deliverablesGuide.fileFormat}</span>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block">Expected File Format</span>
+                  <span className="text-sm font-bold text-slate-900">{project.deliverablesGuide.fileFormat}</span>
                 </div>
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <span className="text-[11px] text-slate-400 block">Sample Batch Size</span>
-                  <span className="text-sm font-bold text-white">{project.deliverablesGuide.sampleCountRequired} items</span>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block">Sample Batch Size</span>
+                  <span className="text-sm font-bold text-slate-900">{project.deliverablesGuide.sampleCountRequired} items</span>
                 </div>
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
-                  <span className="text-[11px] text-slate-400 block">Payment Model</span>
-                  <span className="text-sm font-bold text-emerald-400">${project.taskRate?.toFixed(2)} per validated batch</span>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-[11px] text-slate-500 block">Payment Model</span>
+                  <span className="text-sm font-bold text-emerald-600">${project.taskRate?.toFixed(2)} per validated batch</span>
                 </div>
               </div>
 
               <div className="pt-2">
-                <h4 className="font-semibold text-white text-xs mb-2">Acceptance & Validation Criteria:</h4>
-                <ul className="space-y-1.5 text-xs text-slate-300">
+                <h4 className="font-semibold text-slate-900 text-xs mb-2">Acceptance & Validation Criteria:</h4>
+                <ul className="space-y-1.5 text-xs text-slate-700">
                   {project.deliverablesGuide.acceptanceCriteria.map((crit, idx) => (
                     <li key={idx} className="flex items-start space-x-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
                       <span>{crit}</span>
                     </li>
                   ))}
@@ -699,12 +699,12 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             </div>
           ) : null}
 
-          <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
-            <div className="flex items-center space-x-2 text-emerald-400 font-semibold text-sm">
+          <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
+            <div className="flex items-center space-x-2 text-emerald-700 font-semibold text-sm">
               <CheckCircle2 className="w-4 h-4" />
               <span>In-Scope Target Areas</span>
             </div>
-            <ul className="space-y-2 text-xs text-slate-300">
+            <ul className="space-y-2 text-xs text-slate-700">
               {project.inScope.map((item, i) => (
                 <li key={i} className="flex items-start space-x-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
@@ -713,12 +713,12 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               ))}
             </ul>
 
-            <div className="pt-4 border-t border-slate-800">
-              <div className="flex items-center space-x-2 text-rose-400 font-semibold text-sm mb-2">
+            <div className="pt-4 border-t border-slate-200">
+              <div className="flex items-center space-x-2 text-rose-700 font-semibold text-sm mb-2">
                 <AlertTriangle className="w-4 h-4" />
                 <span>Out-of-Scope (Non-Billable)</span>
               </div>
-              <ul className="space-y-2 text-xs text-slate-400">
+              <ul className="space-y-2 text-xs text-slate-600">
                 {project.outOfScope.map((item, i) => (
                   <li key={i} className="flex items-start space-x-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-400 mt-1.5 shrink-0" />
@@ -729,22 +729,21 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             </div>
           </div>
 
-          <div className="p-5 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
-            <div className="flex items-center space-x-2 text-blue-400 font-semibold text-sm">
+          <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-4 shadow-sm">
+            <div className="flex items-center space-x-2 text-blue-700 font-semibold text-sm">
               <ShieldCheck className="w-4 h-4" />
               <span>Sandbox Access & Test Environment</span>
             </div>
             <div className="space-y-3 text-xs">
-              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1 font-mono">
-                <div className="text-slate-400 text-[11px]">Primary Test Account:</div>
-                <div className="text-white">user: <span className="text-emerald-400">marketplace_contractor@connectfy.sandbox</span></div>
-                <div className="text-white">pass: <span className="text-emerald-400">Freelance#2026!Key</span></div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+                <div className="text-slate-500 text-[11px]">Environment:</div>
+                <div className="text-slate-700">Access details appear here once your project scope is confirmed by the client.</div>
               </div>
 
-              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1 text-slate-300">
-                <span className="font-semibold text-white block mb-1">Quality Standards:</span>
-                <p className="text-[11px] text-slate-400">
-                  Submissions undergo automated format verification followed by manual client sign-off. Approved items disburse directly into your wallet.
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1 text-slate-700">
+                <span className="font-semibold text-slate-900 block mb-1">Quality Standards:</span>
+                <p className="text-[11px] text-slate-600">
+                  Submissions undergo format verification and client review. Approved work is paid directly to your wallet.
                 </p>
               </div>
             </div>

@@ -1282,8 +1282,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                       onClick={() => setPreferredMethod(method)}
                       className={`p-3 rounded-xl border font-bold text-center transition ${
                         preferredMethod === method
-                          ? 'bg-blue-600/20 border-blue-500 text-white shadow-xs'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                          ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       {method}
@@ -1296,14 +1296,14 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
               <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3 text-xs">
                 {preferredMethod === 'PayPal' && (
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
+                    <label className="block text-slate-700 font-semibold mb-1">
                       PayPal Account Email Address
                     </label>
                     <input
                       type="email"
                       value={paypalEmail}
                       onChange={(e) => setPaypalEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       Earnings will be transferred via automated PayPal MassPay API directly to this address.
@@ -1313,28 +1313,28 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
                 {preferredMethod === 'Payoneer' && (
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
+                    <label className="block text-slate-700 font-semibold mb-1">
                       Payoneer Payee ID / Email
                     </label>
                     <input
                       type="text"
                       value={payoneerId}
                       onChange={(e) => setPayoneerId(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
                     />
                   </div>
                 )}
 
                 {preferredMethod === 'Wise' && (
                   <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
+                    <label className="block text-slate-700 font-semibold mb-1">
                       Wise Multi-Currency Account Email
                     </label>
                     <input
                       type="email"
                       value={wiseEmail}
                       onChange={(e) => setWiseEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden focus:border-blue-500"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
                     />
                   </div>
                 )}
@@ -1342,39 +1342,39 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                 {preferredMethod === 'Direct Bank Wire' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Bank Name</label>
+                      <label className="block text-slate-700 font-semibold mb-1">Bank Name</label>
                       <input
                         type="text"
                         value={bankName}
                         onChange={(e) => setBankName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Account Holder Name</label>
+                      <label className="block text-slate-700 font-semibold mb-1">Account Holder Name</label>
                       <input
                         type="text"
                         value={accountHolder}
                         onChange={(e) => setAccountHolder(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">IBAN / Account Number</label>
+                      <label className="block text-slate-700 font-semibold mb-1">IBAN / Account Number</label>
                       <input
                         type="text"
                         value={ibanOrAccount}
                         onChange={(e) => setIbanOrAccount(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">SWIFT / BIC Code</label>
+                      <label className="block text-slate-700 font-semibold mb-1">SWIFT / BIC Code</label>
                       <input
                         type="text"
                         value={swiftBic}
                         onChange={(e) => setSwiftBic(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-750 rounded-xl px-3 py-2 text-white focus:outline-hidden"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
                       />
                     </div>
                   </div>

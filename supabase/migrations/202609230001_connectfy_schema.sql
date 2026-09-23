@@ -50,6 +50,9 @@ create table public.applications (
   experience_note text not null default '',
   applied_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  accepted_invite_at timestamptz,
+  last_invite_sent_at timestamptz,
+  invite_history jsonb not null default '[]'::jsonb,
   unique(project_id, tester_id)
 );
 

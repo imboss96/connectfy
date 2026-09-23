@@ -78,17 +78,52 @@ const buildText = (payload: Record<string, any>) => {
 serve(async (req) => {
   try {
     const payload = await req.json();
+    const type = payload?.type;
+
+    const errors: string[] = [];
+
+    if (!payload || typeof payload !== 'object') {
+      errors.push('Request body must be a JSON object.');
+    }
+
+    if (type !== 'application' && type !== 'invite') {
+      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application' or 'invite'.`);
+    }
+
+    if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
+      errors.push(`Invalid recipient email: ${String(payload?.toEmail ?? 'missing')}.`);
+    }
+
+    if (!payload?.toName || typeof payload.toName !== 'string' || !payload.toName.trim()) {
+      errors.push('Recipient name is required.');
+    }
+
+    if (!payload?.projectTitle || typeof payload.projectTitle !== 'string' || !payload.projectTitle.trim()) {
+      errors.push('Project title is required.');
+    }
+
+    if (!payload?.projectCompany || typeof payload.projectCompany !== 'string' || !payload.projectCompany.trim()) {
+      errors.push('Project company is required.');
+    }
 
     const brevoApiKey = Deno.env.get('BREVO_API_KEY');
     const senderEmail = Deno.env.get('BREVO_SENDER_EMAIL') || 'admin@connectfy.tech';
     const appUrl = Deno.env.get('APP_URL') || 'https://connectfy.tech';
 
     if (!brevoApiKey) {
-      throw new Error('Missing BREVO_API_KEY environment variable.');
+      errors.push('Missing BREVO_API_KEY environment variable.');
     }
 
-    const toEmail = payload.toEmail;
-    const toName = payload.toName || 'Tester';
+    if (!senderEmail || typeof senderEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail.trim())) {
+      errors.push(`Invalid BREVO_SENDER_EMAIL: ${String(senderEmail ?? 'missing')}.`);
+    }
+
+    if (errors.length > 0) {
+      throw new Error(errors.join(' '));
+    }
+
+    const toEmail = payload.toEmail.trim();
+    const toName = payload.toName.trim();
     const projectLink = payload.projectLink || payload.actionUrl || `${appUrl}/?project=${encodeURIComponent(payload.projectTitle || 'project')}`;
     const requestPayload = {
       sender: { name: 'Connectfy', email: senderEmail },
@@ -120,8 +155,9 @@ serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    return new Response(JSON.stringify({ ok: false, message: error instanceof Error ? error.message : 'Unknown error' }), {
-      status: 500,
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(JSON.stringify({ ok: false, message }), {
+      status: 400,
       headers: { 'Content-Type': 'application/json' }
     });
   }

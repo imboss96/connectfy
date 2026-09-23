@@ -26,7 +26,7 @@ import { AddProjectModal } from './AddProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
-  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, resendInvite } = useApp();
+  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -257,8 +257,8 @@ export const AdminProjectManager: React.FC = () => {
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     {app.status === 'pending' && (
                       <>
-                        <button type="button" onClick={() => {}} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
-                        <button type="button" onClick={() => {}} className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE]">Approve & Send Invite</button>
+                        <button type="button" onClick={() => rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
+                        <button type="button" onClick={() => approveApplication(app.id)} className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE]">Approve & Send Invite</button>
                       </>
                     )}
 
