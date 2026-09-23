@@ -46,6 +46,12 @@ export type InviteStatus = 'invited' | 'accepted' | 'declined' | 'completed';
 export type SubmissionStatus = 'draft' | 'submitted' | 'under_review' | 'changes_requested' | 'approved' | 'rejected';
 export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
+export interface InviteHistoryEntry {
+  sentAt: string;
+  type: 'invite' | 'resend';
+  note: string;
+}
+
 export interface AttachmentFile {
   id: string;
   name: string;
@@ -110,6 +116,8 @@ export interface ProjectApplication {
   status: ApplicationStatus;
   inviteStatus?: InviteStatus;
   acceptedInviteAt?: string;
+  lastInviteSentAt?: string;
+  inviteHistory?: InviteHistoryEntry[];
 }
 
 export interface ProjectBountyStructure {
@@ -299,7 +307,7 @@ export interface TesterProfile {
   bio?: string;
   headline?: string;
   languages?: LanguageSkill[];
-  tier: 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
+  tier: 'Unrated' | 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
   rating: number; // 4.92
   totalReviews: number;
   acceptanceRate: number; // 96%

@@ -38,6 +38,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     testerProfile,
     applyToProject,
     acceptInvite,
+    addTesterDevice,
     role
   } = useApp();
 
@@ -56,6 +57,20 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const [experienceNote, setExperienceNote] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [showAddDeviceForm, setShowAddDeviceForm] = useState(false);
+  const [deviceDraft, setDeviceDraft] = useState({
+    category: 'Smartphone' as 'Smartphone' | 'Tablet' | 'Computer' | 'Smart TV' | 'Wearable' | 'Console',
+    brand: '',
+    model: '',
+    os: 'iOS',
+    osVersion: '',
+    isJailbroken: false,
+    isPrimary: false,
+    isActive: true,
+    carrier: '',
+    isp: ''
+  });
+  const [deviceFormError, setDeviceFormError] = useState('');
 
   const tracks: { id: string; label: string; icon: any }[] = [
     { id: 'all', label: 'All Opportunities', icon: Layers },
@@ -138,7 +153,48 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     }
   };
 
-  const handleSubmitApplication = (e: React.FormEvent) => {
+  const handleAddInlineDevice = () => {
+    const brand = deviceDraft.brand.trim();
+    const model = deviceDraft.model.trim();
+    const osVersion = deviceDraft.osVersion.trim();
+
+    if (!brand || !model || !osVersion) {
+      setDeviceFormError('Please fill in the brand, model, and OS version for the device.');
+      return;
+    }
+
+    const newDeviceLabel = `${brand} ${model} (${deviceDraft.os} ${osVersion})`;
+    addTesterDevice({
+      category: deviceDraft.category,
+      brand,
+      model,
+      os: deviceDraft.os,
+      osVersion,
+      carrier: deviceDraft.carrier.trim(),
+      isp: deviceDraft.isp.trim(),
+      isJailbroken: deviceDraft.isJailbroken,
+      isPrimary: deviceDraft.isPrimary,
+      isActive: deviceDraft.isActive
+    });
+
+    setSelectedDevices(prev => (prev.includes(newDeviceLabel) ? prev : [...prev, newDeviceLabel]));
+    setDeviceDraft({
+      category: 'Smartphone',
+      brand: '',
+      model: '',
+      os: 'iOS',
+      osVersion: '',
+      isJailbroken: false,
+      isPrimary: false,
+      isActive: true,
+      carrier: '',
+      isp: ''
+    });
+    setDeviceFormError('');
+    setShowAddDeviceForm(false);
+  };
+
+  const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!applyingProject) return;
 
@@ -147,7 +203,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
-    const ok = applyToProject(applyingProject.id, selectedDevices, experienceNote);
+    const ok = await applyToProject(applyingProject.id, selectedDevices, experienceNote);
     if (ok) {
       setApplySuccess(true);
       setTimeout(() => {
@@ -399,18 +455,18 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-purple-950/20 p-3.5 rounded-xl border border-purple-800/40 mb-4 text-xs space-y-1.5">
+                  <div className="bg-[#f3ebff] p-3.5 rounded-xl border border-[#d8c8ff] mb-4 text-xs space-y-1.5 shadow-inner shadow-white/10">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-purple-300">
+                      <span className="text-[11px] font-semibold text-violet-700">
                         Deliverable Task Rate:
                       </span>
-                      <span className="text-sm font-black text-emerald-400">
+                      <span className="text-sm font-black text-emerald-700">
                         ${project.taskRate?.toFixed(2) || '45.00'} / batch
                       </span>
                     </div>
                     {project.deliverablesGuide && (
-                      <p className="text-[11px] text-slate-400 line-clamp-1">
-                        Format: <strong className="text-white">{project.deliverablesGuide.fileFormat}</strong> • Min Samples: <strong className="text-white">{project.deliverablesGuide.sampleCountRequired} items</strong>
+                      <p className="text-[11px] text-slate-700 line-clamp-1">
+                        Format: <strong className="text-slate-900">{project.deliverablesGuide.fileFormat}</strong> • Min Samples: <strong className="text-slate-900">{project.deliverablesGuide.sampleCountRequired} items</strong>
                       </p>
                     )}
                   </div>
@@ -491,67 +547,67 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
       {/* Project Details Modal */}
       {viewingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-4 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <ProjectIcon name={viewingProject.companyLogo} className="h-7 w-7 text-[#00A3E0]" />
                 <div>
                   <div className="flex items-center gap-2">
                     {getTrackBadge(viewingProject.projectTrack)}
-                    <span className="text-xs text-slate-400">{viewingProject.company}</span>
+                    <span className="text-xs text-slate-500">{viewingProject.company}</span>
                   </div>
-                  <h3 className="font-bold text-white text-base">
+                  <h3 className="font-bold text-slate-900 text-base">
                     {viewingProject.title}
                   </h3>
                 </div>
               </div>
               <button
                 onClick={() => setViewingProject(null)}
-                className="p-1.5 text-slate-400 hover:text-white"
+                className="p-1.5 text-slate-500 hover:text-slate-900"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 text-xs bg-white">
               <div>
-                <h4 className="font-semibold text-slate-200 mb-1">Campaign Overview</h4>
-                <p className="text-slate-300 leading-relaxed">
+                <h4 className="font-semibold text-slate-800 mb-1">Campaign Overview</h4>
+                <p className="text-slate-600 leading-relaxed">
                   {viewingProject.fullOverview}
                 </p>
               </div>
 
               {/* Deliverables Guide if non-QA */}
               {viewingProject.deliverablesGuide && (
-                <div className="p-4 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-3">
-                  <div className="flex items-center space-x-2 text-purple-300 font-semibold">
+                <div className="p-4 bg-[#f3ebff] border border-[#d8c8ff] rounded-xl space-y-3 text-slate-800">
+                  <div className="flex items-center space-x-2 text-violet-700 font-semibold">
                     <Info className="w-4 h-4" />
                     <span>Deliverable Specifications & Quality Gates</span>
                   </div>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
+                  <p className="leading-relaxed text-[11px] text-slate-700">
                     {viewingProject.deliverablesGuide.instructions}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
-                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block">Format:</span>
-                      <strong className="text-white">{viewingProject.deliverablesGuide.fileFormat}</strong>
+                    <div className="p-2 bg-white/80 rounded-lg border border-violet-200">
+                      <span className="text-slate-600 block">Format:</span>
+                      <strong className="text-slate-900">{viewingProject.deliverablesGuide.fileFormat}</strong>
                     </div>
-                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block">Required Samples:</span>
-                      <strong className="text-white">{viewingProject.deliverablesGuide.sampleCountRequired} items</strong>
+                    <div className="p-2 bg-white/80 rounded-lg border border-violet-200">
+                      <span className="text-slate-600 block">Required Samples:</span>
+                      <strong className="text-slate-900">{viewingProject.deliverablesGuide.sampleCountRequired} items</strong>
                     </div>
-                    <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block">Settlement Rate:</span>
-                      <strong className="text-emerald-400">${viewingProject.taskRate?.toFixed(2)} / batch</strong>
+                    <div className="p-2 bg-white/80 rounded-lg border border-violet-200">
+                      <span className="text-slate-600 block">Settlement Rate:</span>
+                      <strong className="text-emerald-700">${viewingProject.taskRate?.toFixed(2)} / batch</strong>
                     </div>
                   </div>
                   <div className="pt-1">
-                    <span className="font-semibold text-purple-300 block mb-1 text-[11px]">Acceptance Criteria:</span>
-                    <ul className="space-y-1 text-slate-300 text-[11px]">
+                    <span className="font-semibold text-violet-700 block mb-1 text-[11px]">Acceptance Criteria:</span>
+                    <ul className="space-y-1 text-slate-700 text-[11px]">
                       {viewingProject.deliverablesGuide.acceptanceCriteria.map((c, i) => (
                         <li key={i} className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                           <span>{c}</span>
                         </li>
                       ))}
@@ -561,22 +617,22 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="font-semibold text-emerald-400 block mb-1.5">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="font-semibold text-emerald-600 block mb-1.5">
                     In-Scope Requirements:
                   </span>
-                  <ul className="space-y-1 text-slate-300 list-disc list-inside">
+                  <ul className="space-y-1 text-slate-700 list-disc list-inside">
                     {viewingProject.inScope.map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="font-semibold text-rose-400 block mb-1.5">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="font-semibold text-rose-600 block mb-1.5">
                     Out of Scope:
                   </span>
-                  <ul className="space-y-1 text-slate-400 list-disc list-inside">
+                  <ul className="space-y-1 text-slate-600 list-disc list-inside">
                     {viewingProject.outOfScope.map((item, i) => (
                       <li key={i}>{item}</li>
                     ))}
@@ -587,29 +643,29 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               {/* Bounty breakdown if QA */}
               {(!viewingProject.projectTrack || viewingProject.projectTrack === 'qa_functional') && (
                 <div>
-                  <h4 className="font-semibold text-slate-200 mb-1">Bounty Structure</h4>
+                  <h4 className="font-semibold text-slate-800 mb-1">Bounty Structure</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block text-[11px]">Critical Defect</span>
-                      <span className="text-rose-400 font-bold text-sm">
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Critical Defect</span>
+                      <span className="text-rose-500 font-bold text-sm">
                         ${viewingProject.bountyStructure.critical}
                       </span>
                     </div>
-                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block text-[11px]">High Defect</span>
-                      <span className="text-amber-400 font-bold text-sm">
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">High Defect</span>
+                      <span className="text-amber-500 font-bold text-sm">
                         ${viewingProject.bountyStructure.high}
                       </span>
                     </div>
-                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block text-[11px]">Medium Defect</span>
-                      <span className="text-blue-400 font-bold text-sm">
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Medium Defect</span>
+                      <span className="text-blue-500 font-bold text-sm">
                         ${viewingProject.bountyStructure.medium}
                       </span>
                     </div>
-                    <div className="bg-slate-950 p-2 rounded-lg border border-slate-800">
-                      <span className="text-slate-400 block text-[11px]">Test Run Bounty</span>
-                      <span className="text-emerald-400 font-bold text-sm">
+                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px]">Test Run Bounty</span>
+                      <span className="text-emerald-600 font-bold text-sm">
                         ${viewingProject.bountyStructure.testCaseBounty}
                       </span>
                     </div>
@@ -618,8 +674,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               )}
             </div>
 
-            <div className="p-4 border-t border-[#1E2E4E] bg-[#080D1A] flex justify-between items-center">
-              <span className="text-xs text-slate-400">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+              <span className="text-xs text-slate-600">
                 Total Campaign Budget: ${viewingProject.totalBudget.toLocaleString()}
               </span>
               <button
@@ -639,16 +695,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
       {/* Apply to Project Modal */}
       {applyingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-[#0B132B] border border-[#1E2E4E] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-slate-100">
-            <div className="flex items-center justify-between pb-3 border-b border-[#1E2E4E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-4 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <div className="flex items-center space-x-2">
                 <Sparkles className="w-5 h-5 text-[#00A3E0]" />
-                <h3 className="font-bold text-white text-base">Submit Application</h3>
+                <h3 className="font-bold text-slate-900 text-base">Submit Application</h3>
               </div>
               <button
                 onClick={() => setApplyingProject(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-500 hover:text-slate-900"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -656,57 +712,175 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
             {applySuccess ? (
               <div className="py-8 text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <h4 className="text-base font-bold text-white">Application Submitted!</h4>
-                <p className="text-xs text-slate-400">
+                <h4 className="text-base font-bold text-slate-900">Application Submitted!</h4>
+                <p className="text-xs text-slate-600">
                   {applyingProject.company} will review your profile & fleet hardware. You will receive an invite notification once approved.
                 </p>
               </div>
             ) : (
               <form onSubmit={handleSubmitApplication} className="space-y-4 text-xs">
                 {applyError && (
-                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl flex items-center gap-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{applyError}</span>
                   </div>
                 )}
 
-                <div className="p-3 bg-[#080D1A] rounded-xl border border-[#1E2E4E] space-y-1">
-                  <span className="text-slate-400 block">Opportunity:</span>
-                  <p className="font-semibold text-white">{applyingProject.title}</p>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <span className="text-slate-500 block">Opportunity:</span>
+                  <p className="font-semibold text-slate-900">{applyingProject.title}</p>
                   <p className="text-[#00A3E0]">{applyingProject.company} • {applyingProject.category}</p>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1.5">
+                  <label className="block font-semibold text-slate-700 mb-1.5">
                     Select Your Hardware / Fleet for this Project:
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {testerProfile.devices.map((device) => {
-                      const isChecked = selectedDevices.includes(device);
-                      return (
-                        <button
-                          key={device}
-                          type="button"
-                          onClick={() => handleToggleDevice(device)}
-                          className={`p-2 rounded-xl border text-left flex items-center space-x-2 transition ${
-                            isChecked
-                              ? 'bg-[#007AFF]/20 border-[#00A3E0] text-[#38BDF8]'
-                              : 'bg-[#080D1A] border-[#1E2E4E] text-slate-400 hover:border-slate-700'
-                          }`}
+
+                  {testerProfile.devices.length === 0 && !showAddDeviceForm ? (
+                    <div className="p-3 border border-dashed border-slate-300 rounded-xl bg-slate-50 text-slate-600">
+                      <p className="font-medium text-slate-700 mb-2">No devices saved yet.</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddDeviceForm(true)}
+                        className="px-3 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-[11px] font-bold rounded-lg"
+                      >
+                        Add Device
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {testerProfile.devices.map((device) => {
+                          const isChecked = selectedDevices.includes(device);
+                          return (
+                            <button
+                              key={device}
+                              type="button"
+                              onClick={() => handleToggleDevice(device)}
+                              className={`p-2 rounded-xl border text-left flex items-center space-x-2 transition ${
+                                isChecked
+                                  ? 'bg-[#007AFF]/10 border-[#00A3E0] text-[#0066EE]'
+                                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                              }`}
+                            >
+                              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{device}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeviceFormError('');
+                          setShowAddDeviceForm(prev => !prev);
+                        }}
+                        className="text-[11px] font-semibold text-[#00A3E0] hover:text-[#38BDF8]"
+                      >
+                        {showAddDeviceForm ? 'Cancel device form' : '+ Add another device'}
+                      </button>
+                    </div>
+                  )}
+
+                  {showAddDeviceForm && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                      {deviceFormError && (
+                        <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[11px]">
+                          {deviceFormError}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={deviceDraft.category}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, category: e.target.value as any }))}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 focus:outline-none focus:border-[#00A3E0]"
                         >
-                          <Smartphone className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{device}</span>
+                          <option value="Smartphone">Smartphone</option>
+                          <option value="Tablet">Tablet</option>
+                          <option value="Computer">Computer</option>
+                          <option value="Smart TV">Smart TV</option>
+                          <option value="Wearable">Wearable</option>
+                          <option value="Console">Console</option>
+                        </select>
+
+                        <select
+                          value={deviceDraft.os}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, os: e.target.value }))}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 focus:outline-none focus:border-[#00A3E0]"
+                        >
+                          <option value="iOS">iOS</option>
+                          <option value="Android">Android</option>
+                          <option value="macOS">macOS</option>
+                          <option value="Windows">Windows</option>
+                          <option value="tvOS">tvOS</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={deviceDraft.brand}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, brand: e.target.value }))}
+                          placeholder="Brand"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#00A3E0]"
+                        />
+                        <input
+                          type="text"
+                          value={deviceDraft.model}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, model: e.target.value }))}
+                          placeholder="Model"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#00A3E0]"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={deviceDraft.osVersion}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, osVersion: e.target.value }))}
+                          placeholder="OS version"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#00A3E0]"
+                        />
+                        <input
+                          type="text"
+                          value={deviceDraft.carrier}
+                          onChange={(e) => setDeviceDraft(prev => ({ ...prev, carrier: e.target.value }))}
+                          placeholder="Carrier (optional)"
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-[#00A3E0]"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2 text-[11px] text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={deviceDraft.isJailbroken}
+                            onChange={(e) => setDeviceDraft(prev => ({ ...prev, isJailbroken: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          Jailbroken / rooted
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={handleAddInlineDevice}
+                          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg"
+                        >
+                          Save Device
                         </button>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">
+                  <label className="block font-semibold text-slate-700 mb-1">
                     Qualifications & Relevant Experience Note:
                   </label>
                   <textarea
@@ -714,14 +888,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     value={experienceNote}
                     onChange={(e) => setExperienceNote(e.target.value)}
                     placeholder="Describe your testing experience or data collection capabilities..."
-                    className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-[#00A3E0]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 placeholder-slate-500 focus:outline-none focus:border-[#00A3E0]"
                     required
                   />
                 </div>
 
-                <div className="p-3 bg-[#080D1A] rounded-xl border border-[#1E2E4E] text-[11px] text-slate-400 space-y-1">
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-300">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     <span>Freelancer Scope & Payout Commitment</span>
                   </div>
                   <p>
@@ -733,7 +907,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <button
                     type="button"
                     onClick={() => setApplyingProject(null)}
-                    className="px-4 py-2 bg-[#080D1A] text-slate-300 hover:text-white border border-[#1E2E4E] font-semibold rounded-xl"
+                    className="px-4 py-2 bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 font-semibold rounded-xl"
                   >
                     Cancel
                   </button>

@@ -17,6 +17,7 @@ import { ConnectfyLogo } from './UTestLogo';
 
 interface LandingPageProps {
   onGetStarted: () => void;
+  onLogin: () => void;
 }
 
 const brands = ['PELOTON', 'instacart', 'Square', 'Uber', 'SONY', 'Expedia', 'Google', 'PayPal', 'ESPN', 'PRADA'];
@@ -45,7 +46,7 @@ const tracks = [
   }
 ];
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTrack, setActiveTrack] = useState(0);
   const track = tracks[activeTrack];
@@ -71,7 +72,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
             <button onClick={() => jumpTo('community')}>Community</button>
           </nav>
           <div className="hidden items-center gap-3 md:flex">
-            <button onClick={onGetStarted} className="landing-login">Log in</button>
+            <button onClick={onLogin} className="landing-login">Log in</button>
             <button onClick={onGetStarted} className="landing-nav-cta">Join Connectfy</button>
           </div>
           <button onClick={() => setMenuOpen(!menuOpen)} className="landing-menu-button md:hidden" aria-label="Open menu">

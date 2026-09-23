@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   User,
   Smartphone,
@@ -36,6 +36,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { ProjectIcon } from './ProjectIcon';
 import { DeviceFleetItem, LanguageSkill } from '../types';
+import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 
 interface ProfileSettingsProps {
   onBack?: () => void;
@@ -62,77 +63,52 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   const [currentTab, setCurrentTab] = useState<SettingsTab>(role === 'client' ? 'client' : 'personal');
 
   // Form states for Tester Profile
-  const [name, setName] = useState(testerProfile.name);
-  const [email, setEmail] = useState(testerProfile.email);
-  const [phone, setPhone] = useState(testerProfile.phone || '+254 712 345 678');
-  const [country, setCountry] = useState(testerProfile.country);
-  const [city, setCity] = useState(testerProfile.city || 'Nairobi');
-  const [stateOrProvince, setStateOrProvince] = useState(testerProfile.stateOrProvince || 'Nairobi County');
-  const [postalCode, setPostalCode] = useState(testerProfile.postalCode || '00100');
-  const [timezone, setTimezone] = useState(testerProfile.timezone || 'Africa/Nairobi (UTC+3)');
-  const [headline, setHeadline] = useState(testerProfile.headline || 'Senior Lead Exploratory & Mobile Fintech QA Engineer');
+  const [name, setName] = useState(testerProfile.name || '');
+  const [email, setEmail] = useState(testerProfile.email || '');
+  const [phone, setPhone] = useState(testerProfile.phone || '');
+  const [country, setCountry] = useState(testerProfile.country || '');
+  const [city, setCity] = useState(testerProfile.city || '');
+  const [stateOrProvince, setStateOrProvince] = useState(testerProfile.stateOrProvince || '');
+  const [postalCode, setPostalCode] = useState(testerProfile.postalCode || '');
+  const [timezone, setTimezone] = useState(testerProfile.timezone || '');
+  const [headline, setHeadline] = useState(testerProfile.headline || '');
   const [bio, setBio] = useState(testerProfile.bio || '');
-  const [avatar, setAvatar] = useState(testerProfile.avatar);
+  const [avatar, setAvatar] = useState(testerProfile.avatar || '');
+  const [clientAvatar, setClientAvatar] = useState(clientProfile.avatar || '');
 
   // Languages state
-  const [languages, setLanguages] = useState<LanguageSkill[]>(
-    testerProfile.languages || [
-      { language: 'English', proficiency: 'Native' },
-      { language: 'Swahili', proficiency: 'Native' },
-      { language: 'German', proficiency: 'Basic' }
-    ]
-  );
+  const [languages, setLanguages] = useState<LanguageSkill[]>(testerProfile.languages || []);
   const [newLangName, setNewLangName] = useState('');
   const [newLangProficiency, setNewLangProficiency] = useState<'Native' | 'Fluent' | 'Intermediate' | 'Basic'>('Fluent');
 
   // Preferences toggles state
   const [availableForCycles, setAvailableForCycles] = useState(testerProfile.preferences?.availableForCycles ?? true);
-  const [maxWeeklyHours, setMaxWeeklyHours] = useState(testerProfile.preferences?.maxWeeklyHours ?? 35);
-  const [weekendTesting, setWeekendTesting] = useState(testerProfile.preferences?.weekendTesting ?? true);
-  const [ndaAgreed, setNdaAgreed] = useState(testerProfile.preferences?.ndaAgreed ?? true);
+  const [maxWeeklyHours, setMaxWeeklyHours] = useState(testerProfile.preferences?.maxWeeklyHours ?? 20);
+  const [weekendTesting, setWeekendTesting] = useState(testerProfile.preferences?.weekendTesting ?? false);
+  const [ndaAgreed, setNdaAgreed] = useState(testerProfile.preferences?.ndaAgreed ?? false);
   const [instantEmailAlerts, setInstantEmailAlerts] = useState(testerProfile.preferences?.instantEmailAlerts ?? true);
-  const [instantSmsAlerts, setInstantSmsAlerts] = useState(testerProfile.preferences?.instantSmsAlerts ?? true);
+  const [instantSmsAlerts, setInstantSmsAlerts] = useState(testerProfile.preferences?.instantSmsAlerts ?? false);
   const [highBountyOnly, setHighBountyOnly] = useState(testerProfile.preferences?.highBountyOnly ?? false);
   const [realMoneyTesting, setRealMoneyTesting] = useState(testerProfile.preferences?.realMoneyTesting ?? true);
-  const [apkSideloadingAllowed, setApkSideloadingAllowed] = useState(testerProfile.preferences?.apkSideloadingAllowed ?? true);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    testerProfile.preferences?.interestedCategories || [
-      'Payment & Checkout',
-      'Functional',
-      'Security',
-      'Usability',
-      'Localization'
-    ]
-  );
+  const [apkSideloadingAllowed, setApkSideloadingAllowed] = useState(testerProfile.preferences?.apkSideloadingAllowed ?? false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(testerProfile.preferences?.interestedCategories || []);
 
   // Payment Settings state
   const [preferredMethod, setPreferredMethod] = useState<'PayPal' | 'Payoneer' | 'Wise' | 'Direct Bank Wire'>(
     testerProfile.paymentSettings?.preferredMethod || 'PayPal'
   );
-  const [paypalEmail, setPaypalEmail] = useState(testerProfile.paymentSettings?.paypalEmail || 'ezrahbosire1@gmail.com');
-  const [payoneerId, setPayoneerId] = useState(testerProfile.paymentSettings?.payoneerId || 'PAYONEER-KE-849201');
-  const [wiseEmail, setWiseEmail] = useState(testerProfile.paymentSettings?.wiseEmail || 'ezrah.wise@gmail.com');
-  const [bankName, setBankName] = useState(testerProfile.paymentSettings?.bankDetails?.bankName || 'Standard Chartered Bank');
-  const [accountHolder, setAccountHolder] = useState(testerProfile.paymentSettings?.bankDetails?.accountHolder || 'Ezra Bosire');
-  const [ibanOrAccount, setIbanOrAccount] = useState(testerProfile.paymentSettings?.bankDetails?.ibanOrAccount || 'KE84SCBL0100293849102');
-  const [swiftBic, setSwiftBic] = useState(testerProfile.paymentSettings?.bankDetails?.swiftBic || 'SCBLKENX');
-  const [autoWithdraw, setAutoWithdraw] = useState(testerProfile.paymentSettings?.autoWithdraw ?? true);
+  const [paypalEmail, setPaypalEmail] = useState(testerProfile.paymentSettings?.paypalEmail || '');
+  const [payoneerId, setPayoneerId] = useState(testerProfile.paymentSettings?.payoneerId || '');
+  const [wiseEmail, setWiseEmail] = useState(testerProfile.paymentSettings?.wiseEmail || '');
+  const [bankName, setBankName] = useState(testerProfile.paymentSettings?.bankDetails?.bankName || '');
+  const [accountHolder, setAccountHolder] = useState(testerProfile.paymentSettings?.bankDetails?.accountHolder || '');
+  const [ibanOrAccount, setIbanOrAccount] = useState(testerProfile.paymentSettings?.bankDetails?.ibanOrAccount || '');
+  const [swiftBic, setSwiftBic] = useState(testerProfile.paymentSettings?.bankDetails?.swiftBic || '');
+  const [autoWithdraw, setAutoWithdraw] = useState(testerProfile.paymentSettings?.autoWithdraw ?? false);
   const [autoWithdrawThreshold, setAutoWithdrawThreshold] = useState(testerProfile.paymentSettings?.autoWithdrawThreshold || 50);
 
   // Skills state
-  const [skills, setSkills] = useState<string[]>(
-    testerProfile.skills || [
-      'Functional & Regression Testing',
-      'Exploratory Testing',
-      'Payment & Checkout Gateways (3DS, Stripe, Adyen)',
-      'Network Logs & Charles Proxy',
-      'Android Studio & ADB Logcat',
-      'Localization & Linguistic QA',
-      'Accessibility (WCAG 2.1 AA)',
-      'API Testing (Postman/Curl)',
-      'Crash Log Analysis'
-    ]
-  );
+  const [skills, setSkills] = useState<string[]>(testerProfile.skills || []);
   const [newSkillText, setNewSkillText] = useState('');
 
   // Device fleet filter
@@ -151,18 +127,18 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   const [newDevPrimary, setNewDevPrimary] = useState(false);
 
   // Client Profile state
-  const [clientCompanyName, setClientCompanyName] = useState(clientProfile.company);
-  const [clientDirectorName, setClientDirectorName] = useState(clientProfile.name);
-  const [clientEmail, setClientEmail] = useState(clientProfile.email);
-  const [clientPhone, setClientPhone] = useState(clientProfile.phone || '+1 (415) 890-4421');
-  const [clientIndustry, setClientIndustry] = useState(clientProfile.industry || 'Fintech & Digital Banking');
-  const [clientWebsite, setClientWebsite] = useState(clientProfile.website || 'https://finflow.io');
-  const [clientBillingAddress, setClientBillingAddress] = useState(clientProfile.billingAddress || '550 Howard St, Suite 400, San Francisco, CA 94105');
-  const [clientNdaRequired, setClientNdaRequired] = useState(clientProfile.ndaRequired ?? true);
-  const [clientCriticalBounty, setClientCriticalBounty] = useState(clientProfile.defaultBountyMatrix?.critical || 75);
-  const [clientHighBounty, setClientHighBounty] = useState(clientProfile.defaultBountyMatrix?.high || 40);
-  const [clientMediumBounty, setClientMediumBounty] = useState(clientProfile.defaultBountyMatrix?.medium || 22);
-  const [clientLowBounty, setClientLowBounty] = useState(clientProfile.defaultBountyMatrix?.low || 10);
+  const [clientCompanyName, setClientCompanyName] = useState(clientProfile.company || '');
+  const [clientDirectorName, setClientDirectorName] = useState(clientProfile.name || '');
+  const [clientEmail, setClientEmail] = useState(clientProfile.email || '');
+  const [clientPhone, setClientPhone] = useState(clientProfile.phone || '');
+  const [clientIndustry, setClientIndustry] = useState(clientProfile.industry || '');
+  const [clientWebsite, setClientWebsite] = useState(clientProfile.website || '');
+  const [clientBillingAddress, setClientBillingAddress] = useState(clientProfile.billingAddress || '');
+  const [clientNdaRequired, setClientNdaRequired] = useState(clientProfile.ndaRequired ?? false);
+  const [clientCriticalBounty, setClientCriticalBounty] = useState(clientProfile.defaultBountyMatrix?.critical || 0);
+  const [clientHighBounty, setClientHighBounty] = useState(clientProfile.defaultBountyMatrix?.high || 0);
+  const [clientMediumBounty, setClientMediumBounty] = useState(clientProfile.defaultBountyMatrix?.medium || 0);
+  const [clientLowBounty, setClientLowBounty] = useState(clientProfile.defaultBountyMatrix?.low || 0);
 
   // Toast / Save feedback
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -177,6 +153,83 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
     'Performance & Load',
     'Streaming & Video'
   ];
+
+  useEffect(() => {
+    setName(testerProfile.name || '');
+    setEmail(testerProfile.email || '');
+    setPhone(testerProfile.phone || '');
+    setCountry(testerProfile.country || '');
+    setCity(testerProfile.city || '');
+    setStateOrProvince(testerProfile.stateOrProvince || '');
+    setPostalCode(testerProfile.postalCode || '');
+    setTimezone(testerProfile.timezone || '');
+    setHeadline(testerProfile.headline || '');
+    setBio(testerProfile.bio || '');
+    setAvatar(testerProfile.avatar || '');
+    setLanguages(testerProfile.languages || []);
+    setAvailableForCycles(testerProfile.preferences?.availableForCycles ?? true);
+    setMaxWeeklyHours(testerProfile.preferences?.maxWeeklyHours ?? 20);
+    setWeekendTesting(testerProfile.preferences?.weekendTesting ?? false);
+    setNdaAgreed(testerProfile.preferences?.ndaAgreed ?? false);
+    setInstantEmailAlerts(testerProfile.preferences?.instantEmailAlerts ?? true);
+    setInstantSmsAlerts(testerProfile.preferences?.instantSmsAlerts ?? false);
+    setHighBountyOnly(testerProfile.preferences?.highBountyOnly ?? false);
+    setRealMoneyTesting(testerProfile.preferences?.realMoneyTesting ?? true);
+    setApkSideloadingAllowed(testerProfile.preferences?.apkSideloadingAllowed ?? false);
+    setSelectedCategories(testerProfile.preferences?.interestedCategories || []);
+    setPreferredMethod(testerProfile.paymentSettings?.preferredMethod || 'PayPal');
+    setPaypalEmail(testerProfile.paymentSettings?.paypalEmail || '');
+    setPayoneerId(testerProfile.paymentSettings?.payoneerId || '');
+    setWiseEmail(testerProfile.paymentSettings?.wiseEmail || '');
+    setBankName(testerProfile.paymentSettings?.bankDetails?.bankName || '');
+    setAccountHolder(testerProfile.paymentSettings?.bankDetails?.accountHolder || '');
+    setIbanOrAccount(testerProfile.paymentSettings?.bankDetails?.ibanOrAccount || '');
+    setSwiftBic(testerProfile.paymentSettings?.bankDetails?.swiftBic || '');
+    setAutoWithdraw(testerProfile.paymentSettings?.autoWithdraw ?? false);
+    setAutoWithdrawThreshold(testerProfile.paymentSettings?.autoWithdrawThreshold || 50);
+    setSkills(testerProfile.skills || []);
+  }, [testerProfile]);
+
+  useEffect(() => {
+    setClientCompanyName(clientProfile.company || '');
+    setClientDirectorName(clientProfile.name || '');
+    setClientEmail(clientProfile.email || '');
+    setClientPhone(clientProfile.phone || '');
+    setClientIndustry(clientProfile.industry || '');
+    setClientWebsite(clientProfile.website || '');
+    setClientBillingAddress(clientProfile.billingAddress || '');
+    setClientNdaRequired(clientProfile.ndaRequired ?? false);
+    setClientAvatar(clientProfile.avatar || '');
+    setClientCriticalBounty(clientProfile.defaultBountyMatrix?.critical || 0);
+    setClientHighBounty(clientProfile.defaultBountyMatrix?.high || 0);
+    setClientMediumBounty(clientProfile.defaultBountyMatrix?.medium || 0);
+    setClientLowBounty(clientProfile.defaultBountyMatrix?.low || 0);
+  }, [clientProfile]);
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      if (!isCloudinaryConfigured) {
+        throw new Error('Cloudinary upload is not configured. Add your Cloudinary settings to .env.local first.');
+      }
+
+      const result = await uploadToCloudinary(file);
+      const secureUrl = result.secure_url;
+
+      if (role === 'client' || currentTab === 'client') {
+        setClientAvatar(secureUrl);
+      } else {
+        setAvatar(secureUrl);
+      }
+    } catch (error) {
+      console.error('Avatar upload failed:', error);
+      window.alert(error instanceof Error ? error.message : 'Unable to upload profile image.');
+    } finally {
+      event.target.value = '';
+    }
+  };
 
   const handleSaveAll = () => {
     if (role === 'tester' || currentTab !== 'client') {
@@ -236,6 +289,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         industry: clientIndustry,
         website: clientWebsite,
         billingAddress: clientBillingAddress,
+        avatar: clientAvatar,
         ndaRequired: clientNdaRequired,
         defaultBountyMatrix: {
           critical: Number(clientCriticalBounty),
@@ -344,12 +398,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
             <div className="relative">
               <img
-                src={role === 'tester' ? avatar : clientProfile.avatar}
-                alt={testerProfile.name}
+                src={role === 'tester' ? (avatar || testerProfile.avatar) : (clientAvatar || clientProfile.avatar)}
+                alt={role === 'tester' ? (name || testerProfile.name) : (clientCompanyName || clientProfile.company || 'User')}
                 className="w-16 h-16 rounded-2xl object-cover border-2 border-[#00A3E0]/40 shadow-lg shadow-[#00A3E0]/10"
                 referrerPolicy="no-referrer"
               />
-              <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-md shadow-xs flex items-center gap-0.5">
+              <label className="absolute -bottom-1 -right-1 flex items-center justify-center w-6 h-6 rounded-full bg-[#007AFF] border border-white cursor-pointer shadow-lg">
+                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                <Plus className="w-3.5 h-3.5 text-white" />
+              </label>
+              <span className="absolute -bottom-1 -left-1 px-1.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] rounded-md shadow-xs flex items-center gap-0.5">
                 <Star className="w-3 h-3 fill-slate-950" />
                 {role === 'tester' ? testerProfile.tier : 'Director'}
               </span>
@@ -391,25 +449,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
           {/* Quick Right Controls: Role toggle & Save Button */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
-            {/* Direct Switch between Tester & Client view */}
             <div className="flex items-center justify-between sm:justify-start bg-[#080D1A] p-1 rounded-xl border border-[#1E2E4E]">
-              <button
-                onClick={() => {
-                  const nextRole = role === 'tester' ? 'client' : 'tester';
-                  setRole(nextRole);
-                  setCurrentTab(nextRole === 'client' ? 'client' : 'personal');
-                }}
-                className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition text-slate-300 hover:text-white w-full justify-between sm:justify-start"
-                title="Toggle between Tester and Client QA settings"
-              >
+              <div className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-slate-300 w-full justify-between sm:justify-start">
                 <div className="flex items-center space-x-1.5">
                   <ArrowRightLeft className="w-3.5 h-3.5 text-[#00A3E0]" />
                   <span className="text-slate-400 font-normal">Active Role:</span>
                 </div>
-                <span className={role === 'tester' ? 'text-amber-400 font-bold' : 'text-[#00A3E0] font-bold'}>
-                  {role === 'tester' ? 'Tester Profile' : 'Client QA Lead'}
+                <span className="text-amber-400 font-bold">
+                  {role === 'tester' ? 'Tester Profile' : role === 'admin' ? 'Admin Profile' : 'Client Profile'}
                 </span>
-              </button>
+              </div>
             </div>
 
             {/* Save Button */}

@@ -10,6 +10,7 @@ import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
+import { AdminAuthModal } from './components/AdminAuthModal';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import {
   Route,
@@ -28,16 +29,18 @@ import {
 
 interface MainContentProps {
   onLogout: () => void;
+  onRequestAdminAccess: () => void;
 }
 
-const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
+const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAccess }) => {
   const {
     role,
     activeTab,
     setActiveTab,
     activeWorkspaceProjectId,
     setActiveWorkspaceProjectId,
-    testerProfile
+    testerProfile,
+    clientProfile
   } = useApp();
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -50,7 +53,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
   return (
     <div className="theme-shell min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B1120] text-slate-100 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
       {/* Top Navigation */}
-      <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} />
+      <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} onRequestAdminAccess={onRequestAdminAccess} />
 
       {/* Freelance Scope Quick Bar - shown on tablet/desktop to avoid mobile horizontal blowout */}
       <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#0B132B]/80 border-b border-[#1E2E4E] px-3 sm:px-4 py-2 text-xs text-slate-400 md:ml-64 md:w-[calc(100%-16rem)]">
@@ -77,10 +80,10 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout }) => {
             <span className="text-slate-400">Active Persona:</span>
             <span className="px-2 py-0.5 rounded bg-[#111C33] text-slate-200 font-semibold border border-[#1E2E4E]">
               {role === 'tester'
-                ? 'Tester: Ezra Bosire (Gold Freelancer)'
+                ? `Tester: ${testerProfile.name || 'New Tester'} (${testerProfile.tier || 'Unrated'} Freelancer)`
                 : role === 'admin'
-                ? 'Admin & PM: Alex Vance (TTL Operations)'
-                : 'Client: FinFlow Enterprise'}
+                ? `Admin & PM: ${clientProfile.name || 'Admin User'} (${clientProfile.company || 'Operations'})`
+                : `Client: ${clientProfile.company || 'New Client'}`}
             </span>
           </div>
         </div>
@@ -333,24 +336,56 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showLanding, setShowLanding] = useState(false);
+  const { setRole } = useApp();
+  const [screen, setScreen] = useState<'landing' | 'login' | 'app'>('landing');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-    supabase.auth.getSession().then(({ data }) => setIsAuthenticated(Boolean(data.session)));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session));
+    if (!isSupabaseConfigured || !supabase) {
+      setIsAuthLoading(false);
+      return;
+    }
+    const client = supabase;
+    const syncSession = async (session: { user: { id: string } } | null) => {
+      if (!session) {
+        setScreen(current => current === 'app' ? 'landing' : current);
+        setIsAuthLoading(false);
+        return;
+      }
+      setScreen('app');
+      if (session) {
+        const { data: profile } = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+        setRole(profile?.role === 'admin' ? 'admin' : 'tester');
+      }
+      setIsAuthLoading(false);
+    };
+    client.auth.getSession().then(({ data }) => void syncSession(data.session));
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+      void syncSession(session);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  const resetLocalUserState = () => {
+    localStorage.removeItem('utest_crowdqa_role');
+    localStorage.removeItem('utest_crowdqa_testerProfile');
+    localStorage.removeItem('utest_crowdqa_clientProfile');
+    localStorage.removeItem('utest_crowdqa_projects');
+    localStorage.removeItem('utest_crowdqa_applications');
+    localStorage.removeItem('utest_crowdqa_bugReports');
+    localStorage.removeItem('utest_crowdqa_taskSubmissions');
+    localStorage.removeItem('utest_crowdqa_notifications');
+    localStorage.removeItem('utest_crowdqa_walletTransactions');
+  };
 
   const handleLogin = async (email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Authentication is not configured. Add your Supabase URL and anon key to .env.local.');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    setIsAuthenticated(true);
-    setShowLanding(true);
+    resetLocalUserState();
+    setScreen('app');
   };
 
   const handleGoogleLogin = async () => {
@@ -362,8 +397,15 @@ const AppExperience: React.FC = () => {
     if (error) throw error;
   };
 
+  const handleResetPassword = async (email: string) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) throw error;
+  };
+
   const handleSignUp = async (name: string, email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Account registration is not configured. Add your Supabase URL and anon key to .env.local.');
+    resetLocalUserState();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -371,21 +413,39 @@ const AppExperience: React.FC = () => {
     });
     if (error) throw error;
     if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
-    setIsAuthenticated(true);
-    setShowLanding(true);
+    setScreen('app');
   };
 
   const handleLogout = () => {
     if (supabase) void supabase.auth.signOut();
-    setIsAuthenticated(false);
-    setShowLanding(false);
+    resetLocalUserState();
+    setScreen('landing');
+    setRole('tester');
   };
 
-  if (!isAuthenticated) return <LoginPage onLogin={handleLogin} onSignUp={handleSignUp} onGoogleLogin={handleGoogleLogin} />;
+  const handleAdminAuth = async (email: string, password: string) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    if (authError) throw authError;
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id || '').maybeSingle();
+    if (profileError) throw profileError;
+    if (profile?.role !== 'admin') {
+      await supabase.auth.signOut();
+      throw new Error('This account does not have admin access.');
+    }
+    setScreen('app');
+    setRole('admin');
+    setIsAdminAuthOpen(false);
+  };
 
-  return showLanding ? (
-    <LandingPage onGetStarted={() => setShowLanding(false)} />
-  ) : (
-    <MainContent onLogout={handleLogout} />
+  if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
+  if (screen === 'landing') return <LandingPage onGetStarted={() => { setAuthMode('signup'); setScreen('login'); }} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
+  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onGoogleLogin={handleGoogleLogin} onResetPassword={handleResetPassword} onBackToLanding={() => setScreen('landing')} />;
+
+  return (
+    <>
+      <MainContent onLogout={handleLogout} onRequestAdminAccess={() => setIsAdminAuthOpen(true)} />
+      <AdminAuthModal isOpen={isAdminAuthOpen} onClose={() => setIsAdminAuthOpen(false)} onSubmit={handleAdminAuth} />
+    </>
   );
 };

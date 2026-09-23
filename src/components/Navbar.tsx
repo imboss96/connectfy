@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRightLeft,
   Bell,
   Briefcase,
   Bug,
   FileCheck,
   Layers,
   Menu,
-  RotateCcw,
   ShieldCheck,
   Sliders,
   Users,
@@ -22,6 +20,7 @@ import { ConnectfyLogo } from './UTestLogo';
 interface NavbarProps {
   onOpenWallet: () => void;
   onLogout: () => void;
+  onRequestAdminAccess: () => void;
 }
 
 type NavItem = {
@@ -30,21 +29,21 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onRequestAdminAccess }) => {
   const {
     role,
-    setRole,
     testerProfile,
     clientProfile,
     activeTab,
     setActiveTab,
     notifications,
-    setActiveWorkspaceProjectId,
-    resetToSampleData
+    setActiveWorkspaceProjectId
   } = useApp();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [logoTaps, setLogoTaps] = useState(0);
   const notifRef = useRef<HTMLDivElement>(null);
+  const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -72,12 +71,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
     setIsMobileMenuOpen(false);
   };
 
-  const handleRoleToggle = () => {
-    const nextRole = role === 'tester' ? 'client' : 'tester';
-    setRole(nextRole);
-    setActiveWorkspaceProjectId(null);
-    setActiveTab(nextRole === 'tester' ? 'projects' : 'client_submissions');
-    setIsMobileMenuOpen(false);
+  const handleLogoTap = () => {
+    const nextTapCount = logoTaps + 1;
+    setLogoTaps(nextTapCount);
+    if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
+    logoTapTimer.current = setTimeout(() => setLogoTaps(0), 900);
+    if (nextTapCount === 4) {
+      setLogoTaps(0);
+      onRequestAdminAccess();
+      setIsMobileMenuOpen(false);
+    }
   };
 
   const navItems: NavItem[] = role === 'tester'
@@ -134,7 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
   return (
     <>
       <aside className="theme-sidebar fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-[#1E2E4E] bg-[#0B132B] px-4 py-5 md:flex">
-        <button onClick={() => navigateTo(role === 'tester' ? 'projects' : role === 'admin' ? 'admin_manager' : 'client_submissions')} className="mb-8 text-left">
+        <button onClick={handleLogoTap} className="mb-8 text-left" aria-label="Connectfy home">
           <ConnectfyLogo size="sm" />
         </button>
         <div className="mb-6 rounded-2xl border border-[#1E2E4E] bg-[#111C33] p-3">
@@ -142,14 +145,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
             <img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl border border-[#00A3E0]/40 object-cover" referrerPolicy="no-referrer" />
             <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{personName}</p><p className="truncate text-[10px] text-slate-400">{personSubtitle}</p></div>
           </div>
-          <button onClick={handleRoleToggle} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#1E2E4E] bg-[#080D1A] px-2 py-2 text-[10px] font-bold text-slate-300 transition hover:border-[#00A3E0]/50 hover:text-white">
-            <ArrowRightLeft className="h-3.5 w-3.5 text-[#00A3E0]" />Switch to {role === 'tester' ? 'Client' : 'Tester'}
-          </button>
         </div>
         {renderNavItems()}
         <div className="mt-auto border-t border-[#1E2E4E] pt-4">
           <button onClick={() => navigateTo('profile_settings')} className="mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"><Sliders className="h-4 w-4 text-[#38BDF8]" />Account settings</button>
-          <button onClick={() => { if (confirm('Reset application state to initial sample data?')) resetToSampleData(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><RotateCcw className="h-4 w-4" />Reset sample data</button>
           <button onClick={onLogout} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><LogOut className="h-4 w-4" />Log out</button>
         </div>
       </aside>
@@ -157,7 +156,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
       <header className="theme-topbar sticky top-0 z-40 w-full border-b border-[#1E2E4E] bg-[#0B132B]/95 text-slate-100 backdrop-blur-md md:ml-64 md:w-[calc(100%-16rem)]">
         <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="md:hidden"><ConnectfyLogo size="sm" showSubtitle={false} /></div>
+            <button onClick={handleLogoTap} className="md:hidden"><ConnectfyLogo size="sm" showSubtitle={false} /></button>
             <div className="hidden min-w-0 sm:block"><p className="text-xs font-semibold text-slate-400">{role === 'tester' ? 'Tester workspace' : role === 'admin' ? 'Operations workspace' : 'Client workspace'}</p><p className="truncate text-sm font-bold text-white">{activeTab === 'profile_settings' ? 'Account settings' : 'Manage your testing workflow'}</p></div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -172,7 +171,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout }) => {
       </header>
 
       {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 space-y-4 border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-16 md:hidden">
-        <div className="flex items-center justify-between rounded-xl border border-[#1E2E4E] bg-[#111C33] p-3"><div className="flex min-w-0 items-center gap-3"><img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl object-cover" referrerPolicy="no-referrer" /><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{personName}</p><p className="truncate text-xs text-slate-400">{personSubtitle}</p></div></div><button onClick={handleRoleToggle} className="ml-3 shrink-0 rounded-lg bg-[#007AFF] px-2.5 py-2 text-[10px] font-bold text-white"><ArrowRightLeft className="mr-1 inline h-3 w-3" />Switch role</button></div>
+        <div className="flex items-center gap-3 rounded-xl border border-[#1E2E4E] bg-[#111C33] p-3"><img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl object-cover" referrerPolicy="no-referrer" /><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{personName}</p><p className="truncate text-xs text-slate-400">{personSubtitle}</p></div></div>
         {renderNavItems()}
         <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border-t border-[#1E2E4E] px-3 pt-3 text-xs font-semibold text-slate-500"><LogOut className="h-4 w-4" />Log out</button>
       </div>}

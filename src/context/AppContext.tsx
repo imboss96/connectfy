@@ -11,18 +11,12 @@ import {
   ClientProfile,
   PayoutRequest,
   DeviceFleetItem,
-  TaskSubmission
+  TaskSubmission,
+  InviteHistoryEntry
 } from '../types';
-import {
-  initialProjects,
-  initialApplications,
-  initialBugReports,
-  initialWalletTransactions,
-  initialNotifications,
-  initialTesterProfile,
-  initialClientProfile,
-  initialTaskSubmissions
-} from '../mockData';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { createProjectInSupabase, deleteProjectFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, upsertApplicationInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
   role: UserRole;
@@ -53,8 +47,9 @@ interface AppContextType {
   setTesterPrimaryDevice: (deviceId: string) => void;
 
   // Actions
-  applyToProject: (projectId: string, devices: string[], experienceNote: string) => boolean;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string) => Promise<boolean>;
   approveApplication: (appId: string) => void;
+  resendInvite: (appId: string) => void;
   rejectApplication: (appId: string) => void;
   acceptInvite: (appId: string) => void;
   declineInvite: (appId: string) => void;
@@ -72,14 +67,279 @@ interface AppContextType {
   deleteProject: (projectId: string) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  resetToSampleData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
 
+const createApplicationId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return 'app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+};
+
+const getInitials = (name?: string, email?: string) => {
+  const source = (name || email || 'User').trim();
+  if (!source) return 'U';
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return source.slice(0, 2).toUpperCase();
+};
+
+const createLetterAvatar = (name?: string, email?: string) => {
+  const initials = getInitials(name, email);
+  const palette = ['0F766E', '2563EB', '7C3AED', 'F59E0B', 'DC2626', '0EA5E9'];
+  const color = palette[Math.abs(initials.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)) % palette.length];
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="32" fill="#${color}"/>
+      <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="white" font-size="48" font-weight="700" font-family="Arial, sans-serif">${initials}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+};
+
+const normalizeInviteHistory = (value: unknown): InviteHistoryEntry[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'))
+    .map((entry) => ({
+      sentAt: String(entry.sentAt || ''),
+      type: (entry.type === 'resend' ? 'resend' : 'invite') as 'invite' | 'resend',
+      note: String(entry.note || 'Invite sent')
+    }))
+    .filter((entry) => entry.sentAt);
+};
+
+const emptyTesterProfile: TesterProfile = {
+  id: '',
+  name: '',
+  email: '',
+  phone: '',
+  avatar: createLetterAvatar('', ''),
+  country: '',
+  city: '',
+  stateOrProvince: '',
+  postalCode: '',
+  timezone: '',
+  headline: '',
+  bio: '',
+  languages: [],
+  tier: 'Bronze',
+  rating: 0,
+  totalReviews: 0,
+  acceptanceRate: 0,
+  availableBalance: 0,
+  pendingEscrow: 0,
+  lifetimeEarnings: 0,
+  approvedBugsCount: 0,
+  completedCyclesCount: 0,
+  devices: [],
+  deviceFleet: [],
+  badges: [],
+  academyBadges: [],
+  skills: [],
+  paymentSettings: {
+    preferredMethod: 'PayPal',
+    paypalEmail: '',
+    payoneerId: '',
+    wiseEmail: '',
+    bankDetails: {
+      bankName: '',
+      accountHolder: '',
+      ibanOrAccount: '',
+      swiftBic: ''
+    },
+    autoWithdraw: false,
+    autoWithdrawThreshold: 50,
+    taxFormType: 'W-8BEN',
+    taxStatus: 'Pending Review',
+    taxIdMasked: '',
+    taxCountry: ''
+  },
+  preferences: {
+    availableForCycles: true,
+    maxWeeklyHours: 20,
+    weekendTesting: false,
+    ndaAgreed: false,
+    instantEmailAlerts: true,
+    instantSmsAlerts: false,
+    highBountyOnly: false,
+    realMoneyTesting: true,
+    apkSideloadingAllowed: false,
+    interestedCategories: []
+  }
+};
+
+const emptyClientProfile: ClientProfile = {
+  id: '',
+  name: '',
+  company: '',
+  companyLogo: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  avatar: createLetterAvatar('', ''),
+  industry: '',
+  website: '',
+  billingAddress: '',
+  totalProjects: 0,
+  activeCycles: 0,
+  testersEngaged: 0,
+  totalPaidOut: 0,
+  escrowBalance: 0,
+  defaultBountyMatrix: {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0
+  },
+  ndaRequired: false
+};
+
+const isDemoWalletTransaction = (tx: Partial<WalletTransaction>) => {
+  if (!tx) return false;
+  return (
+    tx.testerId === 'tester-ezra-01' ||
+    tx.referenceId === 'REF-BTY-89421' ||
+    tx.referenceId === 'REF-BTY-77312' ||
+    tx.referenceId === 'PAY-OUT-66109' ||
+    tx.description?.includes('Ezra') ||
+    tx.description?.includes('FinFlow') ||
+    tx.description?.includes('HealthPulse')
+  );
+};
+
+const isDemoProject = (project: Partial<Project>) => {
+  if (!project) return false;
+  return (
+    project.id === 'proj-fintech-01' ||
+    project.id === 'proj-ai-voice-05' ||
+    project.id === 'proj-ai-redteam-06' ||
+    project.id === 'proj-field-pos-07' ||
+    project.company === 'Connectfy' ||
+    project.title?.includes('Demo') ||
+    project.title?.includes('Sample') ||
+    project.title?.includes('FinFlow') ||
+    project.title?.includes('HealthPulse')
+  );
+};
+
+const isDemoApplication = (application: Partial<ProjectApplication>) => {
+  if (!application) return false;
+  return (
+    application.testerId === 'tester-ezra-01' ||
+    application.testerName === 'Ezra Bosire' ||
+    application.testerEmail === 'ezrahbosire1@gmail.com' ||
+    application.projectId === 'proj-fintech-01' ||
+    application.projectId === 'proj-ai-voice-05' ||
+    application.projectId === 'proj-ai-redteam-06' ||
+    application.projectId === 'proj-field-pos-07'
+  );
+};
+
+const isDemoSubmission = (submission: Partial<BugReport | TaskSubmission>) => {
+  if (!submission) return false;
+  return (
+    submission.testerId === 'tester-ezra-01' ||
+    submission.testerName === 'Ezra Bosire' ||
+    submission.projectId === 'proj-fintech-01' ||
+    submission.projectId === 'proj-ai-voice-05' ||
+    submission.projectId === 'proj-ai-redteam-06' ||
+    submission.projectId === 'proj-field-pos-07' ||
+    submission.title?.includes('3DS') ||
+    submission.title?.includes('Currency conversion') ||
+    submission.title?.includes('Voice Utterances') ||
+    submission.title?.includes('Jailbreak Prompt') ||
+    submission.title?.includes('Store Audit')
+  );
+};
+
+const sanitizeSavedState = () => {
+  const savedWallet = localStorage.getItem(STORAGE_PREFIX + 'walletTransactions');
+  if (savedWallet) {
+    try {
+      const parsed = JSON.parse(savedWallet);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(tx => !isDemoWalletTransaction(tx));
+        localStorage.setItem(STORAGE_PREFIX + 'walletTransactions', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'walletTransactions');
+    }
+  }
+
+  const savedBugReports = localStorage.getItem(STORAGE_PREFIX + 'bugReports');
+  if (savedBugReports) {
+    try {
+      const parsed = JSON.parse(savedBugReports);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(item => !isDemoSubmission(item));
+        localStorage.setItem(STORAGE_PREFIX + 'bugReports', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'bugReports');
+    }
+  }
+
+  const savedTaskSubmissions = localStorage.getItem(STORAGE_PREFIX + 'taskSubmissions');
+  if (savedTaskSubmissions) {
+    try {
+      const parsed = JSON.parse(savedTaskSubmissions);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(item => !isDemoSubmission(item));
+        localStorage.setItem(STORAGE_PREFIX + 'taskSubmissions', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'taskSubmissions');
+    }
+  }
+
+  const savedNotifications = localStorage.getItem(STORAGE_PREFIX + 'notifications');
+  if (savedNotifications) {
+    try {
+      const parsed = JSON.parse(savedNotifications);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(item => item.userId !== 'tester-ezra-01');
+        localStorage.setItem(STORAGE_PREFIX + 'notifications', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'notifications');
+    }
+  }
+
+  const savedProjects = localStorage.getItem(STORAGE_PREFIX + 'projects');
+  if (savedProjects) {
+    try {
+      const parsed = JSON.parse(savedProjects);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(project => !isDemoProject(project));
+        localStorage.setItem(STORAGE_PREFIX + 'projects', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'projects');
+    }
+  }
+
+  const savedApplications = localStorage.getItem(STORAGE_PREFIX + 'applications');
+  if (savedApplications) {
+    try {
+      const parsed = JSON.parse(savedApplications);
+      if (Array.isArray(parsed)) {
+        const clean = parsed.filter(app => !isDemoApplication(app));
+        localStorage.setItem(STORAGE_PREFIX + 'applications', JSON.stringify(clean));
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_PREFIX + 'applications');
+    }
+  }
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  sanitizeSavedState();
   const [role, setRoleState] = useState<UserRole>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
     return (saved === 'client' || saved === 'tester' || saved === 'admin') ? (saved as UserRole) : 'tester';
@@ -91,32 +351,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'projects');
-    return saved ? JSON.parse(saved) : initialProjects;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [applications, setApplications] = useState<ProjectApplication[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'applications');
-    return saved ? JSON.parse(saved) : initialApplications;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [bugReports, setBugReports] = useState<BugReport[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'bugReports');
-    return saved ? JSON.parse(saved) : initialBugReports;
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(item => !isDemoSubmission(item));
+    } catch {
+      return [];
+    }
   });
 
   const [taskSubmissions, setTaskSubmissions] = useState<TaskSubmission[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'taskSubmissions');
-    return saved ? JSON.parse(saved) : initialTaskSubmissions;
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(item => !isDemoSubmission(item));
+    } catch {
+      return [];
+    }
   });
+
+  const [currentUserId, setCurrentUserId] = useState<string>('');
+
+  const getActiveUserContext = async () => {
+    if (!isSupabaseConfigured || !supabase) return { userId: testerProfile.id || '', email: testerProfile.email || '' };
+
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      return { userId: testerProfile.id || '', email: testerProfile.email || '' };
+    }
+
+    return {
+      userId: user.id,
+      email: user.email || testerProfile.email || ''
+    };
+  };
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'notifications');
-    return saved ? JSON.parse(saved) : initialNotifications;
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(item => item.userId !== 'tester-ezra-01');
+    } catch {
+      return [];
+    }
   });
 
   const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'walletTransactions');
-    return saved ? JSON.parse(saved) : initialWalletTransactions;
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(tx => !isDemoWalletTransaction(tx));
+    } catch {
+      return [];
+    }
   });
 
   const [testerProfile, setTesterProfile] = useState<TesterProfile>(() => {
@@ -124,27 +428,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const isDemoProfile = parsed.name === 'Ezra Bosire' || parsed.email === 'ezrahbosire1@gmail.com';
+        if (isDemoProfile) {
+          return emptyTesterProfile;
+        }
         return {
-          ...initialTesterProfile,
+          ...emptyTesterProfile,
           ...parsed,
-          deviceFleet: parsed.deviceFleet && parsed.deviceFleet.length > 0 ? parsed.deviceFleet : initialTesterProfile.deviceFleet,
-          skills: parsed.skills && parsed.skills.length > 0 ? parsed.skills : initialTesterProfile.skills,
-          academyBadges: parsed.academyBadges && parsed.academyBadges.length > 0 ? parsed.academyBadges : initialTesterProfile.academyBadges,
+          deviceFleet: parsed.deviceFleet && parsed.deviceFleet.length > 0 ? parsed.deviceFleet : emptyTesterProfile.deviceFleet,
+          skills: parsed.skills && parsed.skills.length > 0 ? parsed.skills : emptyTesterProfile.skills,
+          academyBadges: parsed.academyBadges && parsed.academyBadges.length > 0 ? parsed.academyBadges : emptyTesterProfile.academyBadges,
           paymentSettings: {
-            ...initialTesterProfile.paymentSettings,
+            ...emptyTesterProfile.paymentSettings,
             ...(parsed.paymentSettings || {})
           },
           preferences: {
-            ...initialTesterProfile.preferences,
+            ...emptyTesterProfile.preferences,
             ...(parsed.preferences || {})
           },
-          languages: parsed.languages && parsed.languages.length > 0 ? parsed.languages : initialTesterProfile.languages
+          languages: parsed.languages && parsed.languages.length > 0 ? parsed.languages : emptyTesterProfile.languages
         };
       } catch {
-        return initialTesterProfile;
+        return emptyTesterProfile;
       }
     }
-    return initialTesterProfile;
+    return emptyTesterProfile;
   });
 
   const [clientProfile, setClientProfile] = useState<ClientProfile>(() => {
@@ -152,20 +460,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const isDemoProfile = parsed.name === 'Ezra Bosire' || parsed.company === 'Connectfy';
+        if (isDemoProfile) {
+          return emptyClientProfile;
+        }
         return {
-          ...initialClientProfile,
+          ...emptyClientProfile,
           ...parsed,
           defaultBountyMatrix: {
-            ...initialClientProfile.defaultBountyMatrix,
+            ...emptyClientProfile.defaultBountyMatrix,
             ...(parsed.defaultBountyMatrix || {})
           }
         };
       } catch {
-        return initialClientProfile;
+        return emptyClientProfile;
       }
     }
-    return initialClientProfile;
+    return emptyClientProfile;
   });
+
+  const persistProfileToSupabase = async (profileData: Record<string, any>) => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) return;
+
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        email: profileData.email || user.email || '',
+        name: profileData.name || '',
+        company: profileData.company || '',
+        avatar_url: profileData.avatar || null,
+        country: profileData.country || '',
+        city: profileData.city || '',
+        role: profileData.role || 'tester',
+        profile_data: profileData.profile_data || {}
+      }, { onConflict: 'id' });
+    } catch (error) {
+      console.error('Unable to save profile to Supabase:', error);
+    }
+  };
 
   // Sync to localStorage
   useEffect(() => {
@@ -204,6 +539,227 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.setItem(STORAGE_PREFIX + 'clientProfile', JSON.stringify(clientProfile));
   }, [clientProfile]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let mounted = true;
+
+    const loadNotifications = async (userId: string) => {
+      if (!userId) {
+        setNotifications([]);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const mapped = (data || []).map((item: any) => ({
+          id: item.id,
+          userId: item.user_id,
+          targetRole: item.target_role || 'tester',
+          title: item.title,
+          message: item.message,
+          type: item.type,
+          read: Boolean(item.read),
+          createdAt: item.created_at ? new Date(item.created_at).toISOString().replace('T', ' ').substring(0, 16) : '',
+          relatedProjectId: item.project_id || undefined,
+          relatedSubmissionId: item.submission_id || undefined,
+          amount: item.amount ?? undefined
+        } as NotificationItem));
+
+        setNotifications(mapped);
+      } catch (error) {
+        console.error('Unable to load notifications from Supabase:', error);
+      }
+    };
+
+    const syncAuthProfile = async (userId: string) => {
+      setCurrentUserId(userId);
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('id, name, email, role, company, avatar_url, country, city, profile_data')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (!profile || !mounted) return;
+
+        const displayName = profile.name || profile.email?.split('@')[0] || 'User';
+        const displayEmail = profile.email || '';
+        const displayAvatar = profile.avatar_url || createLetterAvatar(displayName, displayEmail);
+        const savedProfileData = (profile.profile_data && typeof profile.profile_data === 'object') ? profile.profile_data as Record<string, any> : {};
+        const savedTesterProfile = savedProfileData.testerProfile || {};
+        const savedClientProfile = savedProfileData.clientProfile || {};
+
+        setTesterProfile({
+          ...emptyTesterProfile,
+          ...savedTesterProfile,
+          id: userId,
+          name: savedTesterProfile.name || displayName,
+          email: savedTesterProfile.email || displayEmail,
+          avatar: savedTesterProfile.avatar || displayAvatar,
+          country: savedTesterProfile.country || profile.country || '',
+          city: savedTesterProfile.city || profile.city || '',
+          tier: 'Unrated',
+          rating: 0,
+          totalReviews: 0,
+          acceptanceRate: 0,
+          availableBalance: 0,
+          pendingEscrow: 0,
+          lifetimeEarnings: 0,
+          approvedBugsCount: 0,
+          completedCyclesCount: 0,
+          badges: [],
+          skills: Array.isArray(savedTesterProfile.skills) && savedTesterProfile.skills.length > 0 ? savedTesterProfile.skills : emptyTesterProfile.skills,
+          deviceFleet: Array.isArray(savedTesterProfile.deviceFleet) && savedTesterProfile.deviceFleet.length > 0 ? savedTesterProfile.deviceFleet : emptyTesterProfile.deviceFleet,
+          devices: Array.isArray(savedTesterProfile.devices) && savedTesterProfile.devices.length > 0 ? savedTesterProfile.devices : emptyTesterProfile.devices,
+          paymentSettings: {
+            ...emptyTesterProfile.paymentSettings,
+            ...(savedTesterProfile.paymentSettings || {})
+          },
+          preferences: {
+            ...emptyTesterProfile.preferences,
+            ...(savedTesterProfile.preferences || {})
+          },
+          languages: Array.isArray(savedTesterProfile.languages) && savedTesterProfile.languages.length > 0 ? savedTesterProfile.languages : emptyTesterProfile.languages
+        });
+
+        setClientProfile({
+          ...emptyClientProfile,
+          ...savedClientProfile,
+          id: userId,
+          name: savedClientProfile.name || (profile.role === 'client' || profile.role === 'admin' ? displayName : ''),
+          company: savedClientProfile.company || profile.company || '',
+          email: savedClientProfile.email || displayEmail,
+          avatar: savedClientProfile.avatar || displayAvatar,
+          totalProjects: 0,
+          activeCycles: 0,
+          testersEngaged: 0,
+          totalPaidOut: 0,
+          escrowBalance: 0,
+          defaultBountyMatrix: {
+            ...emptyClientProfile.defaultBountyMatrix,
+            ...(savedClientProfile.defaultBountyMatrix || {})
+          }
+        });
+      } catch (error) {
+        console.error('Unable to sync user profile from Supabase:', error);
+      }
+    };
+
+    const loadProjects = async () => {
+      try {
+        const serverProjects = await fetchProjectsFromSupabase();
+        if (mounted && serverProjects.length > 0) setProjects(serverProjects);
+      } catch (error) {
+        console.error('Unable to load projects from Supabase:', error);
+      }
+    };
+
+    const loadApplications = async () => {
+      try {
+        const serverApplications = await fetchApplicationsFromSupabase();
+        if (!mounted) return;
+
+        const mapped = serverApplications.map((app: any) => ({
+          id: app.id,
+          projectId: app.project_id,
+          testerId: app.tester_id,
+          testerName: app.profiles?.name || app.tester_name || 'Tester',
+          testerEmail: app.profiles?.email || app.tester_email || '',
+          testerRating: Number(app.profiles?.profile_data?.testerProfile?.rating || app.tester_rating || 0),
+          testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Bronze',
+          appliedDate: app.applied_at ? new Date(app.applied_at).toISOString().replace('T', ' ').substring(0, 16) : '',
+          selectedDevices: Array.isArray(app.selected_devices) ? app.selected_devices : [],
+          experienceNote: app.experience_note || '',
+          status: app.status || 'pending',
+          inviteStatus: app.invite_status || undefined,
+          acceptedInviteAt: app.accepted_invite_at ? new Date(app.accepted_invite_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
+          lastInviteSentAt: app.last_invite_sent_at ? new Date(app.last_invite_sent_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
+          inviteHistory: normalizeInviteHistory(app.invite_history)
+        }));
+
+        setApplications(mapped);
+      } catch (error) {
+        console.error('Unable to load applications from Supabase:', error);
+      }
+    };
+
+    void loadProjects();
+    void loadApplications();
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session) {
+        setCurrentUserId(session.user.id);
+        await syncAuthProfile(session.user.id);
+        await loadNotifications(session.user.id);
+        void loadProjects();
+        void loadApplications();
+      } else {
+        setCurrentUserId('');
+        setNotifications([]);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        setCurrentUserId(data.session.user.id);
+        void syncAuthProfile(data.session.user.id);
+        void loadNotifications(data.session.user.id);
+      }
+    });
+
+    const realtimeChannel = supabase.channel('live-notifications');
+    realtimeChannel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notifications'
+      },
+      (payload: any) => {
+        if (!currentUserId) return;
+
+        const row = payload.new || payload.old;
+        if (!row || row.user_id !== currentUserId) return;
+
+        if (payload.eventType === 'INSERT') {
+          setNotifications(prev => [{
+            id: row.id,
+            userId: row.user_id,
+            targetRole: row.target_role || 'tester',
+            title: row.title,
+            message: row.message,
+            type: row.type,
+            read: Boolean(row.read),
+            createdAt: row.created_at ? new Date(row.created_at).toISOString().replace('T', ' ').substring(0, 16) : '',
+            relatedProjectId: row.project_id || undefined,
+            relatedSubmissionId: row.submission_id || undefined,
+            amount: row.amount ?? undefined
+          }, ...prev.filter(n => n.id !== row.id)]);
+        }
+
+        if (payload.eventType === 'UPDATE') {
+          setNotifications(prev => prev.map(n => n.id === row.id ? { ...n, read: Boolean(row.read) } : n));
+        }
+      }
+    );
+
+    realtimeChannel.subscribe();
+
+    return () => {
+      mounted = false;
+      realtimeChannel.unsubscribe();
+      listener.subscription.unsubscribe();
+    };
+  }, [currentUserId]);
+
   const setRole = (newRole: UserRole) => {
     setRoleState(newRole);
     if (newRole === 'client') {
@@ -214,47 +770,127 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => {
+    const recipientId = item.userId || currentUserId || testerProfile.id || clientProfile.id;
+    const normalizedTargetRole = item.targetRole || role;
     const newNotif: NotificationItem = {
       ...item,
+      userId: recipientId,
+      targetRole: normalizedTargetRole,
       id: 'notif-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
       read: false,
       createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     };
-    setNotifications(prev => [newNotif, ...prev]);
+
+    setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+
+    if (isSupabaseConfigured && supabase && recipientId) {
+      void supabase.from('notifications').insert({
+        user_id: recipientId,
+        target_role: normalizedTargetRole,
+        title: newNotif.title,
+        message: newNotif.message,
+        type: newNotif.type,
+        read: false,
+        project_id: newNotif.relatedProjectId || null,
+        submission_id: newNotif.relatedSubmissionId || null,
+        amount: newNotif.amount ?? null,
+        created_at: new Date().toISOString()
+      });
+    }
+  };
+
+  const triggerProjectEmail = async (type: 'application' | 'invite', projectId: string, testerId: string, testerName: string, testerEmail: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    if (!testerEmail) return;
+
+    const actionUrl = `${window.location.origin}?project=${project.id}`;
+
+    try {
+      await sendProjectEmail({
+        type,
+        toEmail: testerEmail,
+        toName: testerName || 'Tester',
+        projectTitle: project.title,
+        projectCompany: project.company,
+        projectDescription: project.fullOverview || project.shortDescription,
+        projectDeadline: project.deadline,
+        projectCategory: project.category,
+        actionUrl,
+        projectLink: actionUrl
+      });
+    } catch (error) {
+      console.error('Project email trigger failed:', error);
+    }
+
+    addNotification({
+      userId: testerId,
+      targetRole: 'tester',
+      title: type === 'application' ? 'Application Received' : 'Project Invite Sent',
+      message: type === 'application'
+        ? `Your application for "${project.title}" has been received and the client has been notified.`
+        : `A project invite for "${project.title}" was sent to your email.`,
+      type: type === 'application' ? 'status_update' : 'invite',
+      relatedProjectId: projectId
+    });
   };
 
   // 1. Tester applies to project
-  const applyToProject = (projectId: string, devices: string[], experienceNote: string) => {
-    // Check if already applied
-    const existing = applications.find(a => a.projectId === projectId && a.testerId === testerProfile.id);
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string) => {
+    const userContext = await getActiveUserContext();
+    const effectiveTesterId = testerProfile.id || userContext.userId || currentUserId;
+    const effectiveTesterName = testerProfile.name || 'Tester';
+    const effectiveTesterEmail = testerProfile.email || userContext.email || '';
+
+    const existing = applications.find(a => a.projectId === projectId && a.testerId === effectiveTesterId);
     if (existing) return false;
 
     const project = projects.find(p => p.id === projectId);
+    const newAppId = createApplicationId();
     const newApp: ProjectApplication = {
-      id: 'app-' + Date.now(),
+      id: newAppId,
       projectId,
-      testerId: testerProfile.id,
-      testerName: testerProfile.name,
-      testerEmail: testerProfile.email,
+      testerId: effectiveTesterId,
+      testerName: effectiveTesterName,
+      testerEmail: effectiveTesterEmail,
       testerRating: testerProfile.rating,
       testerTier: testerProfile.tier,
       appliedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
       selectedDevices: devices,
       experienceNote,
-      status: 'pending'
+      status: 'pending',
+      inviteHistory: []
     };
 
     setApplications(prev => [newApp, ...prev]);
 
-    // Notify client
+    if (isSupabaseConfigured && supabase && effectiveTesterId) {
+      void upsertApplicationInSupabase({
+        id: newAppId,
+        project_id: projectId,
+        tester_id: effectiveTesterId,
+        status: 'pending',
+        invite_status: null,
+        selected_devices: devices,
+        experience_note: experienceNote,
+        applied_at: new Date().toISOString(),
+        invite_history: [],
+        last_invite_sent_at: null
+      }).catch(error => console.error('Unable to save application to Supabase:', error));
+    }
+
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
       title: 'New Tester Application',
-      message: `${testerProfile.name} (${testerProfile.tier} Tier, ${testerProfile.rating} rating) applied for "${project?.title || 'Project'}".`,
+      message: `${effectiveTesterName} (${testerProfile.tier} Tier, ${testerProfile.rating} rating) applied for "${project?.title || 'Project'}".`,
       type: 'status_update',
       relatedProjectId: projectId
     });
+
+    if (project && effectiveTesterEmail) {
+      void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail);
+    }
 
     return true;
   };
@@ -264,13 +900,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+    const inviteSentAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nextHistory = [
+      ...(app.inviteHistory || []),
+      { sentAt: inviteSentAt, type: 'invite' as const, note: 'Approved and invite sent' }
+    ];
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
         return {
           ...a,
           status: 'approved',
-          inviteStatus: 'invited'
+          inviteStatus: 'invited',
+          lastInviteSentAt: inviteSentAt,
+          inviteHistory: nextHistory
         };
       }
       return a;
@@ -286,6 +929,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }));
     }
 
+    if (isSupabaseConfigured && supabase) {
+      void updateApplicationInSupabase(app.id, {
+        status: 'approved',
+        invite_status: 'invited',
+        last_invite_sent_at: new Date().toISOString(),
+        invite_history: nextHistory,
+        updated_at: new Date().toISOString()
+      }).catch(error => console.error('Unable to update application in Supabase:', error));
+    }
+
     // Notify tester
     addNotification({
       userId: app.testerId,
@@ -295,6 +948,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: 'invite',
       relatedProjectId: app.projectId
     });
+
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail);
+    }
+  };
+
+  const resendInvite = (appId: string) => {
+    const app = applications.find(a => a.id === appId);
+    if (!app) return;
+    const project = projects.find(p => p.id === app.projectId);
+    const inviteSentAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const nextHistory = [
+      ...(app.inviteHistory || []),
+      { sentAt: inviteSentAt, type: 'resend' as const, note: 'Invite resent to tester' }
+    ];
+
+    setApplications(prev => prev.map(a => {
+      if (a.id === appId) {
+        return {
+          ...a,
+          status: 'approved',
+          inviteStatus: 'invited',
+          lastInviteSentAt: inviteSentAt,
+          inviteHistory: nextHistory
+        };
+      }
+      return a;
+    }));
+
+    if (isSupabaseConfigured && supabase) {
+      void updateApplicationInSupabase(app.id, {
+        status: 'approved',
+        invite_status: 'invited',
+        last_invite_sent_at: new Date().toISOString(),
+        invite_history: nextHistory,
+        updated_at: new Date().toISOString()
+      }).catch(error => console.error('Unable to resend invite in Supabase:', error));
+    }
+
+    addNotification({
+      userId: app.testerId,
+      targetRole: 'tester',
+      title: 'Invite Resent',
+      message: `The invite for "${project?.title || 'your project'}" has been sent again. Please review and act on it.` ,
+      type: 'invite',
+      relatedProjectId: app.projectId
+    });
+
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail);
+    }
   };
 
   // Client rejects application
@@ -793,6 +1497,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setProjects(prev => [newProj, ...prev]);
+    if (isSupabaseConfigured) {
+      void createProjectInSupabase(newProj).catch(error => console.error('Unable to create project in Supabase:', error));
+    }
 
     setClientProfile(prev => ({
       ...prev,
@@ -822,10 +1529,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateProject = (projectId: string, updates: Partial<Project>) => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+    if (isSupabaseConfigured) {
+      void updateProjectInSupabase(projectId, updates).catch(error => console.error('Unable to update project in Supabase:', error));
+    }
   };
 
   const deleteProject = (projectId: string) => {
     setProjects(prev => prev.filter(p => p.id !== projectId));
+    if (isSupabaseConfigured) {
+      void deleteProjectFromSupabase(projectId).catch(error => console.error('Unable to delete project in Supabase:', error));
+    }
   };
 
   const updateTesterProfile = (updates: Partial<TesterProfile>) => {
@@ -836,6 +1549,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .filter(d => d.isActive)
           .map(d => `${d.brand} ${d.model} (${d.os} ${d.osVersion})`);
       }
+
+      void persistProfileToSupabase({
+        role: 'tester',
+        name: updated.name,
+        email: updated.email,
+        avatar: updated.avatar,
+        country: updated.country,
+        city: updated.city,
+        profile_data: {
+          testerProfile: {
+            ...updated,
+            paymentSettings: updated.paymentSettings || emptyTesterProfile.paymentSettings,
+            preferences: updated.preferences || emptyTesterProfile.preferences,
+            deviceFleet: updated.deviceFleet || emptyTesterProfile.deviceFleet,
+            skills: updated.skills || emptyTesterProfile.skills,
+            languages: updated.languages || emptyTesterProfile.languages,
+            academyBadges: updated.academyBadges || emptyTesterProfile.academyBadges
+          }
+        }
+      });
+
       return updated;
     });
     addNotification({
@@ -848,7 +1582,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateClientProfile = (updates: Partial<ClientProfile>) => {
-    setClientProfile(prev => ({ ...prev, ...updates }));
+    setClientProfile(prev => {
+      const updated = { ...prev, ...updates };
+
+      void persistProfileToSupabase({
+        role: 'client',
+        name: updated.name,
+        email: updated.email,
+        company: updated.company,
+        avatar: updated.avatar,
+        country: '',
+        city: '',
+        profile_data: {
+          clientProfile: {
+            ...updated,
+            defaultBountyMatrix: updated.defaultBountyMatrix || emptyClientProfile.defaultBountyMatrix
+          }
+        }
+      });
+
+      return updated;
+    });
     addNotification({
       userId: clientProfile.id,
       targetRole: 'client',
@@ -933,30 +1687,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const markNotificationRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+
+    if (isSupabaseConfigured && supabase && currentUserId) {
+      void supabase.from('notifications').update({ read: true }).eq('id', id).eq('user_id', currentUserId);
+    }
   };
 
   const markAllNotificationsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
 
-  const resetToSampleData = () => {
-    localStorage.removeItem(STORAGE_PREFIX + 'projects');
-    localStorage.removeItem(STORAGE_PREFIX + 'applications');
-    localStorage.removeItem(STORAGE_PREFIX + 'bugReports');
-    localStorage.removeItem(STORAGE_PREFIX + 'taskSubmissions');
-    localStorage.removeItem(STORAGE_PREFIX + 'notifications');
-    localStorage.removeItem(STORAGE_PREFIX + 'walletTransactions');
-    localStorage.removeItem(STORAGE_PREFIX + 'testerProfile');
-    localStorage.removeItem(STORAGE_PREFIX + 'clientProfile');
-
-    setProjects(initialProjects);
-    setApplications(initialApplications);
-    setBugReports(initialBugReports);
-    setTaskSubmissions(initialTaskSubmissions);
-    setNotifications(initialNotifications);
-    setWalletTransactions(initialWalletTransactions);
-    setTesterProfile(initialTesterProfile);
-    setClientProfile(initialClientProfile);
+    if (isSupabaseConfigured && supabase && currentUserId) {
+      void supabase.from('notifications').update({ read: true }).eq('user_id', currentUserId);
+    }
   };
 
   return (
@@ -986,6 +1728,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setTesterPrimaryDevice,
         applyToProject,
         approveApplication,
+        resendInvite,
         rejectApplication,
         acceptInvite,
         declineInvite,
@@ -1002,8 +1745,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateProject,
         deleteProject,
         markNotificationRead,
-        markAllNotificationsRead,
-        resetToSampleData
+        markAllNotificationsRead
       }}
     >
       {children}

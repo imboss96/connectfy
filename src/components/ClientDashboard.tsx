@@ -53,6 +53,7 @@ export const ClientDashboard: React.FC = () => {
     taskSubmissions,
     approveApplication,
     rejectApplication,
+    resendInvite,
     approveBugReport,
     rejectBugReport,
     requestBugRevision,
@@ -831,13 +832,20 @@ export const ClientDashboard: React.FC = () => {
                         </button>
                       </div>
                     ) : isApproved ? (
-                      <div className="text-right">
+                      <div className="text-right space-y-2">
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Approved / Invited
                         </span>
                         <p className="text-[11px] text-slate-500 mt-1">
                           Invite Status: {app.inviteStatus || 'Sent'}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => resendInvite(app.id)}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-semibold rounded-lg border border-slate-700"
+                        >
+                          Resend Invite
+                        </button>
                       </div>
                     ) : (
                       <span className="text-xs font-semibold text-slate-500">

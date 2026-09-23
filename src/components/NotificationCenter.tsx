@@ -10,17 +10,18 @@ interface NotificationCenterProps {
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose, onActionClick }) => {
-  const { notifications, markNotificationRead, markAllNotificationsRead, role } = useApp();
+  const { notifications, markNotificationRead, markAllNotificationsRead, role, testerProfile, clientProfile } = useApp();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   if (!isOpen) return null;
 
-  // Filter notifications relevant to current role or general
+  const currentUserId = role === 'client' ? clientProfile.id : testerProfile.id;
+
   const filteredList = notifications
-    .filter(n => n.targetRole === role || n.targetRole === 'tester')
+    .filter(n => n.userId === currentUserId || n.targetRole === role || n.targetRole === 'tester')
     .filter(n => (filter === 'unread' ? !n.read : true));
 
-  const unreadCount = notifications.filter(n => (n.targetRole === role || n.targetRole === 'tester') && !n.read).length;
+  const unreadCount = notifications.filter(n => (n.userId === currentUserId || n.targetRole === role || n.targetRole === 'tester') && !n.read).length;
 
   const getIcon = (type: NotificationItem['type']) => {
     switch (type) {
@@ -76,7 +77,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          All ({notifications.filter(n => n.targetRole === role || n.targetRole === 'tester').length})
+          All ({notifications.filter(n => n.userId === currentUserId || n.targetRole === role || n.targetRole === 'tester').length})
         </button>
         <button
           onClick={() => setFilter('unread')}
