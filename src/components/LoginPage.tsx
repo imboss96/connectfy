@@ -5,13 +5,12 @@ import { ConnectfyLogo } from './UTestLogo';
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignUp: (name: string, email: string, password: string) => Promise<void>;
-  onGoogleLogin: () => Promise<void>;
   onResetPassword: (email: string) => Promise<void>;
   onBackToLanding: () => void;
   initialMode?: 'login' | 'signup';
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onGoogleLogin, onResetPassword, onBackToLanding, initialMode = 'login' }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onResetPassword, onBackToLanding, initialMode = 'login' }) => {
   const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -104,11 +103,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onGoogl
           <button type="submit" className="login-submit" disabled={isSubmitting}>{isSubmitting ? 'Please wait...' : isSignUp ? 'Create account' : 'Sign in'} {!isSubmitting && <ArrowRight />}</button>
         </form>
 
-        <div className="login-divider"><span>or</span></div>
-        <button type="button" disabled={isSubmitting} onClick={() => { setIsSubmitting(true); onGoogleLogin().catch(error => setError(error instanceof Error ? error.message : 'Unable to continue with Google.')).finally(() => setIsSubmitting(false)); }} className="login-google-button">
-          <span className="login-google-mark" aria-hidden="true">G</span>
-          Continue with Google
-        </button>
         <p className="login-signup">{isSignUp ? 'Already have an account?' : 'New to Connectfy?'} <button type="button" onClick={() => { setIsSignUp(!isSignUp); setError(''); }}>{isSignUp ? 'Sign in' : 'Create an account'}</button></p>
         <div className="login-trust"><ShieldCheck /> Secure workspace access for testers, clients, and operations teams.</div>
       </div>

@@ -388,15 +388,6 @@ const AppExperience: React.FC = () => {
     setScreen('app');
   };
 
-  const handleGoogleLogin = async () => {
-    if (!isSupabaseConfigured || !supabase) throw new Error('Google authentication is not configured. Add Supabase settings to .env.local first.');
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin }
-    });
-    if (error) throw error;
-  };
-
   const handleResetPassword = async (email: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
@@ -440,7 +431,7 @@ const AppExperience: React.FC = () => {
 
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
   if (screen === 'landing') return <LandingPage onGetStarted={() => { setAuthMode('signup'); setScreen('login'); }} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
-  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onGoogleLogin={handleGoogleLogin} onResetPassword={handleResetPassword} onBackToLanding={() => setScreen('landing')} />;
+  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => setScreen('landing')} />;
 
   return (
     <>
