@@ -45,7 +45,7 @@ const buildHtml = (payload) => {
             <div style="font-size:12px;color:#475569;font-weight:700;">${projectCompany} - ${projectCategory}</div>
             <p style="margin:9px 0 0;font-size:14px;line-height:1.55;color:#334155;">${description}</p>
             <p style="margin:10px 0 0;font-size:12px;font-weight:700;color:#10213b;">${deadline}</p>
-            ${resources.length > 0 ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #dfeaf5;"><div style="font-size:11px;text-transform:uppercase;color:#64748b;font-weight:700;">Project resources</div>${resources.map((resource) => `<div style="margin-top:5px;font-size:13px;"><a href="${resource.url}" style="color:#0b5cff;">${resource.label || resource.url}</a></div>`).join('')}</div>` : ''}
+            ${resources.length > 0 ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #dfeaf5;"><div style="font-size:11px;text-transform:uppercase;color:#64748b;font-weight:700;">Project information</div><p style="margin:5px 0 8px;font-size:12px;color:#475569;">Please first refer to the project scope using the link below, then review the project.</p>${resources.map((resource) => `<div style="margin-top:5px;font-size:13px;"><a href="${resource.url}" style="color:#0b5cff;">${resource.label || resource.url}</a></div>`).join('')}</div>` : ''}
           </div>
           <div style="text-align:center;margin:18px 0 2px;"><a href="${projectLink}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">${actionLabel}</a></div>
           <p style="margin:12px 0 0;text-align:center;font-size:11px;line-height:1.4;color:#64748b;">Open the project page for the complete scope, requirements, and attachments.</p>
@@ -73,7 +73,7 @@ const buildText = (payload) => {
     `${projectTitle} | ${projectCompany} | ${projectCategory}`,
     description,
     deadline,
-    resources.length > 0 ? `Resources: ${resources.map((resource) => `${resource.label || 'Link'} - ${resource.url}`).join('; ')}` : '',
+    resources.length > 0 ? `Please first refer to the project scope using this link, then review the project: ${resources.map((resource) => `${resource.label || 'Link'} - ${resource.url}`).join('; ')}` : '',
     '',
     `Open the project: ${projectLink}`
   ].join('\n');

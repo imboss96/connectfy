@@ -24,12 +24,14 @@ import { useApp } from '../context/AppContext';
 import { normalizeProjectStatus } from '../lib/projectStatus';
 import { Project, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
+import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
   const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrackFilter, setSelectedTrackFilter] = useState<'all' | ProjectTrack>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'paused' | 'closed'>('all');
@@ -385,6 +387,7 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
 
                     <div className="flex items-center space-x-2">
+                      <button onClick={() => setEditingProject(project)} className="p-1.5 rounded-lg bg-slate-50 hover:bg-sky-50 text-slate-500 hover:text-sky-600 transition border border-slate-200" title="Edit project listing"><Edit3 className="w-4 h-4" /></button>
                       <button onClick={() => toggleProjectStatus(project)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${isActive ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
                         {normalizeProjectStatus(project.status) === 'active' ? 'Pause' : normalizeProjectStatus(project.status) === 'paused' ? 'Close' : 'Activate'}
                       </button>
@@ -400,6 +403,7 @@ export const AdminProjectManager: React.FC = () => {
       </div>
 
       <AddProjectModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
+      <EditProjectModal project={editingProject} onClose={() => setEditingProject(null)} />
     </div>
   );
 };
