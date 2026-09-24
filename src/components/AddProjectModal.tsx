@@ -183,6 +183,8 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     }
   };
 
+  const isBugBountyProject = track === 'qa_functional';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -220,18 +222,16 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       testCaseBounty: parseFloat(testCaseBounty) || 15
     };
 
-    const isQA = track === 'qa_functional';
-
     createProject({
       title: title.trim(),
       company: company.trim(),
       companyLogo: companyLogo || 'flask',
       category,
       projectTrack: track,
-      paymentModel: isQA ? 'per_approved_bug' : 'per_task',
-      taskUnitName: !isQA ? taskUnitName : undefined,
-      taskRate: !isQA ? parseFloat(taskRate) || 45 : undefined,
-      deliverablesGuide: !isQA
+      paymentModel: isBugBountyProject ? 'per_approved_bug' : 'per_task',
+      taskUnitName: !isBugBountyProject ? taskUnitName : undefined,
+      taskRate: !isBugBountyProject ? parseFloat(taskRate) || 45 : undefined,
+      deliverablesGuide: !isBugBountyProject
         ? {
             overview: shortDescription,
             instructions: deliverablesInstructions,
@@ -464,7 +464,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
           </div>
 
           {/* Section 4: Dynamic Payout Architecture */}
-          {track === 'qa_functional' ? (
+          {isBugBountyProject ? (
             <div className="p-4 bg-[#080D1A] rounded-xl border border-[#1E2E4E] space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white flex items-center gap-1.5">
@@ -527,12 +527,23 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="font-bold text-purple-200 flex items-center gap-1.5">
                   <DollarSign className="w-4 h-4 text-emerald-400" />
-                  Deliverable Contractor Rate & Deliverable Specs
+                  Test Case / Bundle Amount
                 </span>
-                <span className="text-[11px] text-purple-300">Non-QA Marketplace Task</span>
+                <span className="text-[11px] text-purple-300">Used for data collection, bundle work, or completed-slot payouts</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-slate-300 block font-bold mb-1">
+                    Amount per completed bundle / valid submission ($)
+                  </label>
+                  <input
+                    type="number"
+                    value={testCaseBounty}
+                    onChange={(e) => setTestCaseBounty(e.target.value)}
+                    className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-lg px-3 py-2 text-emerald-400 font-black text-sm"
+                  />
+                </div>
                 <div>
                   <label className="text-[11px] text-slate-300 block font-bold mb-1">
                     Rate per Validated Deliverable Batch ($)
@@ -544,6 +555,9 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                     className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-lg px-3 py-2 text-emerald-400 font-black text-sm"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] text-slate-300 block font-bold mb-1">
                     Unit Description

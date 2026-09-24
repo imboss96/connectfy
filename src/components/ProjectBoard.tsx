@@ -466,10 +466,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <div className="bg-[#f3ebff] p-3.5 rounded-xl border border-[#d8c8ff] mb-4 text-xs space-y-1.5 shadow-inner shadow-white/10">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold text-violet-700">
-                        Deliverable Task Rate:
+                        Test Case / Bundle Amount:
                       </span>
                       <span className="text-sm font-black text-emerald-700">
-                        ${project.taskRate?.toFixed(2) || '45.00'} / batch
+                        ${project.bountyStructure.testCaseBounty || project.taskRate?.toFixed(2) || '45.00'} / bundle
                       </span>
                     </div>
                     {project.deliverablesGuide && (
@@ -648,8 +648,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 </div>
               </div>
 
-              {/* Bounty breakdown if QA */}
-              {(!viewingProject.projectTrack || viewingProject.projectTrack === 'qa_functional') && (
+              {/* Payment breakdown */}
+              {viewingProject.projectTrack === 'qa_functional' ? (
                 <div>
                   <h4 className="font-semibold text-slate-800 mb-1">Bounty Structure</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -677,6 +677,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                         ${viewingProject.bountyStructure.testCaseBounty}
                       </span>
                     </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-violet-50 rounded-xl border border-violet-200">
+                  <h4 className="font-semibold text-violet-700 mb-1">Bundle / Slot Payout</h4>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">Test Case / Bundle Amount</span>
+                    <span className="font-black text-emerald-700">
+                      ${viewingProject.bountyStructure.testCaseBounty || viewingProject.taskRate?.toFixed(2) || '45.00'}
+                    </span>
                   </div>
                 </div>
               )}

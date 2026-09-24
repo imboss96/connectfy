@@ -13,14 +13,15 @@ const buildHtml = (payload: Record<string, any>) => {
   const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const projectDescription = formatProjectDescription(payload.projectDescription || '');
-  const actionLabel = payload.type === 'invite' ? 'Accept Invite' : 'Review Project';
+  const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : 'application';
+  const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : 'Review Project';
 
   return `
     <div style="font-family: Arial, sans-serif; background: #f6f9fc; padding: 32px; color: #10213b;">
       <div style="max-width: 620px; margin: 0 auto; background: #ffffff; border: 1px solid #dfeaf5; border-radius: 18px; overflow: hidden;">
         <div style="padding: 24px 28px; background: linear-gradient(135deg, #0f172a 0%, #0b5cff 100%); color: white;">
           <div style="font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.8;">
-            ${payload.type === 'invite' ? 'Project Invite' : 'Project Application'}
+            ${type === 'invite' ? 'Project Invite' : type === 'accepted' ? 'Invite Accepted' : type === 'rejected' ? 'Application Update' : type === 'declined' ? 'Invite Declined' : 'Project Application'}
           </div>
           <h1 style="margin: 12px 0 0; font-size: 28px; line-height: 1.2;">${projectTitle}</h1>
         </div>
@@ -29,9 +30,15 @@ const buildHtml = (payload: Record<string, any>) => {
             Hello ${payload.toName || 'there'},
           </p>
           <p style="font-size: 15px; color: #334155; line-height: 1.7;">
-            ${payload.type === 'invite'
+            ${type === 'invite'
               ? `You have been invited to work on a live opportunity with ${projectCompany}.`
-              : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`}
+              : type === 'accepted'
+                ? `You accepted the invite for ${projectCompany}'s ${projectTitle} project and the project workspace is ready.`
+                : type === 'rejected'
+                  ? `Your application for ${projectCompany}'s ${projectTitle} project was not selected for this cycle.`
+                  : type === 'declined'
+                    ? `You declined the project invite for ${projectCompany}'s ${projectTitle} project.`
+                    : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`}
           </p>
           <div style="background: #f8fbff; border: 1px solid #dfeaf5; border-radius: 12px; padding: 16px 18px; margin: 20px 0;">
             <div style="font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; color: #4c7cff; font-weight: bold;">Project overview</div>
@@ -86,8 +93,8 @@ serve(async (req) => {
       errors.push('Request body must be a JSON object.');
     }
 
-    if (type !== 'application' && type !== 'invite') {
-      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application' or 'invite'.`);
+    if (!['application', 'invite', 'accepted', 'rejected', 'declined'].includes(type)) {
+      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'invite', 'accepted', 'rejected', or 'declined'.`);
     }
 
     if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
@@ -130,7 +137,13 @@ serve(async (req) => {
       to: [{ email: toEmail, name: toName }],
       subject: payload.type === 'invite'
         ? `Project Invite: ${payload.projectTitle || 'New Opportunity'}`
-        : `Application Received: ${payload.projectTitle || 'Project Review'}`,
+        : payload.type === 'accepted'
+          ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
+          : payload.type === 'rejected'
+            ? `Application Update: ${payload.projectTitle || 'Project Review'}`
+            : payload.type === 'declined'
+              ? `Invite Declined: ${payload.projectTitle || 'Project Update'}`
+              : `Application Received: ${payload.projectTitle || 'Project Review'}`,
       htmlContent: buildHtml({ ...payload, projectLink }),
       textContent: buildText({ ...payload, projectLink })
     };

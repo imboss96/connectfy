@@ -49,6 +49,37 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
   })) as Project[];
 }
 
+export function normalizeProjectForPersistence(project: Partial<Project>) {
+  const normalizedStatus = normalizeProjectStatus(project.status);
+
+  return {
+    ...(project.title !== undefined && { title: project.title }),
+    ...(project.company !== undefined && { company: project.company }),
+    ...(project.shortDescription !== undefined && { shortDescription: project.shortDescription }),
+    ...(project.fullOverview !== undefined && { fullOverview: project.fullOverview }),
+    ...(project.category !== undefined && { category: project.category }),
+    ...(project.projectTrack !== undefined && { projectTrack: project.projectTrack }),
+    ...(project.paymentModel !== undefined && { paymentModel: project.paymentModel }),
+    ...(project.taskUnitName !== undefined && { taskUnitName: project.taskUnitName }),
+    ...(project.taskRate !== undefined && { taskRate: project.taskRate }),
+    ...(project.deliverablesGuide !== undefined && { deliverablesGuide: project.deliverablesGuide }),
+    ...(project.companyLogo !== undefined && { companyLogo: project.companyLogo }),
+    ...(project.inScope !== undefined && { inScope: project.inScope }),
+    ...(project.outOfScope !== undefined && { outOfScope: project.outOfScope }),
+    ...(project.requiredDevices !== undefined && { requiredDevices: project.requiredDevices }),
+    ...(project.supportedCountries !== undefined && { supportedCountries: project.supportedCountries }),
+    ...(project.slotsTotal !== undefined && { slotsTotal: project.slotsTotal }),
+    ...(project.slotsFilled !== undefined && { slotsFilled: project.slotsFilled }),
+    ...(project.deadline !== undefined && { deadline: project.deadline }),
+    ...(project.status !== undefined && { status: normalizedStatus }),
+    ...(project.bountyStructure !== undefined && { bountyStructure: project.bountyStructure }),
+    ...(project.totalBudget !== undefined && { totalBudget: project.totalBudget }),
+    ...(project.budgetDisbursed !== undefined && { budgetDisbursed: project.budgetDisbursed }),
+    ...(project.clientId !== undefined && { clientId: project.clientId }),
+    ...(project.createdAt !== undefined && { createdAt: project.createdAt })
+  };
+}
+
 function toProjectRow(project: Project, clientId: string) {
   return {
     client_id: clientId,
@@ -65,7 +96,7 @@ function toProjectRow(project: Project, clientId: string) {
     slots_filled: project.slotsFilled,
     total_budget: project.totalBudget,
     budget_disbursed: project.budgetDisbursed,
-    project_data: project
+    project_data: normalizeProjectForPersistence(project)
   };
 }
 
@@ -86,6 +117,9 @@ export async function createProjectInSupabase(project: Project) {
 
 export async function updateProjectInSupabase(projectId: string, updates: Partial<Project>) {
   if (!supabase) return;
+
+  const projectPayload = normalizeProjectForPersistence(updates);
+
   const { error } = await supabase.from('projects').update({
     ...(updates.title !== undefined && { title: updates.title }),
     ...(updates.company !== undefined && { company: updates.company }),
@@ -100,6 +134,7 @@ export async function updateProjectInSupabase(projectId: string, updates: Partia
     ...(updates.slotsFilled !== undefined && { slots_filled: updates.slotsFilled }),
     ...(updates.totalBudget !== undefined && { total_budget: updates.totalBudget }),
     ...(updates.budgetDisbursed !== undefined && { budget_disbursed: updates.budgetDisbursed }),
+    project_data: projectPayload,
     updated_at: new Date().toISOString()
   }).eq('id', projectId);
   if (error) throw error;

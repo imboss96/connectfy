@@ -1,6 +1,22 @@
 import { supabase } from './supabase';
 
-export type ProjectEmailType = 'application' | 'invite';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined';
+
+export function formatProjectEmailType(type?: string | null): ProjectEmailType {
+  switch (type) {
+    case 'invite':
+      return 'invite';
+    case 'accepted':
+      return 'accepted';
+    case 'rejected':
+      return 'rejected';
+    case 'declined':
+      return 'declined';
+    case 'application':
+    default:
+      return 'application';
+  }
+}
 
 export interface ProjectEmailPayload {
   type: ProjectEmailType;
@@ -11,6 +27,7 @@ export interface ProjectEmailPayload {
   projectDescription: string;
   projectDeadline?: string;
   projectCategory?: string;
+  reason?: string;
   actionUrl: string;
   projectLink?: string;
 }
@@ -22,8 +39,13 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
   }
 
   try {
+    const safePayload = {
+      ...payload,
+      type: formatProjectEmailType(payload.type)
+    };
+
     const { error } = await supabase.functions.invoke('project-email', {
-      body: payload
+      body: safePayload
     });
 
     if (error) throw error;

@@ -16,7 +16,7 @@ import {
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { createProjectInSupabase, deleteProjectFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, upsertApplicationInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
-import { sendProjectEmail } from '../lib/emailService';
+import { formatProjectEmailType, sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
   role: UserRole;
@@ -859,7 +859,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const triggerProjectEmail = async (type: 'application' | 'invite', projectId: string, testerId: string, testerName: string, testerEmail: string) => {
+  const triggerProjectEmail = async (type: 'application' | 'invite' | 'accepted' | 'rejected' | 'declined', projectId: string, testerId: string, testerName: string, testerEmail: string) => {
     const resolvedTesterEmail = await resolveTesterEmail(testerId, testerEmail);
 
     if (!resolvedTesterEmail) {
@@ -922,10 +922,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const resolvedProjectCompany = project?.company || 'Connectfy';
     const resolvedProjectDescription = project?.fullOverview || project?.shortDescription || 'A project opportunity is ready for review.';
     const actionUrl = `${window.location.origin}?project=${projectId}`;
+    const normalizedType = formatProjectEmailType(type);
 
     try {
       const sent = await sendProjectEmail({
-        type,
+        type: normalizedType,
         toEmail: resolvedTesterEmail,
         toName: testerName || 'Tester',
         projectTitle: resolvedProjectTitle,
@@ -933,6 +934,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         projectDescription: resolvedProjectDescription,
         projectDeadline: project?.deadline,
         projectCategory: project?.category || 'Functional',
+        reason: project?.shortDescription || '',
         actionUrl,
         projectLink: actionUrl
       });
@@ -947,11 +949,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerId,
       targetRole: 'tester',
-      title: type === 'application' ? 'Application Received' : 'Project Invite Sent',
-      message: type === 'application'
+      title: normalizedType === 'application' ? 'Application Received' : normalizedType === 'invite' ? 'Project Invite Sent' : normalizedType === 'accepted' ? 'Invite Accepted' : normalizedType === 'rejected' ? 'Application Update' : 'Invite Declined',
+      message: normalizedType === 'application'
         ? `Your application for "${resolvedProjectTitle}" has been received and the client has been notified.`
-        : `A project invite for "${resolvedProjectTitle}" was sent to your email.`,
-      type: type === 'application' ? 'status_update' : 'invite',
+        : normalizedType === 'invite'
+          ? `A project invite for "${resolvedProjectTitle}" was sent to your email.`
+          : normalizedType === 'accepted'
+            ? `You accepted the invite for "${resolvedProjectTitle}".`
+            : normalizedType === 'rejected'
+              ? `Your application for "${resolvedProjectTitle}" was not selected for this cycle.`
+              : `You declined the invite for "${resolvedProjectTitle}".`,
+      type: normalizedType === 'application' ? 'status_update' : normalizedType === 'invite' ? 'invite' : 'status_update',
       relatedProjectId: projectId
     });
   };
@@ -1160,6 +1168,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: 'status_update',
       relatedProjectId: app.projectId
     });
+
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('rejected', app.projectId, app.testerId, app.testerName, app.testerEmail);
+    }
   };
 
   // 3. Tester accepts invite & starts task
@@ -1189,18 +1201,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       relatedProjectId: app.projectId
     });
 
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('accepted', app.projectId, app.testerId, app.testerName, app.testerEmail);
+    }
+
     // Auto open workspace
     setActiveWorkspaceProjectId(app.projectId);
     setActiveTab('tasks');
   };
 
   const declineInvite = (appId: string) => {
+    const app = applications.find(a => a.id === appId);
+    if (!app) return;
+    const project = projects.find(p => p.id === app.projectId);
+
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
         return { ...a, inviteStatus: 'declined' };
       }
       return a;
     }));
+
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('declined', app.projectId, app.testerId, app.testerName, app.testerEmail);
+    }
   };
 
   // 4. Tester submits bug report with attachments
@@ -1666,9 +1690,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateProject = (projectId: string, updates: Partial<Project>) => {
+    const currentProject = projects.find(p => p.id === projectId);
+    const mergedProject = currentProject ? { ...currentProject, ...updates } : updates;
+
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+
     if (isSupabaseConfigured) {
-      void updateProjectInSupabase(projectId, updates).catch(error => console.error('Unable to update project in Supabase:', error));
+      void updateProjectInSupabase(projectId, mergedProject).catch(error => console.error('Unable to update project in Supabase:', error));
     }
   };
 
