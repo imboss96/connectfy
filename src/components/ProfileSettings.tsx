@@ -835,34 +835,47 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                Connectfy Matching Score: 96%
+                Connectfy Matching Score: {Math.max(0, Number(testerProfile.acceptanceRate || 0))}%
               </h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Verified Email & Phone
-                  </span>
-                  <span className="text-emerald-400 font-bold">Done</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> W-8BEN Tax Form Current
-                  </span>
-                  <span className="text-emerald-400 font-bold">Done</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> 5+ Hardware Devices
-                  </span>
-                  <span className="text-emerald-400 font-bold">Done</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Payout Method Linked
-                  </span>
-                  <span className="text-emerald-400 font-bold">Done</span>
-                </div>
-              </div>
+
+              {(() => {
+                const emailVerified = Boolean((testerProfile.email || '').trim());
+                const phoneVerified = Boolean((testerProfile.phone || '').trim());
+                const taxStatusDone = testerProfile.paymentSettings?.taxStatus === 'Verified';
+                const hardwareReady = (testerProfile.devices?.length || 0) >= 5 || (testerProfile.deviceFleet || []).filter((d) => d.isActive).length >= 5;
+                const payoutLinked = (() => {
+                  const settings = testerProfile.paymentSettings;
+                  if (!settings) return false;
+                  if (settings.preferredMethod === 'PayPal') return Boolean((settings.paypalEmail || '').trim());
+                  if (settings.preferredMethod === 'Payoneer') return Boolean((settings.payoneerId || '').trim());
+                  if (settings.preferredMethod === 'Wise') return Boolean((settings.wiseEmail || '').trim());
+                  return Boolean((settings.bankDetails?.bankName || '').trim()) && Boolean((settings.bankDetails?.ibanOrAccount || '').trim());
+                })();
+
+                const checklist = [
+                  { label: 'Email Verified', done: emailVerified },
+                  { label: 'Phone Number Added', done: phoneVerified },
+                  { label: 'W-8BEN Tax Form Current', done: taxStatusDone },
+                  { label: '5+ Hardware Devices', done: hardwareReady },
+                  { label: 'Payout Method Linked', done: payoutLinked }
+                ];
+
+                return (
+                  <div className="space-y-2 text-xs">
+                    {checklist.map(({ label, done }) => (
+                      <div key={label} className="flex items-center justify-between text-slate-300">
+                        <span className="flex items-center gap-1.5">
+                          <Check className={`w-3.5 h-3.5 ${done ? 'text-emerald-400' : 'text-amber-400'}`} />
+                          {label}
+                        </span>
+                        <span className={`font-bold ${done ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {done ? 'Done' : 'Pending'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
           </div>

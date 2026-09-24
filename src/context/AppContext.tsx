@@ -33,7 +33,7 @@ interface AppContextType {
   setActiveWorkspaceProjectId: (id: string | null) => void;
   
   // Navigation tabs
-  activeTab: 'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager';
+  activeTab: 'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager' | 'crm';
   setActiveTab: (tab: any) => void;
   isProfileModalOpen: boolean;
   setIsProfileModalOpen: (open: boolean) => void;
@@ -345,7 +345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return (saved === 'client' || saved === 'tester' || saved === 'admin') ? (saved as UserRole) : 'tester';
   });
 
-  const [activeTab, setActiveTab] = useState<'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager' | 'crm'>('projects');
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
@@ -455,10 +455,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const isDemoProfile = parsed.name === 'Ezra Bosire' || parsed.email === 'ezrahbosire1@gmail.com';
-        if (isDemoProfile) {
-          return emptyTesterProfile;
-        }
         return {
           ...emptyTesterProfile,
           ...parsed,
@@ -487,10 +483,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const isDemoProfile = parsed.name === 'Ezra Bosire' || parsed.company === 'Connectfy';
-        if (isDemoProfile) {
-          return emptyClientProfile;
-        }
         return {
           ...emptyClientProfile,
           ...parsed,
@@ -640,6 +632,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const syncAuthProfile = async (userId: string) => {
       setCurrentUserId(userId);
       try {
+        const savedTester = localStorage.getItem(STORAGE_PREFIX + 'testerProfile');
+        const savedClient = localStorage.getItem(STORAGE_PREFIX + 'clientProfile');
+        const persistedTesterProfile = savedTester ? JSON.parse(savedTester) : null;
+        const persistedClientProfile = savedClient ? JSON.parse(savedClient) : null;
+
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('id, name, email, role, company, avatar_url, country, city, profile_data')
@@ -652,12 +649,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const displayName = profile.name || profile.email?.split('@')[0] || 'User';
         const displayEmail = profile.email || '';
         const displayAvatar = profile.avatar_url || createLetterAvatar(displayName, displayEmail);
-        const savedProfileData = (profile.profile_data && typeof profile.profile_data === 'object') ? profile.profile_data as Record<string, any> : {};
-        const savedTesterProfile = savedProfileData.testerProfile || {};
-        const savedClientProfile = savedProfileData.clientProfile || {};
+        const savedProfileData = (profile.profile_data && typeof profile.profile_data === 'object' && Object.keys(profile.profile_data as Record<string, any>).length > 0)
+          ? profile.profile_data as Record<string, any>
+          : {};
+        const savedTesterProfile = savedProfileData.testerProfile || persistedTesterProfile || {};
+        const savedClientProfile = savedProfileData.clientProfile || persistedClientProfile || {};
 
         setTesterProfile({
           ...emptyTesterProfile,
+          ...(persistedTesterProfile || {}),
           ...savedTesterProfile,
           id: userId,
           name: savedTesterProfile.name || displayName,
@@ -691,6 +691,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         setClientProfile({
           ...emptyClientProfile,
+          ...(persistedClientProfile || {}),
           ...savedClientProfile,
           id: userId,
           name: savedClientProfile.name || (profile.role === 'client' || profile.role === 'admin' ? displayName : ''),

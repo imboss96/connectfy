@@ -156,7 +156,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
               return (
                 <div
                   key={inv.id}
-                  className="bg-gradient-to-r from-amber-950/30 via-[#0B132B] to-[#0B132B] border border-amber-500/40 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-md"
+                  className="bg-gradient-to-r from-amber-950/30 via-[#0B132B] to-[#0B132B] border border-amber-500/40 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-md backdrop-blur-none blur-none"
                 >
                   <div className="flex items-start justify-between">
                     <div>
@@ -226,7 +226,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
               return (
                 <div
                   key={app.id}
-                  className="p-4 bg-[#080D1A] border border-[#1E2E4E] rounded-xl space-y-3"
+                  className="p-4 bg-[#080D1A] border border-[#1E2E4E] rounded-xl space-y-3 backdrop-blur-none blur-none"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center space-x-3">
@@ -234,7 +234,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                       <div>
                         <h4 className="text-sm font-bold text-white">{project.title}</h4>
                         <p className="text-xs text-slate-400">
-                          Applied on {app.appliedDate} • {app.selectedDevices.join(', ')}
+                          Applied on {app.appliedDate}
                         </p>
                       </div>
                     </div>

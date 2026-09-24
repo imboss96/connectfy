@@ -8,6 +8,7 @@ import { TestWorkspace } from './components/TestWorkspace';
 import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
+import { CRMSection } from './components/CRMSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -52,12 +53,12 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
   };
 
   return (
-    <div className="theme-shell min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B1120] text-slate-100 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
+    <div className="theme-shell min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#f3f4f6] text-slate-900 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
       {/* Top Navigation */}
       <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} onRequestAdminAccess={onRequestAdminAccess} />
 
       {/* Freelance Scope Quick Bar - shown on tablet/desktop to avoid mobile horizontal blowout */}
-      <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#0B132B]/80 border-b border-[#1E2E4E] px-3 sm:px-4 py-2 text-xs text-slate-400 md:ml-64 md:w-[calc(100%-16rem)]">
+      <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#edf7fb] border-b border-[#dfe7eb] px-3 sm:px-4 py-2 text-xs text-slate-500 md:ml-64 md:w-[calc(100%-16rem)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto scrollbar-none min-w-0">
           <div className="flex items-center space-x-2 shrink-0">
             <span className="font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
@@ -91,7 +92,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
       </div>
 
       {/* Main Container with responsive padding and mobile bottom nav space */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden md:ml-64 md:w-[calc(100%-16rem)]">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden bg-[#f3f4f6] text-slate-800 md:ml-64 md:w-[calc(100%-16rem)]">
         {/* If Active Workspace is open */}
         {activeWorkspaceProjectId ? (
           <TestWorkspace
@@ -107,7 +108,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             }}
           />
         ) : activeTab === 'admin_manager' || role === 'admin' ? (
-          activeTab === 'projects' ? (
+          activeTab === 'crm' ? (
+            <CRMSection />
+          ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
             />
@@ -203,6 +206,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <ShieldCheck className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">PM Ops</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('crm')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'crm'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">CRM</span>
               </button>
 
               {/* Listings */}

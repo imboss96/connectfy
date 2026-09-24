@@ -464,16 +464,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </div>
                 ) : (
                   <div className="bg-[#f3ebff] p-3.5 rounded-xl border border-[#d8c8ff] mb-4 text-xs space-y-1.5 shadow-inner shadow-white/10">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-violet-700">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-violet-900">
                         Test Case / Bundle Amount:
                       </span>
-                      <span className="text-sm font-black text-emerald-700">
+                      <span className="text-sm font-black text-emerald-800">
                         ${project.bountyStructure.testCaseBounty || project.taskRate?.toFixed(2) || '45.00'} / bundle
                       </span>
                     </div>
                     {project.deliverablesGuide && (
-                      <p className="text-[11px] text-slate-700 line-clamp-1">
+                      <p className="text-[11px] text-slate-800 line-clamp-1">
                         Format: <strong className="text-slate-900">{project.deliverablesGuide.fileFormat}</strong> • Min Samples: <strong className="text-slate-900">{project.deliverablesGuide.sampleCountRequired} items</strong>
                       </p>
                     )}
