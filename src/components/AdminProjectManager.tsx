@@ -21,6 +21,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { normalizeProjectStatus } from '../lib/projectStatus';
 import { Project, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { ProjectIcon } from './ProjectIcon';
@@ -31,7 +32,7 @@ export const AdminProjectManager: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrackFilter, setSelectedTrackFilter] = useState<'all' | ProjectTrack>('all');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'completed'>('all');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'paused' | 'closed'>('all');
   const [editingSlotsId, setEditingSlotsId] = useState<string | null>(null);
   const [newSlotsInput, setNewSlotsInput] = useState<string>('');
   const [applicationSearch, setApplicationSearch] = useState('');
@@ -40,7 +41,7 @@ export const AdminProjectManager: React.FC = () => {
 
   // Metrics
   const totalProjectsCount = projects.length;
-  const activeProjectsCount = projects.filter((p) => p.status === 'active').length;
+  const activeProjectsCount = projects.filter((p) => normalizeProjectStatus(p.status) === 'active').length;
   const totalEscrowBudget = projects.reduce((acc, p) => acc + (p.totalBudget || 0), 0);
   const totalSlotsCapacity = projects.reduce((acc, p) => acc + (p.slotsTotal || 0), 0);
   const totalSlotsFilled = projects.reduce((acc, p) => acc + (p.slotsFilled || 0), 0);
@@ -48,7 +49,7 @@ export const AdminProjectManager: React.FC = () => {
   // Filtered projects
   const filteredProjects = projects.filter((p) => {
     const matchesTrack = selectedTrackFilter === 'all' || p.projectTrack === selectedTrackFilter;
-    const matchesStatus = selectedStatusFilter === 'all' || p.status === selectedStatusFilter;
+    const matchesStatus = selectedStatusFilter === 'all' || normalizeProjectStatus(p.status) === selectedStatusFilter;
     const matchesSearch =
       searchQuery === '' ||
       p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -84,8 +85,13 @@ export const AdminProjectManager: React.FC = () => {
   };
 
   const toggleProjectStatus = (proj: Project) => {
-    const nextStatus = proj.status === 'active' ? 'completed' : 'active';
-    updateProject(proj.id, { status: nextStatus });
+    const currentStatus = normalizeProjectStatus(proj.status);
+    const nextStatus =
+      currentStatus === 'active' ? 'paused' :
+      currentStatus === 'paused' ? 'closed' :
+      'active';
+
+    updateProject(proj.id, { status: nextStatus as Project['status'] });
   };
 
   const handleSaveSlots = (projectId: string) => {
@@ -296,7 +302,8 @@ export const AdminProjectManager: React.FC = () => {
             <option value="all">All Statuses</option>
             <option value="active">Active Only</option>
             <option value="upcoming">Upcoming</option>
-            <option value="completed">Completed / Closed</option>
+            <option value="paused">Paused</option>
+            <option value="closed">Closed</option>
           </select>
 
           <button onClick={() => setIsAddModalOpen(true)} className="px-3.5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 transition shadow">
@@ -323,7 +330,8 @@ export const AdminProjectManager: React.FC = () => {
           <div className="grid grid-cols-1 gap-3.5">
             {filteredProjects.map((project) => {
               const projectApps = applications.filter((a) => a.projectId === project.id);
-              const isActive = project.status === 'active';
+              const normalizedStatus = normalizeProjectStatus(project.status);
+              const isActive = normalizedStatus === 'active';
               const isEditingThis = editingSlotsId === project.id;
 
               return (
@@ -334,7 +342,7 @@ export const AdminProjectManager: React.FC = () => {
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm sm:text-base font-bold text-slate-900">{project.title}</h3>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${isActive ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>{project.status}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${isActive ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>{normalizedStatus}</span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#007AFF]/10 text-[#0F7CC9] border border-[#007AFF]/20">{project.category}</span>
                       </div>
 
@@ -377,7 +385,9 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
 
                     <div className="flex items-center space-x-2">
-                      <button onClick={() => toggleProjectStatus(project)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${isActive ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{isActive ? 'Pause / Close' : 'Activate'}</button>
+                      <button onClick={() => toggleProjectStatus(project)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${isActive ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
+                        {normalizeProjectStatus(project.status) === 'active' ? 'Pause' : normalizeProjectStatus(project.status) === 'paused' ? 'Close' : 'Activate'}
+                      </button>
 
                       <button onClick={() => { if (confirm(`Are you sure you want to remove "${project.title}" from the listings?`)) { deleteProject(project.id); } }} className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition border border-slate-200" title="Remove project listing"><Trash2 className="w-4 h-4" /></button>
                     </div>

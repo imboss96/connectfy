@@ -1,4 +1,5 @@
 import { Project } from '../types';
+import { normalizeProjectStatus } from './projectStatus';
 import { supabase } from './supabase';
 
 type ProjectRow = {
@@ -39,7 +40,7 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
     category: row.category,
     projectTrack: row.project_track || undefined,
     paymentModel: row.payment_model || undefined,
-    status: row.status,
+    status: normalizeProjectStatus(row.status),
     deadline: row.deadline || '',
     slotsTotal: row.slots_total,
     slotsFilled: row.slots_filled,
@@ -58,7 +59,7 @@ function toProjectRow(project: Project, clientId: string) {
     category: project.category,
     project_track: project.projectTrack || null,
     payment_model: project.paymentModel || null,
-    status: project.status,
+    status: normalizeProjectStatus(project.status),
     deadline: project.deadline || null,
     slots_total: project.slotsTotal,
     slots_filled: project.slotsFilled,
@@ -93,7 +94,7 @@ export async function updateProjectInSupabase(projectId: string, updates: Partia
     ...(updates.category !== undefined && { category: updates.category }),
     ...(updates.projectTrack !== undefined && { project_track: updates.projectTrack }),
     ...(updates.paymentModel !== undefined && { payment_model: updates.paymentModel }),
-    ...(updates.status !== undefined && { status: updates.status }),
+    ...(updates.status !== undefined && { status: normalizeProjectStatus(updates.status) }),
     ...(updates.deadline !== undefined && { deadline: updates.deadline }),
     ...(updates.slotsTotal !== undefined && { slots_total: updates.slotsTotal }),
     ...(updates.slotsFilled !== undefined && { slots_filled: updates.slotsFilled }),

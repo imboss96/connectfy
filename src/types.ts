@@ -186,7 +186,7 @@ export interface Project {
   slotsTotal: number;
   slotsFilled: number;
   deadline: string;
-  status: 'active' | 'upcoming' | 'completed';
+  status: 'active' | 'upcoming' | 'paused' | 'closed';
   bountyStructure: ProjectBountyStructure;
   totalBudget: number;
   budgetDisbursed: number;

@@ -23,6 +23,7 @@ import {
   Plus
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { isProjectOpenForApplications } from '../lib/projectStatus';
 import { Project, DeviceType, ProjectCategory, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { ProjectIcon } from './ProjectIcon';
@@ -102,6 +103,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   // Filtering
   const filteredProjects = projects.filter((proj) => {
+    if (!isProjectOpenForApplications(proj)) return false;
+
     const matchesSearch =
       proj.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       proj.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -127,6 +130,11 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   };
 
   const handleOpenApplyModal = (project: Project) => {
+    if (!isProjectOpenForApplications(project)) {
+      setApplyError('This project is no longer accepting applications.');
+      return;
+    }
+
     setApplyingProject(project);
     setSelectedDevices(testerProfile.devices.slice(0, 2));
 

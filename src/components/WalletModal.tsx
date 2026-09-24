@@ -22,6 +22,49 @@ interface WalletModalProps {
   onClose: () => void;
 }
 
+type PaymentMethod = 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise';
+
+const PaymentMethodLogo: React.FC<{ method: PaymentMethod; className?: string }> = ({ method, className = 'h-5 w-5' }) => {
+  const commonProps = { className, viewBox: '0 0 32 32', fill: 'none' } as const;
+
+  switch (method) {
+    case 'PayPal':
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#0F6BFF"/>
+          <path d="M10 18.5C10 15.7 12.1 13.5 15.1 13.5H18.5C21.8 13.5 24.1 15.8 24.1 19.1C24.1 22.5 21.7 25 18.2 25H14.4C13.1 25 12 24 12 22.7L10.7 16.9C10.5 15.9 10.9 15.1 11.7 15.1H15.4C17.8 15.1 19.2 16.3 19.2 18.4C19.2 20.4 17.7 21.6 15.5 21.6H13.7L13.1 18.5H10Z" fill="white"/>
+          <path d="M12.9 11.3L13.7 8.8C14 7.9 14.7 7.3 15.8 7.3H19.1C20.8 7.3 22.1 8.4 22.1 10.2C22.1 11.8 21 12.8 19.2 12.8H17.2L16.5 11.3H12.9Z" fill="#A7D1FF"/>
+        </svg>
+      );
+    case 'Wise':
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#1F5CFF"/>
+          <path d="M9 10.5H18.3C21.2 10.5 23.5 12.8 23.5 15.8C23.5 18.7 21.2 21 18.3 21H13.7L15.8 18.2H18.2C19.6 18.2 20.7 17.1 20.7 15.7C20.7 14.3 19.6 13.2 18.2 13.2H11.8L9 10.5Z" fill="white"/>
+          <path d="M10.8 15.9H12.9L9.8 21H7.6L10.8 15.9ZM13.3 9.5H15.9L12.8 14.7H10.2L13.3 9.5Z" fill="#DDEBFF"/>
+        </svg>
+      );
+    case 'Payoneer':
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#121C2D"/>
+          <path d="M10 23.2V8.8H16.2C19.7 8.8 22 10.8 22 14.2C22 17.7 19.8 19.7 16.1 19.7H14.5V23.2H10ZM14.5 16.3H15.8C17.4 16.3 18.1 15.7 18.1 14.3C18.1 12.8 17.4 12.2 15.8 12.2H14.5V16.3Z" fill="#D7F3FF"/>
+          <path d="M18.5 8.8H22V23.2H18.5V8.8Z" fill="#7CD8FF"/>
+        </svg>
+      );
+    case 'Direct Bank Wire':
+    default:
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#0F766E"/>
+          <path d="M9 11.5C9 10.1 10.1 9 11.5 9H20.5C21.9 9 23 10.1 23 11.5V20.5C23 21.9 21.9 23 20.5 23H11.5C10.1 23 9 21.9 9 20.5V11.5Z" fill="white" fillOpacity="0.12"/>
+          <path d="M11 12.5H21M11 16H21M11 19.5H17.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+          <path d="M13.5 9V6.5M18.5 9V6.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      );
+  }
+};
+
 export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
   const { testerProfile, walletTransactions, requestPayout } = useApp();
   
