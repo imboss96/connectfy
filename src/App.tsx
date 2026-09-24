@@ -10,6 +10,7 @@ import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import {
@@ -337,10 +338,38 @@ export default function App() {
 
 const AppExperience: React.FC = () => {
   const { setRole } = useApp();
-  const [screen, setScreen] = useState<'landing' | 'login' | 'app'>('landing');
+  const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
+  const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin || 'http://localhost:5173').replace(/\/$/, '');
+
+  const isRecoveryUrl = () => {
+    const currentUrl = window.location.href;
+    const hrefLower = currentUrl.toLowerCase();
+    const path = window.location.pathname.toLowerCase();
+    const hasRecoveryToken = /(?:[?#].*|^).*?(?:type=recovery|access_token=|refresh_token=)/i.test(currentUrl);
+
+    return path.startsWith('/reset-password')
+      || hrefLower.includes('reset=true')
+      || hrefLower.includes('type=recovery')
+      || hasRecoveryToken;
+  };
+
+  const syncScreenFromUrl = () => {
+    if (isRecoveryUrl()) {
+      setScreen('reset');
+      return;
+    }
+
+    if (screen === 'reset') {
+      setScreen('login');
+    }
+  };
+
+  useEffect(() => {
+    syncScreenFromUrl();
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -349,11 +378,18 @@ const AppExperience: React.FC = () => {
     }
     const client = supabase;
     const syncSession = async (session: { user: { id: string } } | null) => {
+      if (isRecoveryUrl()) {
+        setScreen('reset');
+        setIsAuthLoading(false);
+        return;
+      }
+
       if (!session) {
         setScreen(current => current === 'app' ? 'landing' : current);
         setIsAuthLoading(false);
         return;
       }
+
       setScreen('app');
       if (session) {
         const { data: profile } = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
@@ -362,7 +398,12 @@ const AppExperience: React.FC = () => {
       setIsAuthLoading(false);
     };
     client.auth.getSession().then(({ data }) => void syncSession(data.session));
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = client.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' && isRecoveryUrl()) {
+        setScreen('reset');
+        setIsAuthLoading(false);
+        return;
+      }
       void syncSession(session);
     });
     return () => listener.subscription.unsubscribe();
@@ -390,8 +431,18 @@ const AppExperience: React.FC = () => {
 
   const handleResetPassword = async (email: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    const redirectUrl = `${appUrl}/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectUrl });
     if (error) throw error;
+  };
+
+  const handleResetPasswordSubmit = async (newPassword: string) => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    await supabase.auth.signOut();
+    setScreen('login');
+    setAuthMode('login');
   };
 
   const handleSignUp = async (name: string, email: string, password: string) => {
@@ -400,7 +451,10 @@ const AppExperience: React.FC = () => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } }
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: appUrl
+      }
     });
     if (error) throw error;
     if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
@@ -432,6 +486,7 @@ const AppExperience: React.FC = () => {
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
   if (screen === 'landing') return <LandingPage onGetStarted={() => { setAuthMode('signup'); setScreen('login'); }} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
   if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => setScreen('landing')} />;
+  if (screen === 'reset') return <ResetPasswordPage onSubmit={handleResetPasswordSubmit} onBackToLogin={() => { setScreen('login'); setAuthMode('login'); }} />;
 
   return (
     <>
