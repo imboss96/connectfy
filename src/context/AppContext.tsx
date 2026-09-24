@@ -915,7 +915,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const resolvedProjectTitle = project?.title || 'Project Opportunity';
     const resolvedProjectCompany = project?.company || 'Connectfy';
-    const resolvedProjectDescription = project?.fullOverview || project?.shortDescription || 'A project opportunity is ready for review.';
+    const resolvedProjectDescription = project?.shortDescription || project?.fullOverview || 'A project opportunity is ready for review.';
     const actionUrl = type === 'invite' && applicationId
       ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
       : `${window.location.origin}?project=${projectId}`;
