@@ -927,10 +927,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .eq('project_id', project.id)
           .order('sort_order', { ascending: true });
 
-        if (!resourceError && Array.isArray(resourceRows) && resourceRows.length > 0) {
+        let savedResources = !resourceError && Array.isArray(resourceRows)
+          ? resourceRows.map((resource: any) => ({ label: resource.label, url: resource.url }))
+          : [];
+
+        if (savedResources.length === 0) {
+          const { data: projectRow } = await supabase
+            .from('projects')
+            .select('project_data')
+            .eq('id', project.id)
+            .maybeSingle();
+          const projectDataResources = projectRow?.project_data?.resources;
+          savedResources = Array.isArray(projectDataResources) ? projectDataResources : [];
+        }
+
+        if (savedResources.length > 0) {
           project = {
             ...project,
-            resources: resourceRows.map((resource: any) => ({ label: resource.label, url: resource.url }))
+            resources: savedResources
           };
         }
       } catch (resourceFetchError) {

@@ -35,13 +35,14 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
     ? await supabase.from('project_resources').select('project_id,label,url,sort_order').in('project_id', projectIds).order('sort_order', { ascending: true })
     : { data: [], error: null };
 
-  if (resourceError) throw resourceError;
   const resourcesByProject = new Map<string, ProjectResource[]>();
-  (resourceRows || []).forEach((resource) => {
-    const existing = resourcesByProject.get(resource.project_id) || [];
-    existing.push({ label: resource.label, url: resource.url });
-    resourcesByProject.set(resource.project_id, existing);
-  });
+  if (!resourceError) {
+    (resourceRows || []).forEach((resource) => {
+      const existing = resourcesByProject.get(resource.project_id) || [];
+      existing.push({ label: resource.label, url: resource.url });
+      resourcesByProject.set(resource.project_id, existing);
+    });
+  }
 
   return ((data || []) as ProjectRow[]).map(row => ({
     ...(row.project_data || {}),
