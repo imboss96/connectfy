@@ -261,6 +261,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
       const result = await uploadToCloudinary(file);
       const secureUrl = result.secure_url;
 
+      if (!secureUrl) {
+        throw new Error('Cloudinary returned no image URL.');
+      }
+
       if (role === 'client' || currentTab === 'client') {
         setClientAvatar(secureUrl);
       } else {
@@ -441,6 +445,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
             <div className="relative">
               <img
+                key={role === 'tester' ? (avatar || testerProfile.avatar || 'default-tester-avatar') : (clientAvatar || clientProfile.avatar || 'default-client-avatar')}
                 src={role === 'tester' ? (avatar || testerProfile.avatar) : (clientAvatar || clientProfile.avatar)}
                 alt={role === 'tester' ? (name || testerProfile.name) : (clientCompanyName || clientProfile.company || 'User')}
                 className="w-16 h-16 rounded-2xl object-cover border-2 border-[#00A3E0]/40 shadow-lg shadow-[#00A3E0]/10"
