@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Briefcase, Mail, MapPin, Search, ShieldCheck, Users } from 'lucide-react';
+import { Briefcase, Mail, MapPin, PlusCircle, Search, ShieldCheck, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
@@ -23,33 +23,70 @@ export const CRMSection: React.FC = () => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [loading, setLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+
+  const loadMembers = async () => {
+    if (!supabase) {
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, role, company, country, city, avatar_url, created_at, last_sign_in_at, profile_data')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setMembers((data || []) as PlatformMember[]);
+    } catch (error) {
+      console.error('Unable to load CRM members:', error);
+      setMembers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadMembers = async () => {
-      if (!supabase) {
-        setMembers([]);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, name, email, role, company, country, city, avatar_url, created_at, last_sign_in_at, profile_data')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setMembers((data || []) as PlatformMember[]);
-      } catch (error) {
-        console.error('Unable to load CRM members:', error);
-        setMembers([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     void loadMembers();
   }, []);
+
+  const handleInviteAdmin = async () => {
+    const trimmed = inviteEmail.trim();
+    if (!trimmed) {
+      setInviteError('Enter an email address first.');
+      setInviteStatus(null);
+      return;
+    }
+
+    if (!supabase) {
+      setInviteError('Supabase is not configured.');
+      setInviteStatus(null);
+      return;
+    }
+
+    setInviting(true);
+    setInviteError(null);
+    setInviteStatus(null);
+
+    try {
+      const { data, error } = await supabase.rpc('invite_user_as_admin', { p_email: trimmed });
+      if (error) throw error;
+
+      setInviteStatus(data ? `Admin access granted to ${trimmed}.` : `Admin access request processed for ${trimmed}.`);
+      setInviteEmail('');
+      await loadMembers();
+    } catch (error) {
+      console.error('Unable to invite admin:', error);
+      setInviteError(error instanceof Error ? error.message : 'Unable to invite user as admin.');
+    } finally {
+      setInviting(false);
+    }
+  };
 
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -113,28 +150,55 @@ export const CRMSection: React.FC = () => {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-3 mb-4">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, email, company, or location..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:border-[#007AFF]"
-            />
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col lg:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, email, company, or location..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:border-[#007AFF]"
+              />
+            </div>
+
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#007AFF]"
+            >
+              <option value="all">All roles</option>
+              <option value="tester">Tester</option>
+              <option value="client">Client</option>
+              <option value="admin">Admin</option>
+            </select>
           </div>
 
-          <select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#007AFF]"
-          >
-            <option value="all">All roles</option>
-            <option value="tester">Tester</option>
-            <option value="client">Client</option>
-            <option value="admin">Admin</option>
-          </select>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="relative flex-1">
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Invite a user by email as admin"
+                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:border-[#007AFF]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleInviteAdmin}
+              disabled={inviting}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#005fce] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <PlusCircle className="w-4 h-4" />
+              {inviting ? 'Inviting...' : 'Invite Admin'}
+            </button>
+          </div>
+
+          {inviteStatus && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{inviteStatus}</div>}
+          {inviteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{inviteError}</div>}
         </div>
 
         {loading ? (
