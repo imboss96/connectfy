@@ -1,5 +1,24 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
+const allowedOrigins = [
+  'https://connectfy.tech',
+  'https://www.connectfy.tech',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+const corsHeadersFor = (origin?: string | null) => {
+  const originHeader = origin && allowedOrigins.includes(origin) ? origin : 'https://connectfy.tech';
+
+  return {
+    'Access-Control-Allow-Origin': originHeader,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400'
+  };
+};
+
 const formatProjectDescription = (description: string) => {
   if (!description) return 'No summary provided yet.';
   const clean = description.replace(/\s+/g, ' ').trim();
@@ -83,6 +102,16 @@ const buildText = (payload: Record<string, any>) => {
 };
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = corsHeadersFor(origin);
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders
+    });
+  }
+
   try {
     const payload = await req.json();
     const type = payload?.type;
@@ -165,13 +194,19 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ ok: false, message }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
     });
   }
 });

@@ -104,9 +104,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Organization', tab: 'profile_settings', icon: Sliders }
         ];
 
-  const personName = role === 'tester' ? testerProfile.name : clientProfile.name;
+  const personName = role === 'tester' || role === 'admin' ? (testerProfile.name || clientProfile.name) : clientProfile.name;
   const personSubtitle = role === 'tester' ? `${testerProfile.tier} QA Tester` : role === 'admin' ? 'Operations & PM' : clientProfile.company;
-  const personAvatar = role === 'tester' ? testerProfile.avatar : clientProfile.avatar;
+  const personAvatar = role === 'tester' || role === 'admin'
+    ? (testerProfile.avatar || clientProfile.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(personName || 'User')}&background=random`)
+    : (clientProfile.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(personName || 'User')}&background=random`);
 
   const renderNavItems = () => (
     <nav className="space-y-1" aria-label="Primary navigation">
