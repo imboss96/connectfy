@@ -278,6 +278,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
     }
   };
 
+  const currentAvatarUrl = role === 'client' ? (clientAvatar || clientProfile.avatar) : (avatar || testerProfile.avatar || clientProfile.avatar);
+
   const handleSaveAll = () => {
     if (role === 'tester' || currentTab !== 'client') {
       updateTesterProfile({
@@ -445,9 +447,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
 
             <div className="relative">
               <img
-                key={role === 'tester' ? (avatar || testerProfile.avatar || 'default-tester-avatar') : (clientAvatar || clientProfile.avatar || 'default-client-avatar')}
-                src={role === 'tester' ? (avatar || testerProfile.avatar) : (clientAvatar || clientProfile.avatar)}
-                alt={role === 'tester' ? (name || testerProfile.name) : (clientCompanyName || clientProfile.company || 'User')}
+                key={currentAvatarUrl || 'default-avatar'}
+                src={currentAvatarUrl}
+                alt={role === 'tester' || role === 'admin' ? (name || testerProfile.name || 'User') : (clientCompanyName || clientProfile.company || 'User')}
                 className="w-16 h-16 rounded-2xl object-cover border-2 border-[#00A3E0]/40 shadow-lg shadow-[#00A3E0]/10"
                 referrerPolicy="no-referrer"
               />
