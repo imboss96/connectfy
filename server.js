@@ -1,47 +1,30 @@
-import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import dotenv from 'dotenv';
+import express from 'express';
 
+dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '/etc/connectfy-email.env' });
+dotenv.config({ path: '.env.local' });
+dotenv.config();
+
+const app = express();
+const port = Number(process.env.PORT || 3002);
+const host = process.env.HOST || '127.0.0.1';
 const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
   'https://connectfy.tech',
   'https://www.connectfy.tech',
-  'http://localhost:5173',
-  'http://localhost:3000'
+  'https://connectf.tech',
+  'https://www.connectf.tech',
+  ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean)
 ];
 
-const isAllowedOrigin = (value?: string | null) => {
-  if (!value) return false;
-
-  return allowedOrigins.includes(value)
-    || value.startsWith('http://localhost:')
-    || value.startsWith('http://127.0.0.1:')
-    || value.startsWith('http://[::1]:');
-};
-
-const corsHeadersFor = (origin?: string | null) => {
-  const originHeader = isAllowedOrigin(origin) ? origin : 'https://connectfy.tech';
-
-  return {
-    'Access-Control-Allow-Origin': originHeader,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-application-name',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin'
-  };
-};
-
-const formatProjectDescription = (description: string) => {
-  if (!description) return 'No summary provided yet.';
-  const clean = description.replace(/\s+/g, ' ').trim();
-  return clean.length > 220 ? `${clean.slice(0, 217)}...` : clean;
-};
-
-const buildHtml = (payload: Record<string, any>) => {
+const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
   const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
-  const projectDescription = formatProjectDescription(payload.projectDescription || '');
+  const description = payload.projectDescription || 'No summary provided yet.';
   const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : 'Review Project';
 
@@ -55,9 +38,7 @@ const buildHtml = (payload: Record<string, any>) => {
           <h1 style="margin: 12px 0 0; font-size: 28px; line-height: 1.2;">${projectTitle}</h1>
         </div>
         <div style="padding: 28px;">
-          <p style="margin-top: 0; font-size: 15px; color: #334155; line-height: 1.7;">
-            Hello ${payload.toName || 'there'},
-          </p>
+          <p style="font-size: 15px; color: #334155; line-height: 1.7;">Hello ${payload.toName || 'there'},</p>
           <p style="font-size: 15px; color: #334155; line-height: 1.7;">
             ${type === 'invite'
               ? `You have been invited to work on a live opportunity with ${projectCompany}.`
@@ -73,29 +54,25 @@ const buildHtml = (payload: Record<string, any>) => {
             <div style="font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; color: #4c7cff; font-weight: bold;">Project overview</div>
             <div style="margin-top: 12px; font-size: 22px; font-weight: 700; color: #0f172a;">${projectTitle}</div>
             <div style="margin-top: 6px; font-size: 14px; color: #475569; font-weight: 600;">${projectCompany} • ${projectCategory}</div>
-            <p style="margin: 12px 0 0; font-size: 14px; color: #475569; line-height: 1.7;">${projectDescription}</p>
+            <p style="margin: 12px 0 0; font-size: 14px; color: #475569; line-height: 1.7;">${description}</p>
             <p style="margin: 14px 0 0; font-size: 13px; color: #0f172a; font-weight: 600;">${deadline}</p>
           </div>
           <div style="text-align: center; margin: 24px 0;">
             <a href="${projectLink}" style="display: inline-block; background: #0b5cff; color: white; text-decoration: none; padding: 14px 22px; border-radius: 10px; font-weight: 700; font-size: 14px;">${actionLabel}</a>
           </div>
-          <p style="font-size: 13px; color: #64748b; line-height: 1.7; margin-bottom: 0;">
-            If the button does not work, copy this link into your browser:<br>
-            <a href="${projectLink}" style="color: #0b5cff; word-break: break-all;">${projectLink}</a>
-          </p>
         </div>
       </div>
     </div>
   `;
 };
 
-const buildText = (payload: Record<string, any>) => {
+const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
   const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
-  const description = formatProjectDescription(payload.projectDescription || '');
+  const description = payload.projectDescription || 'No summary provided yet.';
 
   return [
     `Hello ${payload.toName || 'there'},`,
@@ -111,66 +88,52 @@ const buildText = (payload: Record<string, any>) => {
   ].join('\n');
 };
 
-serve(async (req) => {
-  const origin = req.headers.get('origin');
-  const corsHeaders = corsHeadersFor(origin);
+app.use(express.json({ limit: '1mb' }));
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders
-    });
+    res.sendStatus(204);
+    return;
   }
 
+  next();
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, service: 'connectfy-email-backend' });
+});
+
+app.post('/api/project-email', async (req, res) => {
   try {
-    const payload = await req.json();
-    const type = payload?.type;
+    const payload = req.body || {};
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech';
 
-    const errors: string[] = [];
-
-    if (!payload || typeof payload !== 'object') {
-      errors.push('Request body must be a JSON object.');
-    }
-
-    if (!['application', 'invite', 'accepted', 'rejected', 'declined'].includes(type)) {
-      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'invite', 'accepted', 'rejected', or 'declined'.`);
-    }
-
-    if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
-      errors.push(`Invalid recipient email: ${String(payload?.toEmail ?? 'missing')}.`);
-    }
-
-    if (!payload?.toName || typeof payload.toName !== 'string' || !payload.toName.trim()) {
-      errors.push('Recipient name is required.');
-    }
-
-    if (!payload?.projectTitle || typeof payload.projectTitle !== 'string' || !payload.projectTitle.trim()) {
-      errors.push('Project title is required.');
-    }
-
-    if (!payload?.projectCompany || typeof payload.projectCompany !== 'string' || !payload.projectCompany.trim()) {
-      errors.push('Project company is required.');
-    }
-
-    const brevoApiKey = Deno.env.get('BREVO_API_KEY');
-    const senderEmail = Deno.env.get('BREVO_SENDER_EMAIL') || 'admin@connectfy.tech';
-    const appUrl = Deno.env.get('APP_URL') || 'https://connectfy.tech';
+    const type = payload.type || 'application';
+    const toEmail = String(payload.toEmail || '').trim();
+    const toName = String(payload.toName || '').trim();
 
     if (!brevoApiKey) {
-      errors.push('Missing BREVO_API_KEY environment variable.');
+      return res.status(500).json({ ok: false, message: 'Missing BREVO_API_KEY' });
     }
 
-    if (!senderEmail || typeof senderEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail.trim())) {
-      errors.push(`Invalid BREVO_SENDER_EMAIL: ${String(senderEmail ?? 'missing')}.`);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+      return res.status(400).json({ ok: false, message: 'Invalid recipient email' });
     }
 
-    if (errors.length > 0) {
-      throw new Error(errors.join(' '));
+    if (!toName) {
+      return res.status(400).json({ ok: false, message: 'Recipient name is required' });
     }
 
-    const toEmail = payload.toEmail.trim();
-    const toName = payload.toName.trim();
-    const projectLink = payload.projectLink || payload.actionUrl || `${appUrl}/?project=${encodeURIComponent(payload.projectTitle || 'project')}`;
     const requestPayload = {
       sender: { name: 'Connectfy', email: senderEmail },
       to: [{ email: toEmail, name: toName }],
@@ -183,8 +146,8 @@ serve(async (req) => {
             : payload.type === 'declined'
               ? `Invite Declined: ${payload.projectTitle || 'Project Update'}`
               : `Application Received: ${payload.projectTitle || 'Project Review'}`,
-      htmlContent: buildHtml({ ...payload, projectLink }),
-      textContent: buildText({ ...payload, projectLink })
+      htmlContent: buildHtml({ ...payload, type }),
+      textContent: buildText({ ...payload, type })
     };
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -197,26 +160,19 @@ serve(async (req) => {
       body: JSON.stringify(requestPayload)
     });
 
+    const text = await response.text();
+
     if (!response.ok) {
-      const responseText = await response.text();
-      throw new Error(`Brevo request failed (${response.status}): ${responseText}`);
+      return res.status(response.status).json({ ok: false, message: `Brevo request failed (${response.status}): ${text}` });
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        ...corsHeaders
-      }
-    });
+    return res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ ok: false, message }), {
-      status: 400,
-      headers: {
-        'Content-Type': 'application/json',
-        ...corsHeaders
-      }
-    });
+    return res.status(500).json({ ok: false, message });
   }
+});
+
+app.listen(port, host, () => {
+  console.log(`Email backend running on http://${host}:${port}`);
 });

@@ -56,3 +56,5 @@ begin
   return matched_id;
 end;
 $$;
+
+grant execute on function public.invite_user_as_admin(text) to authenticated;

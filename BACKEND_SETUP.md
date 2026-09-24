@@ -33,7 +33,7 @@ For Google OAuth, enable Google under **Authentication > Providers** in Supabase
 
 ## 3. Configure project email delivery
 
-This app includes a live project application and invite email path using a Supabase Edge Function. The frontend calls the function with the project metadata and candidate email, and the function sends the message using Brevo SMTP.
+This app includes a live project application and invite email path using the Express backend in `server.js`. The frontend calls the backend with the project metadata and candidate email, and the backend sends the message using the Brevo API. Supabase remains responsible for authentication and database access.
 
 1. Create a Brevo account and generate an SMTP API key.
 2. Add the following values to your server environment (not your browser Vite config):
@@ -44,11 +44,20 @@ BREVO_SENDER_EMAIL=admin@connectfy.tech
 APP_URL=https://connectfy.tech
 ```
 
-3. In the Supabase dashboard, deploy the Edge Function:
+3. On the VPS, keep these values server-only in the backend environment:
 
-```bash
-supabase functions deploy project-email
+```env
+PORT=3002
+CORS_ORIGINS=https://connectfy.tech,https://www.connectfy.tech
 ```
+
+Set `VITE_EMAIL_BACKEND_URL` in the frontend build environment to the public HTTPS endpoint, for example:
+
+```env
+VITE_EMAIL_BACKEND_URL=https://api.connectfy.tech/api/project-email
+```
+
+The VPS should expose the backend through Nginx or another HTTPS reverse proxy. Do not expose `BREVO_API_KEY` through a `VITE_` variable.
 
 4. The function payload is:
 

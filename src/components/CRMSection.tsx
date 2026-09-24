@@ -14,7 +14,6 @@ type PlatformMember = {
   city: string | null;
   avatar_url: string | null;
   created_at: string | null;
-  last_sign_in_at: string | null;
   profile_data?: Record<string, any>;
 };
 
@@ -38,7 +37,7 @@ export const CRMSection: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, email, role, company, country, city, avatar_url, created_at, last_sign_in_at, profile_data')
+        .select('id, name, email, role, company, country, city, avatar_url, created_at, profile_data')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -245,14 +244,10 @@ export const CRMSection: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-500 border-t border-slate-200 pt-3">
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500 border-t border-slate-200 pt-3">
                     <div className="rounded-lg bg-white border border-slate-200 px-2.5 py-2">
                       <span className="block text-slate-500">Joined</span>
                       <strong className="text-slate-800">{member.created_at ? new Date(member.created_at).toLocaleDateString() : 'Unknown'}</strong>
-                    </div>
-                    <div className="rounded-lg bg-white border border-slate-200 px-2.5 py-2">
-                      <span className="block text-slate-500">Last Sign In</span>
-                      <strong className="text-slate-800">{member.last_sign_in_at ? new Date(member.last_sign_in_at).toLocaleDateString() : 'No recent login'}</strong>
                     </div>
                     <div className="rounded-lg bg-white border border-slate-200 px-2.5 py-2">
                       <span className="block text-slate-500">Member ID</span>

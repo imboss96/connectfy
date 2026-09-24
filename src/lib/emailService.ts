@@ -33,25 +33,31 @@ export interface ProjectEmailPayload {
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {
-  if (!supabase) {
-    console.warn('Supabase is not configured; project email was not sent.');
-    return false;
-  }
-
   try {
     const safePayload = {
       ...payload,
       type: formatProjectEmailType(payload.type)
     };
 
-    const { error } = await supabase.functions.invoke('project-email', {
-      body: safePayload
+    const backendUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_EMAIL_BACKEND_URL)
+      || 'http://localhost:3002/api/project-email';
+
+    const response = await fetch(backendUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(safePayload)
     });
 
-    if (error) throw error;
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || 'Email backend request failed');
+    }
+
     return true;
   } catch (error) {
-    console.error('Failed to send project email through Supabase Edge Function:', error);
+    console.error('Failed to send project email through local backend:', error);
     return false;
   }
 }
