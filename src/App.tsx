@@ -438,8 +438,18 @@ const AppExperience: React.FC = () => {
 
   const handleResetPasswordSubmit = async (newPassword: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
+
+    const url = new URL(window.location.href);
+    const recoveryCode = url.searchParams.get('code');
+
+    if (recoveryCode) {
+      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(recoveryCode);
+      if (exchangeError) throw exchangeError;
+    }
+
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+
     await supabase.auth.signOut();
     setScreen('login');
     setAuthMode('login');
