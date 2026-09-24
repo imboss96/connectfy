@@ -860,7 +860,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const triggerProjectEmail = async (type: 'application' | 'invite' | 'accepted' | 'rejected' | 'declined', projectId: string, testerId: string, testerName: string, testerEmail: string) => {
+  const triggerProjectEmail = async (type: 'application' | 'invite' | 'accepted' | 'rejected' | 'declined', projectId: string, testerId: string, testerName: string, testerEmail: string, applicationId?: string) => {
     const resolvedTesterEmail = await resolveTesterEmail(testerId, testerEmail);
 
     if (!resolvedTesterEmail) {
@@ -883,8 +883,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             id: data.id,
             title: data.title || 'Project Opportunity',
             company: data.company || 'Connectfy',
-            shortDescription: data.short_description || '',
-            fullOverview: data.full_overview || '',
             category: data.category || 'Functional',
             projectTrack: data.project_track || undefined,
             paymentModel: data.payment_model || undefined,
@@ -896,15 +894,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             budgetDisbursed: Number(data.budget_disbursed || 0),
             clientId: data.client_id || '',
             createdAt: data.created_at || new Date().toISOString(),
-            requiredDevices: Array.isArray(data.project_data?.requiredDevices) ? data.project_data.requiredDevices : [],
-            inScope: Array.isArray(data.project_data?.inScope) ? data.project_data.inScope : [],
-            outOfScope: Array.isArray(data.project_data?.outOfScope) ? data.project_data.outOfScope : [],
-            supportedCountries: Array.isArray(data.project_data?.supportedCountries) ? data.project_data.supportedCountries : [],
-            bountyStructure: data.project_data?.bountyStructure || { critical: 0, high: 0, medium: 0, low: 0, testCaseBounty: 0 },
             taskUnitName: data.project_data?.taskUnitName,
             taskRate: data.project_data?.taskRate,
             deliverablesGuide: data.project_data?.deliverablesGuide,
             companyLogo: data.project_data?.companyLogo,
+            resources: Array.isArray(data.project_data?.resources) ? data.project_data.resources : [],
             fullOverview: data.full_overview || data.project_data?.fullOverview || '',
             shortDescription: data.short_description || data.project_data?.shortDescription || '',
             requiredDevices: Array.isArray(data.project_data?.requiredDevices) ? data.project_data.requiredDevices : [],
@@ -922,7 +916,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const resolvedProjectTitle = project?.title || 'Project Opportunity';
     const resolvedProjectCompany = project?.company || 'Connectfy';
     const resolvedProjectDescription = project?.fullOverview || project?.shortDescription || 'A project opportunity is ready for review.';
-    const actionUrl = `${window.location.origin}?project=${projectId}`;
+    const actionUrl = type === 'invite' && applicationId
+      ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
+      : `${window.location.origin}?project=${projectId}`;
     const normalizedType = formatProjectEmailType(type);
 
     try {
@@ -937,7 +933,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         projectCategory: project?.category || 'Functional',
         reason: project?.shortDescription || '',
         actionUrl,
-        projectLink: actionUrl
+        projectLink: actionUrl,
+        projectResources: project?.resources || []
       });
 
       if (!sent) {
@@ -1097,7 +1094,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     if (project && app.testerEmail) {
-      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail);
+      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id);
     }
   };
 
@@ -1144,7 +1141,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     if (project && app.testerEmail) {
-      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail);
+      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id);
     }
   };
 
@@ -1180,6 +1177,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+    const acceptedAt = new Date().toISOString();
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
@@ -1191,6 +1189,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return a;
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      void updateApplicationInSupabase(app.id, {
+        invite_status: 'accepted',
+        accepted_invite_at: acceptedAt,
+        updated_at: acceptedAt
+      }).catch(error => console.error('Unable to persist accepted invite:', error));
+    }
 
     // Notify client
     addNotification({

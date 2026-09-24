@@ -63,6 +63,11 @@ export interface AttachmentFile {
   uploadedAt: string;
 }
 
+export interface ProjectResource {
+  label: string;
+  url: string;
+}
+
 export interface BugReport {
   id: string;
   projectId: string;
@@ -179,6 +184,7 @@ export interface Project {
   deliverablesGuide?: DeliverablesGuide;
   shortDescription: string;
   fullOverview: string;
+  resources?: ProjectResource[];
   inScope: string[];
   outOfScope: string[];
   requiredDevices: DeviceType[];

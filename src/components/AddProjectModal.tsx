@@ -64,6 +64,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   const [category, setCategory] = useState<ProjectCategory>('Functional');
   const [shortDescription, setShortDescription] = useState('');
   const [fullOverview, setFullOverview] = useState('');
+  const [resourcesText, setResourcesText] = useState('');
   
   // Scope
   const [inScopeText, setInScopeText] = useState('Mobile authentication, payment gateway checkout, push notification triggers, account balance synchronization');
@@ -213,6 +214,13 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    const resources = resourcesText
+      .split('\n')
+      .map((line) => {
+        const [label, ...urlParts] = line.split('|');
+        return { label: label.trim(), url: urlParts.join('|').trim() };
+      })
+      .filter((resource) => resource.label && /^https?:\/\//i.test(resource.url));
 
     const bountyStructure: ProjectBountyStructure = {
       critical: parseFloat(criticalBounty) || 75,
@@ -248,6 +256,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
         shortDescription.trim() ||
         `${category} test cycle managed by ${company} with ${slotsNum} tester slots.`,
       fullOverview: fullOverview.trim() || shortDescription.trim() || `${title} test cycle.`,
+      resources,
       inScope: inScopeList.length > 0 ? inScopeList : ['Functional features', 'Core workflows'],
       outOfScope: outOfScopeList.length > 0 ? outOfScopeList : ['Third party APIs'],
       requiredDevices: selectedDevices,
@@ -460,6 +469,20 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                 placeholder="Elaborate on the background, sprint context, target user flows, and acceptance criteria..."
                 className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl p-3 text-white text-xs focus:outline-none focus:border-[#007AFF] leading-relaxed"
               />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-200 mb-1.5">
+                Project Links & Special Attachments
+              </label>
+              <textarea
+                rows={3}
+                value={resourcesText}
+                onChange={(e) => setResourcesText(e.target.value)}
+                placeholder="One per line: Test build | https://example.com/build"
+                className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl p-3 text-white text-xs focus:outline-none focus:border-[#007AFF] leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">These links appear in the project page and the invite email.</p>
             </div>
           </div>
 

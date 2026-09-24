@@ -57,6 +57,7 @@ export function normalizeProjectForPersistence(project: Partial<Project>) {
     ...(project.company !== undefined && { company: project.company }),
     ...(project.shortDescription !== undefined && { shortDescription: project.shortDescription }),
     ...(project.fullOverview !== undefined && { fullOverview: project.fullOverview }),
+    ...(project.resources !== undefined && { resources: project.resources }),
     ...(project.category !== undefined && { category: project.category }),
     ...(project.projectTrack !== undefined && { projectTrack: project.projectTrack }),
     ...(project.paymentModel !== undefined && { paymentModel: project.paymentModel }),
@@ -204,7 +205,7 @@ export async function upsertApplicationInSupabase(app: {
   if (error) throw error;
 }
 
-export async function updateApplicationInSupabase(appId: string, updates: { status?: string; invite_status?: string | null; last_invite_sent_at?: string | null; invite_history?: any[]; updated_at?: string }) {
+export async function updateApplicationInSupabase(appId: string, updates: { status?: string; invite_status?: string | null; accepted_invite_at?: string | null; last_invite_sent_at?: string | null; invite_history?: any[]; updated_at?: string }) {
   if (!supabase) return;
 
   const { error } = await supabase

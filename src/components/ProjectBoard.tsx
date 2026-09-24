@@ -20,7 +20,8 @@ import {
   Info,
   Layers,
   FileCheck,
-  Plus
+  Plus,
+  ExternalLink
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { isProjectOpenForApplications } from '../lib/projectStatus';
@@ -585,6 +586,20 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   {viewingProject.fullOverview}
                 </p>
               </div>
+
+              {viewingProject.resources && viewingProject.resources.length > 0 && (
+                <div className="p-3 bg-sky-50 rounded-xl border border-sky-200">
+                  <h4 className="font-semibold text-sky-800 mb-2">Project Resources</h4>
+                  <div className="space-y-1.5">
+                    {viewingProject.resources.map((resource) => (
+                      <a key={`${resource.label}-${resource.url}`} href={resource.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sky-700 hover:text-sky-900 underline underline-offset-2">
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                        <span>{resource.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Deliverables Guide if non-QA */}
               {viewingProject.deliverablesGuide && (

@@ -352,7 +352,7 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const { setRole } = useApp();
+  const { setRole, applications, acceptInvite, testerProfile } = useApp();
   const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -385,6 +385,25 @@ const AppExperience: React.FC = () => {
   useEffect(() => {
     syncScreenFromUrl();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const applicationId = params.get('application');
+    const shouldAccept = params.get('accept') === '1';
+    if (!applicationId || !shouldAccept || !testerProfile.id) return;
+
+    const application = applications.find((item) => item.id === applicationId);
+    if (!application || application.testerId !== testerProfile.id) return;
+
+    if (application.inviteStatus !== 'accepted') {
+      acceptInvite(application.id);
+    }
+
+    params.delete('application');
+    params.delete('accept');
+    const query = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }, [applications, acceptInvite, testerProfile.id]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {

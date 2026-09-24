@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { ProjectResource } from '../types';
 
 export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined';
 
@@ -30,6 +31,7 @@ export interface ProjectEmailPayload {
   reason?: string;
   actionUrl: string;
   projectLink?: string;
+  projectResources?: ProjectResource[];
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {
