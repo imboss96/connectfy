@@ -874,7 +874,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
         const { data, error } = await supabase
           .from('projects')
-          .select('*')
+          .select('*, project_resources(label,url,sort_order)')
           .eq('id', projectId)
           .maybeSingle();
 
@@ -907,6 +907,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             outOfScope: Array.isArray(data.project_data?.outOfScope) ? data.project_data.outOfScope : [],
             bountyStructure: data.project_data?.bountyStructure || { critical: 0, high: 0, medium: 0, low: 0, testCaseBounty: 0 }
           } as Project;
+          project.resources = Array.isArray(data.project_resources)
+            ? data.project_resources.sort((a: any, b: any) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).map((resource: any) => ({ label: resource.label, url: resource.url }))
+            : project.resources;
         }
       } catch (fetchError) {
         console.error('Project email trigger failed while fetching project details:', fetchError);
@@ -1664,7 +1667,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const createProject = (newProjectData: Omit<Project, 'id' | 'createdAt' | 'budgetDisbursed' | 'slotsFilled'>) => {
     const newProj: Project = {
       ...newProjectData,
-      id: 'proj-' + Date.now(),
+      id: createApplicationId(),
       createdAt: new Date().toISOString().split('T')[0],
       budgetDisbursed: 0,
       slotsFilled: 0,

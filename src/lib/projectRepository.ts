@@ -1,4 +1,4 @@
-import { Project } from '../types';
+import { Project, ProjectResource } from '../types';
 import { normalizeProjectStatus } from './projectStatus';
 import { supabase } from './supabase';
 
@@ -30,6 +30,19 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
 
   if (error) throw error;
 
+  const projectIds = (data || []).map((row) => row.id);
+  const { data: resourceRows, error: resourceError } = projectIds.length > 0
+    ? await supabase.from('project_resources').select('project_id,label,url,sort_order').in('project_id', projectIds).order('sort_order', { ascending: true })
+    : { data: [], error: null };
+
+  if (resourceError) throw resourceError;
+  const resourcesByProject = new Map<string, ProjectResource[]>();
+  (resourceRows || []).forEach((resource) => {
+    const existing = resourcesByProject.get(resource.project_id) || [];
+    existing.push({ label: resource.label, url: resource.url });
+    resourcesByProject.set(resource.project_id, existing);
+  });
+
   return ((data || []) as ProjectRow[]).map(row => ({
     ...(row.project_data || {}),
     id: row.id,
@@ -45,8 +58,27 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
     slotsTotal: row.slots_total,
     slotsFilled: row.slots_filled,
     totalBudget: Number(row.total_budget),
-    budgetDisbursed: Number(row.budget_disbursed)
+    budgetDisbursed: Number(row.budget_disbursed),
+    resources: resourcesByProject.get(row.id) || (Array.isArray(row.project_data?.resources) ? row.project_data.resources : [])
   })) as Project[];
+}
+
+async function replaceProjectResources(projectId: string, resources: ProjectResource[] = []) {
+  if (!supabase) return;
+
+  const { error: deleteError } = await supabase.from('project_resources').delete().eq('project_id', projectId);
+  if (deleteError) throw deleteError;
+  if (resources.length === 0) return;
+
+  const { error: insertError } = await supabase.from('project_resources').insert(
+    resources.map((resource, sortOrder) => ({
+      project_id: projectId,
+      label: resource.label,
+      url: resource.url,
+      sort_order: sortOrder
+    }))
+  );
+  if (insertError) throw insertError;
 }
 
 export function normalizeProjectForPersistence(project: Partial<Project>) {
@@ -83,6 +115,7 @@ export function normalizeProjectForPersistence(project: Partial<Project>) {
 
 function toProjectRow(project: Project, clientId: string) {
   return {
+    ...(project.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(project.id) && { id: project.id }),
     client_id: clientId,
     title: project.title,
     company: project.company,
@@ -112,8 +145,9 @@ export async function createProjectInSupabase(project: Project) {
   if (!supabase) return;
   const clientId = await requireUserId();
   if (!clientId) throw new Error('You must be signed in to create a project.');
-  const { error } = await supabase.from('projects').insert(toProjectRow(project, clientId));
+  const { data, error } = await supabase.from('projects').insert(toProjectRow(project, clientId)).select('id').single();
   if (error) throw error;
+  await replaceProjectResources(data.id, project.resources);
 }
 
 export async function updateProjectInSupabase(projectId: string, updates: Partial<Project>) {
@@ -139,6 +173,7 @@ export async function updateProjectInSupabase(projectId: string, updates: Partia
     updated_at: new Date().toISOString()
   }).eq('id', projectId);
   if (error) throw error;
+  if (updates.resources !== undefined) await replaceProjectResources(projectId, updates.resources);
 }
 
 export async function deleteProjectFromSupabase(projectId: string) {

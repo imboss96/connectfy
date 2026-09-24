@@ -27,7 +27,7 @@ const buildHtml = (payload) => {
   const resources = Array.isArray(payload.projectResources)
     ? payload.projectResources.filter((resource) => resource && /^https?:\/\//i.test(resource.url)).slice(0, 4)
     : [];
-  const consentLink = resources[0]?.url || projectLink;
+  const consentLink = resources[0]?.url || '';
   const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : 'Open Project';
   const greetingText = type === 'invite'
@@ -44,7 +44,7 @@ const buildHtml = (payload) => {
           <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:#334155;">${greetingText}</p>
           <h2 style="margin:0 0 8px;font-size:16px;color:#10213b;">Project Overview</h2>
           <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:#334155;">${description}</p>
-          <p style="margin:0 0 18px;font-size:14px;"><a href="${consentLink}" style="color:#0b5cff;font-weight:700;">Submit Your Consent Here</a></p>
+          ${consentLink ? `<p style="margin:0 0 18px;font-size:14px;"><a href="${consentLink}" style="color:#0b5cff;font-weight:700;">Submit Your Consent Here</a></p>` : ''}
           <p style="margin:0 0 20px;font-size:14px;font-weight:700;color:#10213b;">${deadline}</p>
           <div style="text-align:center;margin:0 0 22px;"><a href="${projectLink}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">${actionLabel}</a></div>
           <p style="margin:0;font-size:14px;line-height:1.5;color:#334155;">Best,<br>Connectfy Team</p>
@@ -60,7 +60,7 @@ const buildText = (payload) => {
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const description = String(payload.projectDescription || 'No summary provided yet.').replace(/\s+/g, ' ').trim().slice(0, 260);
   const resources = Array.isArray(payload.projectResources) ? payload.projectResources.slice(0, 4) : [];
-  const consentLink = resources[0]?.url || projectLink;
+  const consentLink = resources[0]?.url || '';
 
   return [
     `Hello ${payload.toName || 'there'},`,
@@ -69,7 +69,7 @@ const buildText = (payload) => {
     'Project Overview',
     description,
     '',
-    `Submit Your Consent Here: ${consentLink}`,
+    consentLink ? `Submit Your Consent Here: ${consentLink}` : '',
     deadline,
     '',
     `Accept Invite: ${projectLink}`,
