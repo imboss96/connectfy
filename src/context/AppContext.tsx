@@ -919,6 +919,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const resolvedProjectTitle = project?.title || 'Project Opportunity';
     const resolvedProjectCompany = project?.company || 'Connectfy';
     const resolvedProjectDescription = project?.shortDescription || project?.fullOverview || 'A project opportunity is ready for review.';
+    if (project && isSupabaseConfigured && supabase && (!project.resources || project.resources.length === 0)) {
+      try {
+        const { data: resourceRows, error: resourceError } = await supabase
+          .from('project_resources')
+          .select('label,url,sort_order')
+          .eq('project_id', project.id)
+          .order('sort_order', { ascending: true });
+
+        if (!resourceError && Array.isArray(resourceRows) && resourceRows.length > 0) {
+          project = {
+            ...project,
+            resources: resourceRows.map((resource: any) => ({ label: resource.label, url: resource.url }))
+          };
+        }
+      } catch (resourceFetchError) {
+        console.warn('Unable to refresh project resources before email:', resourceFetchError);
+      }
+    }
     const actionUrl = type === 'invite' && applicationId
       ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
       : `${window.location.origin}?project=${projectId}`;
