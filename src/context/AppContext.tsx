@@ -513,16 +513,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) return;
 
+      const testerSnapshot = profileData.testerProfile || testerProfile;
+      const clientSnapshot = profileData.clientProfile || clientProfile;
+
+      const fullProfileData = {
+        testerProfile: {
+          ...emptyTesterProfile,
+          ...testerSnapshot,
+          paymentSettings: {
+            ...emptyTesterProfile.paymentSettings,
+            ...(testerSnapshot.paymentSettings || {})
+          },
+          preferences: {
+            ...emptyTesterProfile.preferences,
+            ...(testerSnapshot.preferences || {})
+          },
+          deviceFleet: testerSnapshot.deviceFleet || emptyTesterProfile.deviceFleet,
+          devices: testerSnapshot.devices || emptyTesterProfile.devices,
+          skills: testerSnapshot.skills || emptyTesterProfile.skills,
+          languages: testerSnapshot.languages || emptyTesterProfile.languages,
+          academyBadges: testerSnapshot.academyBadges || emptyTesterProfile.academyBadges
+        },
+        clientProfile: {
+          ...emptyClientProfile,
+          ...clientSnapshot,
+          defaultBountyMatrix: {
+            ...emptyClientProfile.defaultBountyMatrix,
+            ...(clientSnapshot.defaultBountyMatrix || {})
+          }
+        }
+      };
+
       await supabase.from('profiles').upsert({
         id: user.id,
-        email: profileData.email || user.email || '',
-        name: profileData.name || '',
-        company: profileData.company || '',
-        avatar_url: profileData.avatar || null,
-        country: profileData.country || '',
-        city: profileData.city || '',
-        role: profileData.role || 'tester',
-        profile_data: profileData.profile_data || {}
+        email: profileData.email || testerSnapshot.email || clientSnapshot.email || user.email || '',
+        name: profileData.name || testerSnapshot.name || clientSnapshot.name || '',
+        company: profileData.company || clientSnapshot.company || '',
+        avatar_url: profileData.avatar || testerSnapshot.avatar || clientSnapshot.avatar || null,
+        country: profileData.country || testerSnapshot.country || '',
+        city: profileData.city || testerSnapshot.city || '',
+        role: profileData.role || role || 'tester',
+        profile_data: fullProfileData
       }, { onConflict: 'id' });
     } catch (error) {
       console.error('Unable to save profile to Supabase:', error);
@@ -1664,15 +1695,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         avatar: updated.avatar,
         country: updated.country,
         city: updated.city,
+        testerProfile: updated,
+        clientProfile,
         profile_data: {
           testerProfile: {
+            ...emptyTesterProfile,
             ...updated,
-            paymentSettings: updated.paymentSettings || emptyTesterProfile.paymentSettings,
-            preferences: updated.preferences || emptyTesterProfile.preferences,
+            paymentSettings: {
+              ...emptyTesterProfile.paymentSettings,
+              ...(updated.paymentSettings || {})
+            },
+            preferences: {
+              ...emptyTesterProfile.preferences,
+              ...(updated.preferences || {})
+            },
             deviceFleet: updated.deviceFleet || emptyTesterProfile.deviceFleet,
             skills: updated.skills || emptyTesterProfile.skills,
             languages: updated.languages || emptyTesterProfile.languages,
             academyBadges: updated.academyBadges || emptyTesterProfile.academyBadges
+          },
+          clientProfile: {
+            ...emptyClientProfile,
+            ...clientProfile,
+            defaultBountyMatrix: {
+              ...emptyClientProfile.defaultBountyMatrix,
+              ...(clientProfile.defaultBountyMatrix || {})
+            }
           }
         }
       });
@@ -1700,10 +1748,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         avatar: updated.avatar,
         country: '',
         city: '',
+        testerProfile,
+        clientProfile: updated,
         profile_data: {
+          testerProfile: {
+            ...emptyTesterProfile,
+            ...testerProfile,
+            paymentSettings: {
+              ...emptyTesterProfile.paymentSettings,
+              ...(testerProfile.paymentSettings || {})
+            },
+            preferences: {
+              ...emptyTesterProfile.preferences,
+              ...(testerProfile.preferences || {})
+            },
+            deviceFleet: testerProfile.deviceFleet || emptyTesterProfile.deviceFleet,
+            skills: testerProfile.skills || emptyTesterProfile.skills,
+            languages: testerProfile.languages || emptyTesterProfile.languages,
+            academyBadges: testerProfile.academyBadges || emptyTesterProfile.academyBadges
+          },
           clientProfile: {
+            ...emptyClientProfile,
             ...updated,
-            defaultBountyMatrix: updated.defaultBountyMatrix || emptyClientProfile.defaultBountyMatrix
+            defaultBountyMatrix: {
+              ...emptyClientProfile.defaultBountyMatrix,
+              ...(updated.defaultBountyMatrix || {})
+            }
           }
         }
       });
