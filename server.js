@@ -22,33 +22,32 @@ const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
-  const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const description = String(payload.projectDescription || 'No summary provided yet.').replace(/\s+/g, ' ').trim().slice(0, 260);
   const resources = Array.isArray(payload.projectResources)
     ? payload.projectResources.filter((resource) => resource && /^https?:\/\//i.test(resource.url)).slice(0, 4)
     : [];
-  const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : 'application';
-  const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : 'Review Project';
+  const consentLink = resources[0]?.url || projectLink;
+  const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
+  const actionLabel = type === 'invite' ? 'Accept Invite' : 'Open Project';
+  const greetingText = type === 'invite'
+    ? `You have been invited to work on the live opportunity with ${projectCompany}.`
+    : type === 'accepted'
+      ? `Your invitation for the live opportunity with ${projectCompany} has been accepted.`
+      : `Your project update from ${projectCompany} is ready.`;
 
   return `
     <div style="margin:0;padding:16px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;">
       <div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:12px;overflow:hidden;">
-        <div style="padding:18px 20px;background:#10213b;color:#fff;">
-          <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:.8;">${type === 'invite' ? 'Project invite' : type === 'accepted' ? 'Invite accepted' : 'Project update'}</div>
-          <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;">${projectTitle}</h1>
-        </div>
         <div style="padding:20px;">
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Hello ${payload.toName || 'there'},</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.55;color:#334155;">${type === 'invite' ? `You have been invited by ${projectCompany}.` : type === 'accepted' ? 'Your project workspace is ready.' : `Your ${projectTitle} project update is ready.`}</p>
-          <div style="padding:14px;background:#f8fbff;border:1px solid #dfeaf5;border-radius:10px;">
-            <div style="font-size:12px;color:#475569;font-weight:700;">${projectCompany} - ${projectCategory}</div>
-            <p style="margin:9px 0 0;font-size:14px;line-height:1.55;color:#334155;">${description}</p>
-            <p style="margin:10px 0 0;font-size:12px;font-weight:700;color:#10213b;">${deadline}</p>
-            ${resources.length > 0 ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #dfeaf5;"><div style="font-size:11px;text-transform:uppercase;color:#64748b;font-weight:700;">Project information</div><p style="margin:5px 0 8px;font-size:12px;color:#475569;">Please first refer to the project scope using the link below, then review the project.</p>${resources.map((resource) => `<div style="margin-top:5px;font-size:13px;"><a href="${resource.url}" style="color:#0b5cff;">${resource.label || resource.url}</a></div>`).join('')}</div>` : ''}
-          </div>
-          <div style="text-align:center;margin:18px 0 2px;"><a href="${projectLink}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">${actionLabel}</a></div>
-          <p style="margin:12px 0 0;text-align:center;font-size:11px;line-height:1.4;color:#64748b;">Open the project page for the complete scope, requirements, and attachments.</p>
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.5;">Hello ${payload.toName || 'there'},</p>
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:#334155;">${greetingText}</p>
+          <h2 style="margin:0 0 8px;font-size:16px;color:#10213b;">Project Overview</h2>
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:#334155;">${description}</p>
+          <p style="margin:0 0 18px;font-size:14px;"><a href="${consentLink}" style="color:#0b5cff;font-weight:700;">Submit Your Consent Here</a></p>
+          <p style="margin:0 0 20px;font-size:14px;font-weight:700;color:#10213b;">${deadline}</p>
+          <div style="text-align:center;margin:0 0 22px;"><a href="${projectLink}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">${actionLabel}</a></div>
+          <p style="margin:0;font-size:14px;line-height:1.5;color:#334155;">Best,<br>Connectfy Team</p>
         </div>
       </div>
     </div>
@@ -57,25 +56,26 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
-  const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
-  const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const description = String(payload.projectDescription || 'No summary provided yet.').replace(/\s+/g, ' ').trim().slice(0, 260);
   const resources = Array.isArray(payload.projectResources) ? payload.projectResources.slice(0, 4) : [];
+  const consentLink = resources[0]?.url || projectLink;
 
   return [
     `Hello ${payload.toName || 'there'},`,
-    payload.type === 'invite'
-      ? `You have been invited to work on a live opportunity with ${projectCompany}.`
-      : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`,
+    `You have been invited to work on the live opportunity with ${projectCompany}.`,
     '',
-    `${projectTitle} | ${projectCompany} | ${projectCategory}`,
+    'Project Overview',
     description,
-    deadline,
-    resources.length > 0 ? `Please first refer to the project scope using this link, then review the project: ${resources.map((resource) => `${resource.label || 'Link'} - ${resource.url}`).join('; ')}` : '',
     '',
-    `Open the project: ${projectLink}`
+    `Submit Your Consent Here: ${consentLink}`,
+    deadline,
+    '',
+    `Accept Invite: ${projectLink}`,
+    '',
+    'Best,',
+    'Connectfy Team'
   ].join('\n');
 };
 
