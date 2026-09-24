@@ -920,9 +920,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
       : `${window.location.origin}?project=${projectId}`;
     const normalizedType = formatProjectEmailType(type);
+    let emailSent = false;
 
     try {
-      const sent = await sendProjectEmail({
+      emailSent = await sendProjectEmail({
         type: normalizedType,
         toEmail: resolvedTesterEmail,
         toName: testerName || 'Tester',
@@ -937,18 +938,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         projectResources: project?.resources || []
       });
 
-      if (!sent) {
-        console.warn('Project email was not sent; function invocation returned false.', { type, projectId, testerEmail: resolvedTesterEmail });
-      }
     } catch (error) {
       console.error('Project email trigger failed:', error);
+      const message = error instanceof Error ? error.message : 'Email backend request failed.';
+      if (typeof window !== 'undefined') {
+        window.alert(`Project email failed: ${message}`);
+      }
     }
 
     addNotification({
       userId: testerId,
       targetRole: 'tester',
-      title: normalizedType === 'application' ? 'Application Received' : normalizedType === 'invite' ? 'Project Invite Sent' : normalizedType === 'accepted' ? 'Invite Accepted' : normalizedType === 'rejected' ? 'Application Update' : 'Invite Declined',
-      message: normalizedType === 'application'
+      title: !emailSent
+        ? 'Project Email Failed'
+        : normalizedType === 'application' ? 'Application Received' : normalizedType === 'invite' ? 'Project Invite Sent' : normalizedType === 'accepted' ? 'Invite Accepted' : normalizedType === 'rejected' ? 'Application Update' : 'Invite Declined',
+      message: !emailSent
+        ? `The project email could not be sent. Please contact support or try again.`
+        : normalizedType === 'application'
         ? `Your application for "${resolvedProjectTitle}" has been received and the client has been notified.`
         : normalizedType === 'invite'
           ? `A project invite for "${resolvedProjectTitle}" was sent to your email.`

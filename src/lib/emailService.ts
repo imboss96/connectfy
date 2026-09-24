@@ -54,12 +54,19 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || 'Email backend request failed');
+      let message = text || 'Email backend request failed';
+      try {
+        const parsed = JSON.parse(text);
+        message = parsed.message || message;
+      } catch {
+        // Keep the raw response when the backend did not return JSON.
+      }
+      throw new Error(message);
     }
 
     return true;
   } catch (error) {
     console.error('Failed to send project email through local backend:', error);
-    return false;
+    throw error instanceof Error ? error : new Error('Email backend request failed');
   }
 }
