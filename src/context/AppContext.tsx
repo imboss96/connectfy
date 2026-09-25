@@ -920,6 +920,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const resolvedProjectCompany = project?.company || 'Connectfy';
     const resolvedProjectDescription = project?.shortDescription || project?.fullOverview || 'A project opportunity is ready for review.';
     if (project && isSupabaseConfigured && supabase && (!project.resources || project.resources.length === 0)) {
+      let savedResources: Array<{ label: string; url: string }> = [];
       try {
         const { data: resourceRows, error: resourceError } = await supabase
           .from('project_resources')
@@ -927,11 +928,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           .eq('project_id', project.id)
           .order('sort_order', { ascending: true });
 
-        let savedResources = !resourceError && Array.isArray(resourceRows)
+        savedResources = !resourceError && Array.isArray(resourceRows)
           ? resourceRows.map((resource: any) => ({ label: resource.label, url: resource.url }))
           : [];
+      } catch (resourceFetchError) {
+        console.warn('Unable to refresh project resources before email:', resourceFetchError);
+      }
 
-        if (savedResources.length === 0) {
+      if (savedResources.length === 0) {
+        try {
           const { data: projectRow } = await supabase
             .from('projects')
             .select('project_data')
@@ -939,16 +944,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             .maybeSingle();
           const projectDataResources = projectRow?.project_data?.resources;
           savedResources = Array.isArray(projectDataResources) ? projectDataResources : [];
+        } catch (projectDataError) {
+          console.warn('Unable to load stored project resources before email:', projectDataError);
         }
+      }
 
-        if (savedResources.length > 0) {
-          project = {
-            ...project,
-            resources: savedResources
-          };
-        }
-      } catch (resourceFetchError) {
-        console.warn('Unable to refresh project resources before email:', resourceFetchError);
+      if (savedResources.length > 0) {
+        project = {
+          ...project,
+          resources: savedResources
+        };
       }
     }
     const actionUrl = type === 'invite' && applicationId
