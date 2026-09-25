@@ -29,6 +29,38 @@ import { Project, DeviceType, ProjectCategory, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
+type ApplicationDraft = {
+  projectId: string;
+  testerId: string;
+  fullName: string;
+  utestEmail: string;
+  dateOfBirth: string;
+  ageRange: string;
+  country: string;
+  smartphone: string;
+  deviceConfirmation: string;
+  hasValidId: boolean;
+  willingVoiceRecording: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const createDraftFromProject = (project: Project): ApplicationDraft => ({
+  projectId: project.id,
+  testerId: '',
+  fullName: '',
+  utestEmail: '',
+  dateOfBirth: '',
+  ageRange: '18-24',
+  country: '',
+  smartphone: '',
+  deviceConfirmation: '',
+  hasValidId: false,
+  willingVoiceRecording: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+});
+
 interface ProjectBoardProps {
   onOpenWorkspace: (projectId: string) => void;
 }
@@ -39,6 +71,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     applications,
     testerProfile,
     applyToProject,
+    updateTesterProfile,
+    fetchApplicationDraft,
+    saveApplicationDraft,
+    deleteApplicationDraft,
     acceptInvite,
     addTesterDevice,
     role
@@ -55,6 +91,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   
   // Apply modal
   const [applyingProject, setApplyingProject] = useState<Project | null>(null);
+  const [applicationDraft, setApplicationDraft] = useState<ApplicationDraft | null>(null);
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
   const [experienceNote, setExperienceNote] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
@@ -124,6 +161,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     return matchesSearch && matchesTrack && matchesCategory && matchesDevice;
   });
 
+  const featuredProject = filteredProjects.find((project) => project.isFeatured === true || project.id === 'proj-ai-voice-05');
+  const regularProjects = filteredProjects.filter((project) => project.id !== featuredProject?.id);
+
   const getApplicationForProject = (projectId: string) => {
     return applications.find(
       (a) => a.projectId === projectId && a.testerId === testerProfile.id
@@ -136,8 +176,24 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
+    const draft = {
+      ...createDraftFromProject(project),
+      testerId: testerProfile.uTestId || '',
+      utestEmail: testerProfile.uTestEmail || '',
+      fullName: testerProfile.legalName || '',
+      dateOfBirth: testerProfile.dateOfBirth || ''
+    };
+
     setApplyingProject(project);
-    setSelectedDevices(testerProfile.devices.slice(0, 2));
+    setApplicationDraft(draft);
+    setSelectedDevices(draft.deviceConfirmation ? [draft.deviceConfirmation] : []);
+
+    void fetchApplicationDraft(project.id).then((savedDraft) => {
+      if (!savedDraft) return;
+      const restoredDraft = { ...draft, ...savedDraft, projectId: project.id } as ApplicationDraft;
+      setApplicationDraft(restoredDraft);
+      setSelectedDevices(restoredDraft.deviceConfirmation ? [restoredDraft.deviceConfirmation] : []);
+    });
 
     if (project.projectTrack === 'data_collection') {
       setExperienceNote('Native speaker with quiet recording studio (<25dB) & directional mic setup.');
@@ -205,23 +261,83 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!applyingProject) return;
+    if (!applyingProject || !applicationDraft) return;
 
-    if (selectedDevices.length === 0) {
+    if (!applicationDraft.fullName || !applicationDraft.utestEmail || !applicationDraft.dateOfBirth || !applicationDraft.country || !applicationDraft.deviceConfirmation || !applicationDraft.smartphone) {
+      setApplyError('Please complete all required fields before submitting your application.');
+      return;
+    }
+
+    if (!applicationDraft.hasValidId || !applicationDraft.willingVoiceRecording) {
+      setApplyError('Please confirm the ID check and voice recording requirement before submitting.');
+      return;
+    }
+
+    const finalDevices = selectedDevices.length > 0 ? selectedDevices : [applicationDraft.deviceConfirmation].filter(Boolean);
+    if (finalDevices.length === 0) {
       setApplyError('Please choose at least one device you will use.');
       return;
     }
 
-    const ok = await applyToProject(applyingProject.id, selectedDevices, experienceNote);
+    const finalDraft = {
+      ...applicationDraft,
+      updatedAt: new Date().toISOString(),
+      smartphone: applicationDraft.smartphone || finalDevices[0],
+      deviceConfirmation: applicationDraft.deviceConfirmation || finalDevices[0]
+    };
+    await saveApplicationDraft(applyingProject.id, finalDraft);
+
+    const combinedExperience = [
+      experienceNote.trim(),
+      `Full name: ${finalDraft.fullName}`,
+      `uTest email: ${finalDraft.utestEmail}`,
+      `DOB: ${finalDraft.dateOfBirth}`,
+      `Age range: ${finalDraft.ageRange}`,
+      `Country: ${finalDraft.country}`,
+      `Device: ${finalDraft.deviceConfirmation}`,
+      `Government ID available: ${finalDraft.hasValidId ? 'Yes' : 'No'}`,
+      `Voice recordings consent: ${finalDraft.willingVoiceRecording ? 'Yes' : 'No'}`
+    ].filter(Boolean).join(' | ');
+
+    updateTesterProfile({
+      legalName: finalDraft.fullName,
+      dateOfBirth: finalDraft.dateOfBirth,
+      uTestId: finalDraft.testerId,
+      uTestEmail: finalDraft.utestEmail
+    });
+
+    const ok = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
+      applicantCountry: finalDraft.country,
+      applicantDevice: finalDraft.deviceConfirmation,
+      uTestId: finalDraft.testerId,
+      uTestEmail: finalDraft.utestEmail,
+      submittedAt: finalDraft.updatedAt
+    });
     if (ok) {
+      void deleteApplicationDraft(applyingProject.id);
       setApplySuccess(true);
       setTimeout(() => {
         setApplyingProject(null);
+        setApplicationDraft(null);
         setApplySuccess(false);
       }, 1400);
     } else {
       setApplyError('You have already applied for this campaign.');
     }
+  };
+
+  const updateDraft = (updates: Partial<ApplicationDraft>) => {
+    if (!applyingProject) return;
+
+    const nextDraft = {
+      ...(applicationDraft || createDraftFromProject(applyingProject)),
+      ...updates,
+      projectId: applyingProject.id,
+      updatedAt: new Date().toISOString()
+    };
+
+    setApplicationDraft(nextDraft);
+    void saveApplicationDraft(applyingProject.id, nextDraft);
   };
 
   const getTrackBadge = (track?: ProjectTrack) => {
@@ -373,9 +489,53 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         </div>
       </div>
 
+      {featuredProject && (
+        <div className="rounded-[28px] border border-[#9ddce9] bg-[radial-gradient(circle_at_top_left,_rgba(64,206,255,0.18),_rgba(255,255,255,0.96)_38%)] p-5 shadow-[0_30px_60px_rgba(15,47,64,0.08)] sm:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <span className="inline-flex items-center rounded-full border border-[#00A3E0]/30 bg-[#00A3E0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#006f9a]">
+              Featured Project
+            </span>
+            <span className="text-[11px] font-semibold text-[#006f9a]">Limited slots • 18/40 filled</span>
+          </div>
+
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <h2 className="text-xl font-black tracking-[-0.03em] text-slate-900 sm:text-2xl">
+                {featuredProject.title}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {featuredProject.shortDescription}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {featuredProject.requiredDevices.map((device) => (
+                  <span key={device} className="rounded-full border border-[#dfeaf0] bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                    {device}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+              <button
+                onClick={() => setViewingProject(featuredProject)}
+                className="rounded-xl border border-[#00A3E0]/20 bg-white px-4 py-2.5 text-xs font-bold text-[#006f9a] transition hover:border-[#00A3E0]/40 hover:bg-[#f1fbff]"
+              >
+                View Scope
+              </button>
+              <button
+                onClick={() => handleOpenApplyModal(featuredProject)}
+                className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE]"
+              >
+                Apply to Featured Project
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Projects Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 w-full min-w-0">
-        {filteredProjects.map((project) => {
+        {regularProjects.map((project) => {
           const app = getApplicationForProject(project.id);
           const hasApplied = !!app;
           const isApproved = app?.status === 'approved';
@@ -729,8 +889,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       {/* Apply to Project Modal */}
       {applyingProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-4 animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-slate-800">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center space-x-2">
                 <Sparkles className="w-5 h-5 text-[#00A3E0]" />
                 <h3 className="font-bold text-slate-900 text-base">Submit Application</h3>
@@ -754,7 +914,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleSubmitApplication} className="space-y-4 text-xs">
+              <form onSubmit={handleSubmitApplication} className="min-h-0 space-y-4 overflow-y-auto pr-1 pt-4 text-xs">
                 {applyError && (
                   <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -766,6 +926,142 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <span className="text-slate-500 block">Opportunity:</span>
                   <p className="font-semibold text-slate-900">{applyingProject.title}</p>
                   <p className="text-[#00A3E0]">{applyingProject.company} • {applyingProject.category}</p>
+                </div>
+
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-[11px] leading-relaxed text-sky-900">
+                  <p className="font-semibold">
+                    Most of our projects are carried out on our partner site,{' '}
+                    <a
+                      href="https://www.utest.com/signup"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-sky-700 underline underline-offset-2 hover:text-sky-900"
+                    >
+                      uTest.com
+                    </a>
+                    . Connectfy does not collect or process participant payments directly. Please sign up and share your uTest ID and uTest email so payments can be processed through the partner platform.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Full Identity Name
+                    <input
+                      value={applicationDraft?.fullName || ''}
+                      onChange={(event) => updateDraft({ fullName: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="Full Identity Name"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    uTest Tester ID
+                    <input
+                      value={applicationDraft?.testerId || ''}
+                      onChange={(event) => updateDraft({ testerId: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="uTest Tester ID"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    uTest Email
+                    <input
+                      type="email"
+                      value={applicationDraft?.utestEmail || ''}
+                      onChange={(event) => updateDraft({ utestEmail: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="uTest Email"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Date of Birth
+                    <input
+                      type="date"
+                      value={applicationDraft?.dateOfBirth || ''}
+                      onChange={(event) => updateDraft({ dateOfBirth: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Age Range
+                    <select
+                      value={applicationDraft?.ageRange || '18-24'}
+                      onChange={(event) => updateDraft({ ageRange: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                    >
+                      <option value="18-24">18-24</option>
+                      <option value="25-34">25-34</option>
+                      <option value="35-44">35-44</option>
+                      <option value="45+">45+</option>
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Country
+                    <input
+                      value={applicationDraft?.country || ''}
+                      onChange={(event) => updateDraft({ country: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="Country"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700 sm:col-span-2">
+                    Smartphone / Device used for this project
+                    <input
+                      value={applicationDraft?.smartphone || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        updateDraft({ smartphone: value, deviceConfirmation: value || applicationDraft?.deviceConfirmation || '' });
+                        setSelectedDevices((current) => (value && !current.includes(value) ? [value, ...current].slice(0, 4) : current));
+                      }}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="e.g. iPhone 15 Pro (iOS 17.5)"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700 sm:col-span-2">
+                    Device Confirmation
+                    <input
+                      value={applicationDraft?.deviceConfirmation || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        updateDraft({ deviceConfirmation: value, smartphone: value || applicationDraft?.smartphone || '' });
+                        setSelectedDevices((current) => (value && !current.includes(value) ? [value, ...current].slice(0, 4) : current));
+                      }}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="Confirm the exact device you will use"
+                    />
+                  </label>
+                </div>
+
+                <p className="rounded-lg border border-[#00A3E0]/30 bg-[#007AFF]/10 px-3 py-2 text-[11px] leading-relaxed text-[#005b85]">
+                  Payment reminder: Connectfy does not collect your payments. Your uTest ID and uTest email are required for payment processing through uTest.
+                </p>
+
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <label className="flex items-start gap-2 text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(applicationDraft?.hasValidId)}
+                      onChange={(event) => updateDraft({ hasValidId: event.target.checked })}
+                      className="mt-0.5 h-4 w-4 accent-[#00A3E0]"
+                    />
+                    I have a valid government-issued ID available and understand that ID verification is required to participate.
+                  </label>
+
+                  <label className="flex items-start gap-2 text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(applicationDraft?.willingVoiceRecording)}
+                      onChange={(event) => updateDraft({ willingVoiceRecording: event.target.checked })}
+                      className="mt-0.5 h-4 w-4 accent-[#00A3E0]"
+                    />
+                    I am willing to complete short voice recordings, including recordings in both quiet and normal/noisy environments.
+                  </label>
                 </div>
 
                 <div>
@@ -796,12 +1092,17 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                               onClick={() => handleToggleDevice(device)}
                               className={`p-2 rounded-xl border text-left flex items-center space-x-2 transition ${
                                 isChecked
-                                  ? 'bg-[#007AFF]/10 border-[#00A3E0] text-[#0066EE]'
+                                  ? 'bg-[#007AFF] border-[#0066EE] text-white shadow-md shadow-[#007AFF]/25'
                                   : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
                               }`}
                             >
-                              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                              {isChecked ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-white" />
+                              ) : (
+                                <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                              )}
                               <span className="truncate">{device}</span>
+                              {isChecked && <span className="ml-auto text-[10px] font-bold uppercase tracking-wide">Selected</span>}
                             </button>
                           );
                         })}

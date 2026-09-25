@@ -32,6 +32,13 @@ export interface ProjectEmailPayload {
   actionUrl: string;
   projectLink?: string;
   projectResources?: ProjectResource[];
+  applicantCountry?: string;
+  applicantDevice?: string;
+  uTestId?: string;
+  uTestEmail?: string;
+  applicationReference?: string;
+  submittedAt?: string;
+  supportEmail?: string;
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {

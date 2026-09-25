@@ -242,6 +242,15 @@ export const AdminProjectManager: React.FC = () => {
                       </div>
                     </div>
 
+                    <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3">
+                      <p className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#075985]">uTest payment details</p>
+                      <div className="mt-2 space-y-1 text-[11px] text-[#164e63]">
+                        <p><span className="font-semibold">uTest ID:</span> {app.uTestId || 'Not provided'}</p>
+                        <p><span className="font-semibold">uTest email:</span> {app.uTestEmail || 'Not provided'}</p>
+                      </div>
+                      <p className="mt-2 text-[10px] leading-relaxed text-[#075985]">Approved payments are processed through uTest. Connectfy does not collect participant payments directly.</p>
+                    </div>
+
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Invite history</p>
                       {inviteHistory.length > 0 ? (

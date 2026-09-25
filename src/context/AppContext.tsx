@@ -15,8 +15,8 @@ import {
   InviteHistoryEntry
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { createProjectInSupabase, deleteProjectFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, upsertApplicationInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
-import { formatProjectEmailType, sendProjectEmail } from '../lib/emailService';
+import { createProjectInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { formatProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
   role: UserRole;
@@ -47,7 +47,11 @@ interface AppContextType {
   setTesterPrimaryDevice: (deviceId: string) => void;
 
   // Actions
+  fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
+  saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
+  deleteApplicationDraft: (projectId: string) => Promise<void>;
   applyToProject: (projectId: string, devices: string[], experienceNote: string) => Promise<boolean>;
+    applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => Promise<boolean>;
   approveApplication: (appId: string) => void;
   resendInvite: (appId: string) => void;
   rejectApplication: (appId: string) => void;
@@ -118,6 +122,10 @@ const emptyTesterProfile: TesterProfile = {
   id: '',
   name: '',
   email: '',
+  uTestId: '',
+  uTestEmail: '',
+  legalName: '',
+  dateOfBirth: '',
   phone: '',
   avatar: createLetterAvatar('', ''),
   country: '',
@@ -733,6 +741,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           testerId: app.tester_id,
           testerName: app.profiles?.name || app.tester_name || 'Tester',
           testerEmail: app.profiles?.email || app.tester_email || '',
+          uTestId: app.profiles?.profile_data?.testerProfile?.uTestId || '',
+          uTestEmail: app.profiles?.profile_data?.testerProfile?.uTestEmail || '',
           testerRating: Number(app.profiles?.profile_data?.testerProfile?.rating || app.tester_rating || 0),
           testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Bronze',
           appliedDate: app.applied_at ? new Date(app.applied_at).toISOString().replace('T', ' ').substring(0, 16) : '',
@@ -860,7 +870,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const triggerProjectEmail = async (type: 'application' | 'invite' | 'accepted' | 'rejected' | 'declined', projectId: string, testerId: string, testerName: string, testerEmail: string, applicationId?: string) => {
+  const triggerProjectEmail = async (type: ProjectEmailType, projectId: string, testerId: string, testerName: string, testerEmail: string, applicationId?: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => {
     const resolvedTesterEmail = await resolveTesterEmail(testerId, testerEmail);
 
     if (!resolvedTesterEmail) {
@@ -975,7 +985,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         reason: project?.shortDescription || '',
         actionUrl,
         projectLink: actionUrl,
-        projectResources: project?.resources || []
+        projectResources: project?.resources || [],
+        ...emailDetails,
+        supportEmail: 'support@connectfy.tech'
       });
 
     } catch (error) {
@@ -1008,8 +1020,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   };
 
+  const fetchApplicationDraft = async (projectId: string) => {
+    try {
+      return await fetchApplicationDraftFromSupabase(projectId);
+    } catch (error) {
+      console.error('Unable to load application draft:', error);
+      return null;
+    }
+  };
+
+  const saveApplicationDraft = async (projectId: string, draftData: Record<string, unknown>) => {
+    try {
+      await upsertApplicationDraftInSupabase(projectId, draftData);
+    } catch (error) {
+      console.error('Unable to save application draft:', error);
+    }
+  };
+
+  const deleteApplicationDraft = async (projectId: string) => {
+    try {
+      await deleteApplicationDraftFromSupabase(projectId);
+    } catch (error) {
+      console.error('Unable to delete application draft:', error);
+    }
+  };
+
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string) => {
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => {
     const userContext = await getActiveUserContext();
     let liveEmail = '';
 
@@ -1035,6 +1072,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       testerId: effectiveTesterId,
       testerName: effectiveTesterName,
       testerEmail: effectiveTesterEmail,
+      uTestId: emailDetails?.uTestId || '',
+      uTestEmail: emailDetails?.uTestEmail || '',
       testerRating: testerProfile.rating,
       testerTier: testerProfile.tier,
       appliedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1072,6 +1111,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (effectiveTesterEmail) {
       void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail);
+      void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail, newAppId, {
+        ...emailDetails,
+        applicationReference: newAppId
+      });
     } else {
       console.warn('Application submitted without tester email; email trigger skipped.', {
         projectId,
@@ -1984,6 +2027,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         removeTesterDevice,
         toggleTesterDeviceActive,
         setTesterPrimaryDevice,
+        fetchApplicationDraft,
+        saveApplicationDraft,
+        deleteApplicationDraft,
         applyToProject,
         approveApplication,
         resendInvite,

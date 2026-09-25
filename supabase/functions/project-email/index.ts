@@ -42,6 +42,9 @@ const buildHtml = (payload: Record<string, any>) => {
   const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const projectDescription = formatProjectDescription(payload.projectDescription || '');
+  const applicationDetails = payload.type === 'application'
+    ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
+    : '';
   const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : 'Review Project';
 
@@ -76,6 +79,8 @@ const buildHtml = (payload: Record<string, any>) => {
             <p style="margin: 12px 0 0; font-size: 14px; color: #475569; line-height: 1.7;">${projectDescription}</p>
             <p style="margin: 14px 0 0; font-size: 13px; color: #0f172a; font-weight: 600;">${deadline}</p>
           </div>
+          ${applicationDetails}
+          <p style="font-size:14px;color:#334155;line-height:1.7;"><strong>What happens next:</strong> Our team will review your application. If selected, you will receive an invitation with the project instructions. Please keep your uTest account and email accessible.</p>
           <div style="text-align: center; margin: 24px 0;">
             <a href="${projectLink}" style="display: inline-block; background: #0b5cff; color: white; text-decoration: none; padding: 14px 22px; border-radius: 10px; font-weight: 700; font-size: 14px;">${actionLabel}</a>
           </div>
@@ -83,6 +88,7 @@ const buildHtml = (payload: Record<string, any>) => {
             If the button does not work, copy this link into your browser:<br>
             <a href="${projectLink}" style="color: #0b5cff; word-break: break-all;">${projectLink}</a>
           </p>
+          <p style="font-size:13px;color:#64748b;line-height:1.7;margin:16px 0 0;">Need help? Contact ${payload.supportEmail || 'support@connectfy.tech'}. Connectfy will never ask for your password or payment details.</p>
         </div>
       </div>
     </div>
@@ -96,6 +102,9 @@ const buildText = (payload: Record<string, any>) => {
   const projectCategory = payload.projectCategory || 'QA / testing';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const description = formatProjectDescription(payload.projectDescription || '');
+  const applicationSummary = payload.type === 'application'
+    ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
+    : '';
 
   return [
     `Hello ${payload.toName || 'there'},`,
@@ -106,6 +115,7 @@ const buildText = (payload: Record<string, any>) => {
     `${projectTitle} | ${projectCompany} | ${projectCategory}`,
     description,
     deadline,
+    applicationSummary,
     '',
     `Open the project: ${projectLink}`
   ].join('\n');

@@ -28,6 +28,9 @@ const buildHtml = (payload) => {
     ? payload.projectResources.filter((resource) => resource && /^https?:\/\//i.test(resource.url)).slice(0, 4)
     : [];
   const consentLink = resources[0]?.url || '';
+  const applicationDetails = payload.type === 'application'
+    ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
+    : '';
   const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : 'Open Project';
   const greetingText = type === 'invite'
@@ -46,8 +49,11 @@ const buildHtml = (payload) => {
           <p style="margin:0 0 18px;font-size:14px;line-height:1.55;color:#334155;">${description}</p>
           ${consentLink ? `<p style="margin:0 0 18px;font-size:14px;"><a href="${consentLink}" style="color:#0b5cff;font-weight:700;">Submit Your Consent Here</a></p>` : ''}
           <p style="margin:0 0 20px;font-size:14px;font-weight:700;color:#10213b;">${deadline}</p>
+          ${applicationDetails}
+          <p style="font-size:14px;line-height:1.7;color:#334155;"><strong>What happens next:</strong> Our team will review your application. If selected, you will receive an invitation with the project instructions. Please keep your uTest account and email accessible.</p>
           <div style="text-align:center;margin:0 0 22px;"><a href="${projectLink}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">${actionLabel}</a></div>
           <p style="margin:0;font-size:14px;line-height:1.5;color:#334155;">Best,<br>Connectfy Team</p>
+          <p style="font-size:13px;line-height:1.7;color:#64748b;">Need help? Contact ${payload.supportEmail || 'support@connectfy.tech'}. Connectfy will never ask for your password or payment details.</p>
         </div>
       </div>
     </div>
@@ -61,6 +67,9 @@ const buildText = (payload) => {
   const description = String(payload.projectDescription || 'No summary provided yet.').replace(/\s+/g, ' ').trim().slice(0, 260);
   const resources = Array.isArray(payload.projectResources) ? payload.projectResources.slice(0, 4) : [];
   const consentLink = resources[0]?.url || '';
+  const applicationSummary = payload.type === 'application'
+    ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
+    : '';
 
   return [
     `Hello ${payload.toName || 'there'},`,
@@ -71,8 +80,11 @@ const buildText = (payload) => {
     '',
     consentLink ? `Submit Your Consent Here: ${consentLink}` : '',
     deadline,
+    applicationSummary,
     '',
-    `Accept Invite: ${projectLink}`,
+    `Open Project: ${projectLink}`,
+    `Support: ${payload.supportEmail || 'support@connectfy.tech'}`,
+    'Connectfy will never ask for your password or payment details.',
     '',
     'Best,',
     'Connectfy Team'

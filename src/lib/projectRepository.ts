@@ -241,6 +241,56 @@ export async function upsertApplicationInSupabase(app: {
   if (error) throw error;
 }
 
+export async function fetchApplicationDraftFromSupabase(projectId: string) {
+  if (!supabase) return null;
+
+  const userId = await requireUserId();
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from('application_drafts')
+    .select('draft_data')
+    .eq('project_id', projectId)
+    .eq('tester_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data?.draft_data || null) as Record<string, unknown> | null;
+}
+
+export async function upsertApplicationDraftInSupabase(projectId: string, draftData: Record<string, unknown>) {
+  if (!supabase) return;
+
+  const userId = await requireUserId();
+  if (!userId) throw new Error('You must be signed in to save an application draft.');
+
+  const { error } = await supabase
+    .from('application_drafts')
+    .upsert({
+      project_id: projectId,
+      tester_id: userId,
+      draft_data: draftData,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'project_id,tester_id' });
+
+  if (error) throw error;
+}
+
+export async function deleteApplicationDraftFromSupabase(projectId: string) {
+  if (!supabase) return;
+
+  const userId = await requireUserId();
+  if (!userId) return;
+
+  const { error } = await supabase
+    .from('application_drafts')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('tester_id', userId);
+
+  if (error) throw error;
+}
+
 export async function updateApplicationInSupabase(appId: string, updates: { status?: string; invite_status?: string | null; accepted_invite_at?: string | null; last_invite_sent_at?: string | null; invite_history?: any[]; updated_at?: string }) {
   if (!supabase) return;
 

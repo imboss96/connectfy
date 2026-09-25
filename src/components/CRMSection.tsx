@@ -3,6 +3,7 @@ import { Briefcase, Mail, MapPin, PlusCircle, Search, ShieldCheck, Users } from 
 import { supabase } from '../lib/supabase';
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
+type CRMView = 'members' | 'utest';
 
 type PlatformMember = {
   id: string;
@@ -19,6 +20,7 @@ type PlatformMember = {
 
 export const CRMSection: React.FC = () => {
   const [members, setMembers] = useState<PlatformMember[]>([]);
+  const [activeView, setActiveView] = useState<CRMView>('members');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -112,6 +114,11 @@ export const CRMSection: React.FC = () => {
     admin: members.filter((m) => m.role === 'admin').length
   }), [members]);
 
+  const testerMembers = useMemo(
+    () => members.filter((member) => member.role === 'tester'),
+    [members]
+  );
+
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative overflow-hidden">
@@ -149,6 +156,71 @@ export const CRMSection: React.FC = () => {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveView('members')}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'members' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+          >
+            Platform Members
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('utest')}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'utest' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+          >
+            uTest Details
+          </button>
+        </div>
+
+        {activeView === 'utest' ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3 text-xs text-[#075985]">
+              uTest IDs and emails saved by testers are shown here for project payment processing. Passwords and payment credentials are never stored.
+            </div>
+            {loading ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">Loading uTest details...</div>
+            ) : testerMembers.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">No tester records found.</div>
+            ) : (
+              <div className="space-y-3">
+                {testerMembers.map((member) => {
+                  const testerProfile = member.profile_data?.testerProfile || {};
+                  return (
+                    <div key={member.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900">{member.name || 'Unnamed tester'}</h3>
+                          <p className="mt-1 text-[11px] text-slate-500">{member.email || 'No Connectfy email'}{member.country ? ` • ${member.country}` : ''}</p>
+                        </div>
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-700">Tester</span>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">Name as shown on ID</span>
+                          <strong className="text-slate-900">{testerProfile.legalName || 'Not provided'}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">Date of birth</span>
+                          <strong className="text-slate-900">{testerProfile.dateOfBirth || 'Not provided'}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">uTest ID</span>
+                          <strong className="text-slate-900">{testerProfile.uTestId || 'Not provided'}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">uTest payment email</span>
+                          <strong className="text-slate-900">{testerProfile.uTestEmail || 'Not provided'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="relative flex-1">
@@ -258,6 +330,8 @@ export const CRMSection: React.FC = () => {
               );
             })}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

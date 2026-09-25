@@ -42,7 +42,7 @@ interface ProfileSettingsProps {
   onBack?: () => void;
 }
 
-type SettingsTab = 'personal' | 'devices' | 'skills' | 'payment' | 'preferences' | 'client';
+type SettingsTab = 'personal' | 'utest' | 'devices' | 'skills' | 'payment' | 'preferences' | 'client';
 
 type PaymentMethodOption = 'PayPal' | 'Payoneer' | 'Wise' | 'Direct Bank Wire';
 
@@ -108,6 +108,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   // Form states for Tester Profile
   const [name, setName] = useState(testerProfile.name || '');
   const [email, setEmail] = useState(testerProfile.email || '');
+  const [utestId, setUtestId] = useState(testerProfile.uTestId || '');
+  const [utestEmail, setUtestEmail] = useState(testerProfile.uTestEmail || '');
+  const [legalName, setLegalName] = useState(testerProfile.legalName || '');
+  const [dateOfBirth, setDateOfBirth] = useState(testerProfile.dateOfBirth || '');
   const [phone, setPhone] = useState(testerProfile.phone || '');
   const [country, setCountry] = useState(testerProfile.country || '');
   const [city, setCity] = useState(testerProfile.city || '');
@@ -200,6 +204,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   useEffect(() => {
     setName(testerProfile.name || '');
     setEmail(testerProfile.email || '');
+    setUtestId(testerProfile.uTestId || '');
+    setUtestEmail(testerProfile.uTestEmail || '');
+    setLegalName(testerProfile.legalName || '');
+    setDateOfBirth(testerProfile.dateOfBirth || '');
     setPhone(testerProfile.phone || '');
     setCountry(testerProfile.country || '');
     setCity(testerProfile.city || '');
@@ -285,6 +293,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
       updateTesterProfile({
         name,
         email,
+        uTestId: utestId,
+        uTestEmail: utestEmail,
+        legalName,
+        dateOfBirth,
         phone,
         country,
         city,
@@ -550,6 +562,18 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         >
           <User className="w-4 h-4" />
           <span>Personal & Contact Info</span>
+        </button>
+
+        <button
+          onClick={() => setCurrentTab('utest')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+            currentTab === 'utest'
+              ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/25'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#111C33]'
+          }`}
+        >
+          <Briefcase className="w-4 h-4" />
+          <span>uTest Details</span>
         </button>
 
         <button
@@ -890,6 +914,72 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
       )}
 
           {/* Tab 2: Hardware Fleet */}
+      {currentTab === 'utest' && (
+        <div className="max-w-3xl rounded-2xl border border-[#1E2E4E] bg-[#0B132B] p-6 shadow-lg">
+          <div className="mb-5 flex items-start gap-3 border-b border-[#1E2E4E] pb-4">
+            <div className="rounded-xl bg-[#007AFF]/15 p-2 text-[#38BDF8]">
+              <Briefcase className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">uTest Partner Details</h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                Most projects are completed through uTest. Save the account details used for project participation and payment processing.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 text-xs sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5 font-semibold text-slate-300">
+              Name as Shown on Government ID
+              <input
+                type="text"
+                value={legalName}
+                onChange={(event) => setLegalName(event.target.value)}
+                placeholder="Enter your legal name exactly as shown on your ID"
+                className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] px-3 py-2.5 text-white outline-none focus:border-[#00A3E0]"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5 font-semibold text-slate-300">
+              Date of Birth
+              <input
+                type="date"
+                value={dateOfBirth}
+                onChange={(event) => setDateOfBirth(event.target.value)}
+                className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] px-3 py-2.5 text-white outline-none focus:border-[#00A3E0]"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5 font-semibold text-slate-300">
+              uTest Tester ID
+              <input
+                type="text"
+                value={utestId}
+                onChange={(event) => setUtestId(event.target.value)}
+                placeholder="Enter your uTest ID"
+                className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] px-3 py-2.5 text-white outline-none focus:border-[#00A3E0]"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5 font-semibold text-slate-300">
+              uTest Email for Payment Processing
+              <input
+                type="email"
+                value={utestEmail}
+                onChange={(event) => setUtestEmail(event.target.value)}
+                placeholder="Enter your uTest email"
+                className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] px-3 py-2.5 text-white outline-none focus:border-[#00A3E0]"
+              />
+            </label>
+          </div>
+
+          <div className="mt-5 flex items-start gap-2 rounded-xl border border-[#00A3E0]/50 bg-[#e0f7ff] p-3 text-[11px] font-semibold leading-relaxed text-[#075985]">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#007AFF]" />
+            <p>Connectfy does not collect participant payments directly. Approved payments are processed through uTest. Never share your uTest password or payment credentials here.</p>
+          </div>
+        </div>
+      )}
+
       {currentTab === 'devices' && (
         <div className="space-y-6">
           

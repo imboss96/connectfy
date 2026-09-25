@@ -113,6 +113,8 @@ export interface ProjectApplication {
   testerId: string;
   testerName: string;
   testerEmail: string;
+  uTestId?: string;
+  uTestEmail?: string;
   testerRating: number;
   testerTier: 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
   appliedDate: string;
@@ -173,6 +175,7 @@ export interface TaskSubmission {
 
 export interface Project {
   id: string;
+  isFeatured?: boolean;
   title: string;
   company: string;
   companyLogo?: string;
@@ -303,6 +306,10 @@ export interface TesterProfile {
   id: string;
   name: string;
   email: string;
+  uTestId?: string;
+  uTestEmail?: string;
+  legalName?: string;
+  dateOfBirth?: string;
   phone?: string;
   avatar: string;
   country: string;

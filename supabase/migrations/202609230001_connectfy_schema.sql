@@ -22,6 +22,7 @@ create table public.profiles (
 create table public.projects (
   id uuid primary key default uuid_generate_v4(),
   client_id uuid not null references public.profiles(id) on delete cascade,
+  is_featured boolean not null default false,
   title text not null,
   company text not null,
   short_description text not null default '',

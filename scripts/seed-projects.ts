@@ -48,6 +48,7 @@ if (ownerProfile?.role !== 'admin') {
 
 const rows = initialProjects.map(project => ({
   client_id: seedClientId,
+  is_featured: Boolean(project.isFeatured),
   title: project.title,
   company: project.company,
   short_description: project.shortDescription,

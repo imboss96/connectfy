@@ -352,12 +352,15 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const { setRole, applications, acceptInvite, testerProfile } = useApp();
+  const { setRole, applications, acceptInvite, testerProfile, setActiveTab } = useApp();
   const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
+  const [isProjectRedirectPending, setIsProjectRedirectPending] = useState(false);
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin || 'http://localhost:5173').replace(/\/$/, '');
+  const landingProjectId = 'proj-ai-voice-05';
 
   const isRecoveryUrl = () => {
     const currentUrl = window.location.href;
@@ -455,11 +458,24 @@ const AppExperience: React.FC = () => {
     localStorage.removeItem('utest_crowdqa_walletTransactions');
   };
 
+  const handleLandingApply = (projectId = landingProjectId) => {
+    setIsProjectRedirectPending(true);
+    setPendingProjectId(projectId);
+    setAuthMode('signup');
+    setScreen('login');
+  };
+
   const handleLogin = async (email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Authentication is not configured. Add your Supabase URL and anon key to .env.local.');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     resetLocalUserState();
+    if (isProjectRedirectPending) {
+      setActiveTab('projects');
+      setActiveWorkspaceProjectId(pendingProjectId || landingProjectId);
+      setIsProjectRedirectPending(false);
+      setPendingProjectId(null);
+    }
     setScreen('app');
   };
 
@@ -502,12 +518,21 @@ const AppExperience: React.FC = () => {
     });
     if (error) throw error;
     if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
+    if (isProjectRedirectPending) {
+      setActiveTab('projects');
+      setActiveWorkspaceProjectId(pendingProjectId || landingProjectId);
+      setIsProjectRedirectPending(false);
+      setPendingProjectId(null);
+    }
     setScreen('app');
   };
 
   const handleLogout = () => {
     if (supabase) void supabase.auth.signOut();
     resetLocalUserState();
+    setIsProjectRedirectPending(false);
+    setPendingProjectId(null);
+    setActiveWorkspaceProjectId(null);
     setScreen('landing');
     setRole('tester');
   };
@@ -528,8 +553,8 @@ const AppExperience: React.FC = () => {
   };
 
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
-  if (screen === 'landing') return <LandingPage onGetStarted={() => { setAuthMode('signup'); setScreen('login'); }} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
-  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => setScreen('landing')} />;
+  if (screen === 'landing') return <LandingPage onGetStarted={handleLandingApply} onLogin={() => { setAuthMode('login'); setIsProjectRedirectPending(false); setPendingProjectId(null); setScreen('login'); }} />;
+  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => { setIsProjectRedirectPending(false); setScreen('landing'); }} />;
   if (screen === 'reset') return <ResetPasswordPage onSubmit={handleResetPasswordSubmit} onBackToLogin={() => { setScreen('login'); setAuthMode('login'); }} />;
 
   return (

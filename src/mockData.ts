@@ -276,48 +276,50 @@ export const initialProjects: Project[] = [
   },
   {
     id: 'proj-ai-voice-05',
-    title: 'Global Speech AI - Multilingual Conversational Voice Prompts Collection',
-    company: 'NeuroVoice Labs',
+    isFeatured: true,
+    title: 'Participants Needed for Quick Image, Voice & Video Tech Testing',
+    company: 'Connectfy.tech',
     companyLogo: 'voice',
     category: 'AI Data Collection',
     projectTrack: 'data_collection',
     paymentModel: 'per_task_submission',
-    taskUnitName: 'Per Approved 30-Utterance Batch',
+    taskUnitName: 'Per Completed Remote Testing Session',
     taskRate: 45.00,
     deliverablesGuide: {
-      overview: 'Record 30 natural conversational speech sentences using provided scripts in English (African, British, American, or Australian accents) or Swahili.',
+      overview: 'Complete a remote, smartphone-based testing session involving image, voice, video and brief digital identity verification tasks.',
       instructions: [
-        'Record in a quiet indoor room with low background noise (<30 dB).',
-        'Record at 44.1 kHz, 16-bit uncompressed WAV or lossless M4A format.',
-        'Keep 15-20cm distance between microphone and mouth to avoid clipping.',
-        'Read sentences naturally without robotic cadence or voice filters.'
+        'Use your smartphone camera and microphone to complete short visual and voice-based tasks.',
+        'Record short voice prompts in quiet and normal/noisy environments.',
+        'Complete the required digital identity verification using a valid government-issued ID.',
+        'Submit the completed task set in a single remote session within the project window.'
       ],
-      sampleFormat: 'Audio files (.wav, .m4a) or zipped sample archive',
+      sampleFormat: 'Smartphone data capture + voice/video recordings + ID verification confirmation',
       acceptanceCriteria: [
-        'Clear acoustic signal without distortion or severe room reverb',
-        'All 30 prompted sentences spoken completely according to prompt script',
-        'Environment metadata filled (device model, room acoustic type)'
+        'Task set completed using a compatible smartphone',
+        'Voice recordings captured in both quiet and noisy conditions',
+        'Valid government-issued ID available for identity verification steps'
       ],
-      targetDemographicsOrHardware: 'Smartphone or USB condenser microphone, native or fluent speakers.'
+      targetDemographicsOrHardware: 'Adults 18+, iPhone or Android smartphone with camera, microphone and stable internet.'
     },
-    shortDescription: 'Record 30 natural conversational voice prompts in quiet room acoustics to train speech recognition AI models.',
-    fullOverview: 'NeuroVoice Labs is building next-generation multilingual speech models. Contributors record 30 sentence prompts under varying tones (inquiry, command, narrative) using their smartphone or desktop microphone. Upon client review, the $45.00 batch payment is immediately credited.',
+    shortDescription: 'Remote smartphone-based testing for image, voice, video, and digital identity verification tasks across eligible countries.',
+    fullOverview: 'Connectfy.tech is recruiting adults to participate in a short, remote technology testing and data collection project. The activity combines image, voice, video, and digital identity verification tasks designed to help improve platform quality, reliability, and user experience. The entire activity takes less than 30 minutes and can be completed remotely using a smartphone. Your participation supports testing, validation, age-data accuracy, and abuse-prevention measures within the testing process.',
     inScope: [
-      'Smartphones (iPhone, Android)',
-      'USB microphones and headset mics',
-      'Natural speech recordings (.wav, .m4a, .mp3)',
-      'Regional English & Swahili accents'
+      'Voice recordings of short numbers and sentences',
+      'Image and visual data collection using a smartphone camera',
+      'Short video-based testing tasks',
+      'Digital identity verification with a valid government-issued ID',
+      'Remote participation from home with a stable internet connection'
     ],
     outOfScope: [
-      'Noisy outdoor environments (>45dB)',
-      'AI-generated synthetic voices or deepfakes',
-      'Low-bitrate compressed audio (<128kbps)'
+      'Any requirement for special equipment beyond a compatible smartphone',
+      'Sensitive account credentials such as passwords or one-time codes',
+      'Submitting verification details outside the official project process'
     ],
-    requiredDevices: ['iOS Mobile', 'Android Mobile', 'macOS', 'Windows'],
-    supportedCountries: ['Kenya', 'Nigeria', 'South Africa', 'United States', 'United Kingdom', 'Global'],
-    slotsTotal: 50,
-    slotsFilled: 38,
-    deadline: '2026-10-25',
+    requiredDevices: ['iOS Mobile', 'Android Mobile'],
+    supportedCountries: ['United States', 'India', 'Mexico', 'Kenya', 'Pakistan', 'Brazil', 'Indonesia'],
+    slotsTotal: 40,
+    slotsFilled: 18,
+    deadline: '2026-10-13',
     status: 'active',
     bountyStructure: {
       critical: 45.00,
@@ -326,10 +328,10 @@ export const initialProjects: Project[] = [
       low: 45.00,
       testCaseBounty: 45.00
     },
-    totalBudget: 5000,
-    budgetDisbursed: 1710,
-    clientId: 'client-neurovoice-05',
-    createdAt: '2026-09-19'
+    totalBudget: 1800,
+    budgetDisbursed: 850,
+    clientId: 'client-connectfy-01',
+    createdAt: '2026-09-25'
   },
   {
     id: 'proj-ai-redteam-06',
