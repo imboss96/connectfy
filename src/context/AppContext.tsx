@@ -15,7 +15,7 @@ import {
   InviteHistoryEntry
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { createProjectInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { createProjectInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
 import { formatProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
@@ -50,8 +50,7 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string) => Promise<boolean>;
-    applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => Promise<boolean>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'>) => Promise<boolean>;
   approveApplication: (appId: string) => void;
   resendInvite: (appId: string) => void;
   rejectApplication: (appId: string) => void;
@@ -735,14 +734,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const serverApplications = await fetchApplicationsFromSupabase();
         if (!mounted) return;
 
-        const mapped = serverApplications.map((app: any) => ({
-          id: app.id,
+        const mapped = serverApplications.map((app: any) => {
+          const storedUtestDetails = Array.isArray(app.application_utest_details)
+            ? app.application_utest_details[0]
+            : app.application_utest_details;
+
+          return {
+            id: app.id,
           projectId: app.project_id,
           testerId: app.tester_id,
           testerName: app.profiles?.name || app.tester_name || 'Tester',
           testerEmail: app.profiles?.email || app.tester_email || '',
-          uTestId: app.profiles?.profile_data?.testerProfile?.uTestId || '',
-          uTestEmail: app.profiles?.profile_data?.testerProfile?.uTestEmail || '',
+          uTestId: storedUtestDetails?.utest_id || app.profiles?.profile_data?.testerProfile?.uTestId || '',
+          uTestEmail: storedUtestDetails?.utest_email || app.profiles?.profile_data?.testerProfile?.uTestEmail || '',
           testerRating: Number(app.profiles?.profile_data?.testerProfile?.rating || app.tester_rating || 0),
           testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Bronze',
           appliedDate: app.applied_at ? new Date(app.applied_at).toISOString().replace('T', ' ').substring(0, 16) : '',
@@ -754,8 +758,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           lastInviteSentAt: app.last_invite_sent_at ? new Date(app.last_invite_sent_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
           inviteHistory: normalizeInviteHistory(app.invite_history),
           projectTitle: app.project?.title || undefined,
-          projectCompany: app.project?.company || undefined
-        }));
+            projectCompany: app.project?.company || undefined
+          };
+        });
 
         setApplications(mapped);
       } catch (error) {
@@ -1046,7 +1051,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => {
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'>) => {
     const userContext = await getActiveUserContext();
     let liveEmail = '';
 
@@ -1086,18 +1091,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setApplications(prev => [newApp, ...prev]);
 
     if (isSupabaseConfigured && supabase && effectiveTesterId) {
-      void upsertApplicationInSupabase({
-        id: newAppId,
-        project_id: projectId,
-        tester_id: effectiveTesterId,
-        status: 'pending',
-        invite_status: null,
-        selected_devices: devices,
-        experience_note: experienceNote,
-        applied_at: new Date().toISOString(),
-        invite_history: [],
-        last_invite_sent_at: null
-      }).catch(error => console.error('Unable to save application to Supabase:', error));
+      try {
+        await upsertApplicationInSupabase({
+          id: newAppId,
+          project_id: projectId,
+          tester_id: effectiveTesterId,
+          status: 'pending',
+          invite_status: null,
+          selected_devices: devices,
+          experience_note: experienceNote,
+          applied_at: new Date().toISOString(),
+          invite_history: [],
+          last_invite_sent_at: null
+        });
+
+        if (emailDetails) {
+          await upsertApplicationUtestDetailsInSupabase({
+            application_id: newAppId,
+            tester_id: effectiveTesterId,
+            full_name: emailDetails.applicantFullName || effectiveTesterName,
+            utest_id: emailDetails.uTestId || '',
+            utest_email: emailDetails.uTestEmail || '',
+            date_of_birth: emailDetails.applicantDateOfBirth || '',
+            age_range: emailDetails.applicantAgeRange || '',
+            country: emailDetails.applicantCountry || '',
+            smartphone: emailDetails.applicantSmartphone || '',
+            device_confirmation: emailDetails.applicantDeviceConfirmation || emailDetails.applicantDevice || '',
+            has_valid_id: Boolean(emailDetails.applicantHasValidId),
+            willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording)
+          });
+        }
+      } catch (error) {
+        console.error('Unable to save application details to Supabase:', error);
+        return false;
+      }
     }
 
     addNotification({
@@ -1848,6 +1875,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         }
       });
+
+      void updateTesterApplicationUtestDetailsInSupabase(updated.id, {
+        full_name: updated.legalName,
+        utest_id: updated.uTestId,
+        utest_email: updated.uTestEmail,
+        date_of_birth: updated.dateOfBirth,
+        country: updated.country
+      }).catch(error => console.error('Unable to update application uTest details:', error));
 
       return updated;
     });

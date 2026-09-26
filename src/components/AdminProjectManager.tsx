@@ -218,7 +218,7 @@ export const AdminProjectManager: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{app.testerName}</h3>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-700 border-slate-200">{app.testerTier}</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-200">{app.testerRating}★</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-200">Rating {app.testerRating}</span>
                         </div>
                         <p className="text-[11px] text-slate-600 mt-1">{app.testerEmail}</p>
                         <p className="text-[11px] text-slate-600 mt-1">Project: <span className="text-slate-900 font-medium">{project?.title || app.projectId}</span></p>

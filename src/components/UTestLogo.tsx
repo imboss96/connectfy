@@ -54,18 +54,7 @@ export const ConnectfyLogo: React.FC<ConnectfyLogoProps> = ({
       <div className="leading-none">
         <div className={`font-black tracking-tight flex items-baseline gap-0.5 ${fontSize}`}>
           <span className="connectfy-wordmark text-white font-black">Connectfy</span>
-          <span className="connectfy-badge ml-1.5 text-[9px] font-bold px-1.5 py-0.5 bg-[#00A3E0]/15 text-[#38BDF8] border border-[#00A3E0]/30 rounded tracking-wider uppercase">
-            CONNECTFY
-          </span>
         </div>
-        {showSubtitle && (
-          <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
-            <span>by</span>
-            <span className="text-[#007AFF] font-bold tracking-tight">Quality Marketplace</span>
-            <span className="text-slate-600">•</span>
-            <span>Test. Build. Connect.</span>
-          </div>
-        )}
       </div>
     </div>
   );

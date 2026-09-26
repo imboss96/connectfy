@@ -311,6 +311,13 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       applicantDevice: finalDraft.deviceConfirmation,
       uTestId: finalDraft.testerId,
       uTestEmail: finalDraft.utestEmail,
+      applicantFullName: finalDraft.fullName,
+      applicantDateOfBirth: finalDraft.dateOfBirth,
+      applicantAgeRange: finalDraft.ageRange,
+      applicantSmartphone: finalDraft.smartphone,
+      applicantDeviceConfirmation: finalDraft.deviceConfirmation,
+      applicantHasValidId: finalDraft.hasValidId,
+      applicantWillingVoiceRecording: finalDraft.willingVoiceRecording,
       submittedAt: finalDraft.updatedAt
     });
     if (ok) {

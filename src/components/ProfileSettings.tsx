@@ -865,7 +865,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             {/* Quick Profile Health Checklist */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-400" />
                 Connectfy Matching Score: {Math.max(0, Number(testerProfile.acceptanceRate || 0))}%
               </h4>
 
@@ -1975,7 +1974,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
       {/* Sticky Bottom Save Bar */}
       <div className="flex items-center justify-between p-4 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl">
         <div className="flex items-center space-x-2 text-xs text-slate-400">
-          <Sparkles className="w-4 h-4 text-blue-400" />
           <span>Keep your hardware fleet and preferences updated to receive higher priority test invites.</span>
         </div>
 

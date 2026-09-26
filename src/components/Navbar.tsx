@@ -98,9 +98,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Settings', tab: 'profile_settings', icon: Sliders }
         ]
       : [
-          { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
-          { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
           { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
+          { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
+          { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
           { label: 'Organization', tab: 'profile_settings', icon: Sliders }
         ];
 
@@ -114,26 +114,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
     <nav className="space-y-1" aria-label="Primary navigation">
       <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>
       {navItems.map(({ label, tab, icon: Icon }) => (
-        <button
-          key={tab}
-          onClick={() => navigateTo(tab)}
-          className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
-            activeTab === tab ? 'bg-[#007AFF] text-white shadow-lg shadow-[#007AFF]/20' : 'text-slate-300 hover:bg-[#131E35] hover:text-white'
-          }`}
-        >
-          <Icon className={`h-4 w-4 shrink-0 ${activeTab === tab ? 'text-white' : 'text-[#38BDF8]'}`} />
-          <span>{label}</span>
-        </button>
+        <React.Fragment key={tab}>
+          <button
+            onClick={() => navigateTo(tab)}
+            className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
+              activeTab === tab ? 'bg-[#007AFF] text-white shadow-lg shadow-[#007AFF]/20' : 'text-slate-300 hover:bg-[#131E35] hover:text-white'
+            }`}
+          >
+            <Icon className={`h-4 w-4 shrink-0 ${activeTab === tab ? 'text-white' : 'text-[#38BDF8]'}`} />
+            <span>{label}</span>
+          </button>
+          {role === 'tester' && tab === 'tasks' && (
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); onOpenWallet(); }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"
+            >
+              <span className="flex items-center gap-3"><Wallet className="h-4 w-4 text-emerald-400" />Wallet & Payouts</span>
+              <span className="font-black text-emerald-400">${testerProfile.availableBalance.toFixed(0)}</span>
+            </button>
+          )}
+        </React.Fragment>
       ))}
-      {role === 'tester' && (
-        <button
-          onClick={() => { setIsMobileMenuOpen(false); onOpenWallet(); }}
-          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"
-        >
-          <span className="flex items-center gap-3"><Wallet className="h-4 w-4 text-emerald-400" />Wallet & Payouts</span>
-          <span className="font-black text-emerald-400">${testerProfile.availableBalance.toFixed(0)}</span>
-        </button>
-      )}
     </nav>
   );
 
@@ -151,7 +152,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         </div>
         {renderNavItems()}
         <div className="mt-auto border-t border-[#1E2E4E] pt-4">
-          <button onClick={() => navigateTo('profile_settings')} className="mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-[#131E35] hover:text-white"><Sliders className="h-4 w-4 text-[#38BDF8]" />Account settings</button>
           <button onClick={onLogout} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><LogOut className="h-4 w-4" />Log out</button>
         </div>
       </aside>

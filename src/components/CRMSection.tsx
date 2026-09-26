@@ -18,8 +18,25 @@ type PlatformMember = {
   profile_data?: Record<string, any>;
 };
 
+type ApplicationUtestDetails = {
+  application_id: string;
+  tester_id: string;
+  full_name: string;
+  utest_id: string;
+  utest_email: string;
+  date_of_birth: string | null;
+  age_range: string;
+  country: string;
+  smartphone: string;
+  device_confirmation: string;
+  has_valid_id: boolean;
+  willing_voice_recording: boolean;
+  updated_at: string;
+};
+
 export const CRMSection: React.FC = () => {
   const [members, setMembers] = useState<PlatformMember[]>([]);
+  const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
   const [activeView, setActiveView] = useState<CRMView>('members');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
@@ -54,7 +71,28 @@ export const CRMSection: React.FC = () => {
 
   useEffect(() => {
     void loadMembers();
+    void loadUtestDetails();
   }, []);
+
+  const loadUtestDetails = async () => {
+    if (!supabase) {
+      setUtestDetails([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('application_utest_details')
+        .select('application_id,tester_id,full_name,utest_id,utest_email,date_of_birth,age_range,country,smartphone,device_confirmation,has_valid_id,willing_voice_recording,updated_at')
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+      setUtestDetails((data || []) as ApplicationUtestDetails[]);
+    } catch (error) {
+      console.error('Unable to load application uTest details:', error);
+      setUtestDetails([]);
+    }
+  };
 
   const handleInviteAdmin = async () => {
     const trimmed = inviteEmail.trim();
@@ -180,37 +218,45 @@ export const CRMSection: React.FC = () => {
             </div>
             {loading ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">Loading uTest details...</div>
-            ) : testerMembers.length === 0 ? (
+            ) : utestDetails.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">No tester records found.</div>
             ) : (
               <div className="space-y-3">
-                {testerMembers.map((member) => {
-                  const testerProfile = member.profile_data?.testerProfile || {};
+                {utestDetails.map((details) => {
+                  const member = members.find((candidate) => candidate.id === details.tester_id);
                   return (
-                    <div key={member.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div key={details.application_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <h3 className="text-sm font-bold text-slate-900">{member.name || 'Unnamed tester'}</h3>
-                          <p className="mt-1 text-[11px] text-slate-500">{member.email || 'No Connectfy email'}{member.country ? ` • ${member.country}` : ''}</p>
+                          <h3 className="text-sm font-bold text-slate-900">{details.full_name || member?.name || 'Unnamed tester'}</h3>
+                          <p className="mt-1 text-[11px] text-slate-500">{member?.email || 'No Connectfy email'}{details.country ? ` • ${details.country}` : ''}</p>
                         </div>
                         <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-700">Tester</span>
                       </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">Name as shown on ID</span>
-                          <strong className="text-slate-900">{testerProfile.legalName || 'Not provided'}</strong>
+                          <strong className="text-slate-900">{details.full_name || 'Not provided'}</strong>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">Date of birth</span>
-                          <strong className="text-slate-900">{testerProfile.dateOfBirth || 'Not provided'}</strong>
+                          <strong className="text-slate-900">{details.date_of_birth || 'Not provided'}</strong>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">uTest ID</span>
-                          <strong className="text-slate-900">{testerProfile.uTestId || 'Not provided'}</strong>
+                          <strong className="text-slate-900">{details.utest_id || 'Not provided'}</strong>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">uTest payment email</span>
-                          <strong className="text-slate-900">{testerProfile.uTestEmail || 'Not provided'}</strong>
+                          <strong className="text-slate-900">{details.utest_email || 'Not provided'}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">Country / age range</span>
+                          <strong className="text-slate-900">{details.country || 'Not provided'}{details.age_range ? ` • ${details.age_range}` : ''}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">Application device</span>
+                          <strong className="text-slate-900">{details.device_confirmation || details.smartphone || 'Not provided'}</strong>
                         </div>
                       </div>
                     </div>

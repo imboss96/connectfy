@@ -195,6 +195,19 @@ export async function fetchApplicationsFromSupabase() {
         title,
         company
       ),
+      application_utest_details (
+        full_name,
+        utest_id,
+        utest_email,
+        date_of_birth,
+        age_range,
+        country,
+        smartphone,
+        device_confirmation,
+        has_valid_id,
+        willing_voice_recording,
+        updated_at
+      ),
       profiles:tester_id (
         id,
         name,
@@ -237,6 +250,54 @@ export async function upsertApplicationInSupabase(app: {
       invite_history: app.invite_history || [],
       updated_at: new Date().toISOString()
     }, { onConflict: 'project_id,tester_id' });
+
+  if (error) throw error;
+}
+
+export async function upsertApplicationUtestDetailsInSupabase(details: {
+  application_id: string;
+  tester_id: string;
+  full_name: string;
+  utest_id: string;
+  utest_email: string;
+  date_of_birth: string;
+  age_range: string;
+  country: string;
+  smartphone: string;
+  device_confirmation: string;
+  has_valid_id: boolean;
+  willing_voice_recording: boolean;
+}) {
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from('application_utest_details')
+    .upsert({
+      ...details,
+      date_of_birth: details.date_of_birth || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'application_id' });
+
+  if (error) throw error;
+}
+
+export async function updateTesterApplicationUtestDetailsInSupabase(testerId: string, details: {
+  full_name?: string;
+  utest_id?: string;
+  utest_email?: string;
+  date_of_birth?: string;
+  country?: string;
+}) {
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from('application_utest_details')
+    .update({
+      ...details,
+      date_of_birth: details.date_of_birth || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('tester_id', testerId);
 
   if (error) throw error;
 }

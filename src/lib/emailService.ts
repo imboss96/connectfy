@@ -36,6 +36,13 @@ export interface ProjectEmailPayload {
   applicantDevice?: string;
   uTestId?: string;
   uTestEmail?: string;
+  applicantFullName?: string;
+  applicantDateOfBirth?: string;
+  applicantAgeRange?: string;
+  applicantSmartphone?: string;
+  applicantDeviceConfirmation?: string;
+  applicantHasValidId?: boolean;
+  applicantWillingVoiceRecording?: boolean;
   applicationReference?: string;
   submittedAt?: string;
   supportEmail?: string;
