@@ -329,13 +329,11 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
           <div className="flex items-center space-x-2">
             <span className="text-[#00A3E0] font-black text-sm">Connectfy</span>
             <span className="font-semibold text-slate-300">Freelance QA Marketplace</span>
-            <span>•</span>
-            <span>Automated Bounty Escrow & Multi-Rail Payout Gateway</span>
           </div>
           <div className="flex items-center space-x-4 text-slate-400">
-            <span>256-Bit Encrypted Log Storage</span>
+            <span>Project Slots</span>
             <span>•</span>
-            <span>Automated Status Sync</span>
+            <span>Slot Payouts for Approved Work</span>
           </div>
         </div>
       </footer>
@@ -360,7 +358,6 @@ const AppExperience: React.FC = () => {
   const [isProjectRedirectPending, setIsProjectRedirectPending] = useState(false);
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin || 'http://localhost:5173').replace(/\/$/, '');
-  const landingProjectId = 'proj-ai-voice-05';
 
   const isRecoveryUrl = () => {
     const currentUrl = window.location.href;
@@ -458,9 +455,9 @@ const AppExperience: React.FC = () => {
     localStorage.removeItem('utest_crowdqa_walletTransactions');
   };
 
-  const handleLandingApply = (projectId = landingProjectId) => {
-    setIsProjectRedirectPending(true);
-    setPendingProjectId(projectId);
+  const handleLandingApply = (projectId?: string) => {
+    setIsProjectRedirectPending(Boolean(projectId));
+    setPendingProjectId(projectId || null);
     setAuthMode('signup');
     setScreen('login');
   };
@@ -470,12 +467,10 @@ const AppExperience: React.FC = () => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     resetLocalUserState();
-    if (isProjectRedirectPending) {
-      setActiveTab('projects');
-      setActiveWorkspaceProjectId(pendingProjectId || landingProjectId);
-      setIsProjectRedirectPending(false);
-      setPendingProjectId(null);
-    }
+    setActiveTab('projects');
+    if (isProjectRedirectPending && pendingProjectId) setActiveWorkspaceProjectId(pendingProjectId);
+    setIsProjectRedirectPending(false);
+    setPendingProjectId(null);
     setScreen('app');
   };
 
@@ -518,12 +513,10 @@ const AppExperience: React.FC = () => {
     });
     if (error) throw error;
     if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
-    if (isProjectRedirectPending) {
-      setActiveTab('projects');
-      setActiveWorkspaceProjectId(pendingProjectId || landingProjectId);
-      setIsProjectRedirectPending(false);
-      setPendingProjectId(null);
-    }
+    setActiveTab('projects');
+    if (isProjectRedirectPending && pendingProjectId) setActiveWorkspaceProjectId(pendingProjectId);
+    setIsProjectRedirectPending(false);
+    setPendingProjectId(null);
     setScreen('app');
   };
 

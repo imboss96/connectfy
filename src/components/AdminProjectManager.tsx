@@ -34,7 +34,7 @@ export const AdminProjectManager: React.FC = () => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrackFilter, setSelectedTrackFilter] = useState<'all' | ProjectTrack>('all');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'paused' | 'closed'>('all');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'active' | 'upcoming' | 'paused' | 'closed' | 'ended' | 'hidden'>('all');
   const [editingSlotsId, setEditingSlotsId] = useState<string | null>(null);
   const [newSlotsInput, setNewSlotsInput] = useState<string>('');
   const [applicationSearch, setApplicationSearch] = useState('');
@@ -86,16 +86,6 @@ export const AdminProjectManager: React.FC = () => {
     rejected: applications.filter((app) => app.status === 'rejected').length
   };
 
-  const toggleProjectStatus = (proj: Project) => {
-    const currentStatus = normalizeProjectStatus(proj.status);
-    const nextStatus =
-      currentStatus === 'active' ? 'paused' :
-      currentStatus === 'paused' ? 'closed' :
-      'active';
-
-    updateProject(proj.id, { status: nextStatus as Project['status'] });
-  };
-
   const handleSaveSlots = (projectId: string) => {
     const parsed = parseInt(newSlotsInput, 10);
     if (!isNaN(parsed) && parsed > 0) {
@@ -141,7 +131,7 @@ export const AdminProjectManager: React.FC = () => {
           </div>
 
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            <span className="text-slate-500 block text-[11px]">Contractor Slots Allocation</span>
+            <span className="text-slate-500 block text-[11px]">Project Slots Filled</span>
             <span className="text-lg font-bold text-[#007AFF]">{totalSlotsFilled} <span className="text-xs text-slate-500 font-normal">/ {totalSlotsCapacity} filled</span></span>
           </div>
 
@@ -248,6 +238,13 @@ export const AdminProjectManager: React.FC = () => {
                         <p><span className="font-semibold">uTest ID:</span> {app.uTestId || 'Not provided'}</p>
                         <p><span className="font-semibold">uTest email:</span> {app.uTestEmail || 'Not provided'}</p>
                       </div>
+                      {app.uTestAccountScreenshotUrl ? (
+                        <a href={app.uTestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-sky-800 underline underline-offset-2">
+                          <Eye className="h-3.5 w-3.5" /> View uTest account screenshot
+                        </a>
+                      ) : (
+                        <p className="mt-2 text-[10px] font-semibold text-rose-700">No uTest account screenshot submitted</p>
+                      )}
                       <p className="mt-2 text-[10px] leading-relaxed text-[#075985]">Approved payments are processed through uTest. Connectfy does not collect participant payments directly.</p>
                     </div>
 
@@ -315,6 +312,8 @@ export const AdminProjectManager: React.FC = () => {
             <option value="upcoming">Upcoming</option>
             <option value="paused">Paused</option>
             <option value="closed">Closed</option>
+            <option value="ended">Ended</option>
+            <option value="hidden">Hidden</option>
           </select>
 
           <button onClick={() => setIsAddModalOpen(true)} className="px-3.5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 transition shadow">
@@ -327,7 +326,7 @@ export const AdminProjectManager: React.FC = () => {
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <span>Showing {filteredProjects.length} of {projects.length} project listings</span>
-          <span>Click any project to toggle active status or edit slots</span>
+          <span>Set listing status, feature a project, or edit its slots</span>
         </div>
 
         {filteredProjects.length === 0 ? (
@@ -354,6 +353,7 @@ export const AdminProjectManager: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm sm:text-base font-bold text-slate-900">{project.title}</h3>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${isActive ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>{normalizedStatus}</span>
+                        {project.isFeatured && <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-200">Featured</span>}
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#007AFF]/10 text-[#0F7CC9] border border-[#007AFF]/20">{project.category}</span>
                       </div>
 
@@ -375,7 +375,7 @@ export const AdminProjectManager: React.FC = () => {
                       </div>
 
                       <div className="text-right">
-                        <span className="text-[10px] text-slate-500 block">Slots Capacity</span>
+                        <span className="text-[10px] text-slate-500 block">Project Slots</span>
                         {isEditingThis ? (
                           <div className="flex items-center gap-1 mt-0.5">
                             <input type="number" value={newSlotsInput} onChange={(e) => setNewSlotsInput(e.target.value)} className="w-16 bg-slate-50 border border-[#007AFF] rounded px-1.5 py-0.5 text-xs text-slate-900" autoFocus />
@@ -397,9 +397,15 @@ export const AdminProjectManager: React.FC = () => {
 
                     <div className="flex items-center space-x-2">
                       <button onClick={() => setEditingProject(project)} className="p-1.5 rounded-lg bg-slate-50 hover:bg-sky-50 text-slate-500 hover:text-sky-600 transition border border-slate-200" title="Edit project listing"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => toggleProjectStatus(project)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${isActive ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'}`}>
-                        {normalizeProjectStatus(project.status) === 'active' ? 'Pause' : normalizeProjectStatus(project.status) === 'paused' ? 'Close' : 'Activate'}
-                      </button>
+                      <select aria-label={`Set status for ${project.title}`} value={normalizedStatus} onChange={(event) => updateProject(project.id, { status: event.target.value as Project['status'] })} className="max-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
+                        <option value="active">Open</option>
+                        <option value="upcoming">Coming soon</option>
+                        <option value="paused">Paused</option>
+                        <option value="closed">Closed</option>
+                        <option value="ended">Ended</option>
+                        <option value="hidden">Hidden</option>
+                      </select>
+                      <button onClick={() => updateProject(project.id, { isFeatured: !project.isFeatured })} className={`p-1.5 rounded-lg transition border ${project.isFeatured ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-amber-50 hover:text-amber-700'}`} title={project.isFeatured ? 'Remove featured promotion' : 'Feature project'} aria-label={project.isFeatured ? `Remove featured promotion for ${project.title}` : `Feature ${project.title}`}><Sparkles className="w-4 h-4" /></button>
 
                       <button onClick={() => { if (confirm(`Are you sure you want to remove "${project.title}" from the listings?`)) { deleteProject(project.id); } }} className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600 transition border border-slate-200" title="Remove project listing"><Trash2 className="w-4 h-4" /></button>
                     </div>

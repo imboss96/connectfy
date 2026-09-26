@@ -21,13 +21,18 @@ import {
   Layers,
   FileCheck,
   Plus,
-  ExternalLink
+  ExternalLink,
+  Image as ImageIcon,
+  Edit3
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { isProjectOpenForApplications } from '../lib/projectStatus';
+import { getProjectAvailabilityLabel, isProjectOpenForApplications, isProjectVisibleToTesters } from '../lib/projectStatus';
+import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 import { Project, DeviceType, ProjectCategory, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
+import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
+import evidenceImage from '../../evidence.png';
 
 type ApplicationDraft = {
   projectId: string;
@@ -41,6 +46,7 @@ type ApplicationDraft = {
   deviceConfirmation: string;
   hasValidId: boolean;
   willingVoiceRecording: boolean;
+  utestAccountScreenshotUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,6 +63,7 @@ const createDraftFromProject = (project: Project): ApplicationDraft => ({
   deviceConfirmation: '',
   hasValidId: false,
   willingVoiceRecording: false,
+  utestAccountScreenshotUrl: '',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 });
@@ -82,6 +89,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDevice, setSelectedDevice] = useState<string>('all');
@@ -96,6 +104,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const [experienceNote, setExperienceNote] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [isUploadingUtestScreenshot, setIsUploadingUtestScreenshot] = useState(false);
   const [showAddDeviceForm, setShowAddDeviceForm] = useState(false);
   const [deviceDraft, setDeviceDraft] = useState({
     category: 'Smartphone' as 'Smartphone' | 'Tablet' | 'Computer' | 'Smart TV' | 'Wearable' | 'Console',
@@ -141,7 +150,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   // Filtering
   const filteredProjects = projects.filter((proj) => {
-    if (!isProjectOpenForApplications(proj)) return false;
+    if (!isProjectVisibleToTesters(proj)) return false;
 
     const matchesSearch =
       proj.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -161,7 +170,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     return matchesSearch && matchesTrack && matchesCategory && matchesDevice;
   });
 
-  const featuredProject = filteredProjects.find((project) => project.isFeatured === true || project.id === 'proj-ai-voice-05');
+  const featuredProject = filteredProjects.find((project) => project.isFeatured === true);
   const regularProjects = filteredProjects.filter((project) => project.id !== featuredProject?.id);
 
   const getApplicationForProject = (projectId: string) => {
@@ -268,6 +277,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
+    if (!applicationDraft.utestAccountScreenshotUrl) {
+      setApplyError('Upload a screenshot of your uTest account before submitting your application.');
+      return;
+    }
+
+    if (isUploadingUtestScreenshot) {
+      setApplyError('Wait for the uTest account screenshot upload to finish.');
+      return;
+    }
+
     if (!applicationDraft.hasValidId || !applicationDraft.willingVoiceRecording) {
       setApplyError('Please confirm the ID check and voice recording requirement before submitting.');
       return;
@@ -318,6 +337,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       applicantDeviceConfirmation: finalDraft.deviceConfirmation,
       applicantHasValidId: finalDraft.hasValidId,
       applicantWillingVoiceRecording: finalDraft.willingVoiceRecording,
+      applicantUtestScreenshotUrl: finalDraft.utestAccountScreenshotUrl,
       submittedAt: finalDraft.updatedAt
     });
     if (ok) {
@@ -330,6 +350,34 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       }, 1400);
     } else {
       setApplyError('You have already applied for this campaign.');
+    }
+  };
+
+  const handleUtestScreenshotUpload = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setApplyError('Choose an image file showing your uTest account.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setApplyError('The screenshot must be 8 MB or smaller.');
+      return;
+    }
+    if (!isCloudinaryConfigured) {
+      setApplyError('Screenshot upload is unavailable right now. Please contact support.');
+      return;
+    }
+
+    setIsUploadingUtestScreenshot(true);
+    setApplyError('');
+    try {
+      const result = await uploadToCloudinary(file);
+      updateDraft({ utestAccountScreenshotUrl: result.secure_url });
+    } catch (error) {
+      console.error('Unable to upload uTest account screenshot:', error);
+      setApplyError('Could not upload the screenshot. Please try again.');
+    } finally {
+      setIsUploadingUtestScreenshot(false);
     }
   };
 
@@ -413,14 +461,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               />
             </div>
 
-            <button
-              onClick={() => setIsAddProjectModalOpen(true)}
-              className="px-3.5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 transition shadow-md shadow-[#007AFF]/25 shrink-0 whitespace-nowrap active:scale-95"
-              title="Add a new project to listings (Admins, PMs, and Clients)"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Post Project</span>
-            </button>
+            {role !== 'tester' && (
+              <button
+                onClick={() => setIsAddProjectModalOpen(true)}
+                className="px-3.5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 transition shadow-md shadow-[#007AFF]/25 shrink-0 whitespace-nowrap active:scale-95"
+                title="Add a new project to listings"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Post Project</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -434,7 +484,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <button
                   key={t.id}
                   onClick={() => setSelectedTrack(t.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shrink-0 whitespace-nowrap ${
+                  className={`market-track-filter ${isSelected ? 'market-track-filter-selected' : ''} px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition shrink-0 whitespace-nowrap ${
                     isSelected
                       ? 'bg-[#007AFF] text-white shadow-sm shadow-[#007AFF]/30'
                       : 'bg-[#080D1A] text-slate-300 border border-[#1E2E4E] hover:text-white hover:border-[#00A3E0]/50'
@@ -507,9 +557,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
-              <h2 className="text-xl font-black tracking-[-0.03em] text-slate-900 sm:text-2xl">
-                {featuredProject.title}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-black tracking-[-0.03em] text-slate-900 sm:text-2xl">{featuredProject.title}</h2>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700">{getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}</span>
+              </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {featuredProject.shortDescription}
               </p>
@@ -531,9 +582,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               </button>
               <button
                 onClick={() => handleOpenApplyModal(featuredProject)}
-                className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE]"
+                disabled={!isProjectOpenForApplications(featuredProject)}
+                className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
               >
-                Apply to Featured Project
+                {isProjectOpenForApplications(featuredProject) ? 'Apply to Featured Project' : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}
               </button>
             </div>
           </div>
@@ -578,8 +630,15 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       <h3 className="font-bold text-white text-base group-hover:text-[#00A3E0] transition leading-snug">
                         {project.title}
                       </h3>
-                      <p className="text-xs text-slate-400">
-                        {project.company} • {project.supportedCountries.join(', ')}
+                      <span className="inline-flex mt-1 rounded-full border border-[#1E2E4E] bg-[#111C33] px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                        {getProjectAvailabilityLabel(project.status, project.startsAt)}
+                      </span>
+                      <p className="mt-1">
+                        <span className="inline-flex max-w-full flex-wrap items-center gap-x-1 rounded-md border border-[#9ACFC1] bg-[#DDF3EE] px-2 py-1 text-[11px] font-medium leading-relaxed text-[#185C52]">
+                          <span>{project.company}</span>
+                          <span aria-hidden="true">•</span>
+                          <span>{project.supportedCountries.join(', ') || 'Global'}</span>
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -602,42 +661,42 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   ))}
                 </div>
 
-                {/* Bounty / Rate Card Display */}
+                {/* Slot payout rate display */}
                 {isQA ? (
-                  <div className="bg-[#080D1A] p-3 rounded-xl border border-[#1E2E4E] mb-4 text-xs">
+                  <div className="slot-payout-highlight p-3 rounded-xl border border-[#E7C47B] mb-4 text-xs">
                     <div className="text-[11px] font-semibold text-slate-300 mb-1.5 flex justify-between">
-                      <span>Approved Defect Bounty Structure:</span>
-                      <span className="text-emerald-400 font-bold">
+                      <span>Slot payout per approved defect:</span>
+                      <span className="text-emerald-800 font-bold">
                         Up to ${project.bountyStructure.critical}
                       </span>
                     </div>
                     <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
-                      <div className="bg-[#111C33] p-1 rounded border border-[#1E2E4E]">
-                        <span className="text-rose-400 block font-bold">Crit</span>
+                      <div className="bg-[#FCEAEA] p-1 rounded border border-[#E6AAAA]">
+                        <span className="text-[#B94F4F] block font-bold">Crit</span>
                         <span className="text-white font-semibold">${project.bountyStructure.critical}</span>
                       </div>
-                      <div className="bg-[#111C33] p-1 rounded border border-[#1E2E4E]">
-                        <span className="text-amber-400 block font-bold">High</span>
+                      <div className="bg-[#FFF9E8] p-1 rounded border border-[#EAD9B0]">
+                        <span className="text-[#9A6714] block font-bold">High</span>
                         <span className="text-white font-semibold">${project.bountyStructure.high}</span>
                       </div>
-                      <div className="bg-[#111C33] p-1 rounded border border-[#1E2E4E]">
-                        <span className="text-[#00A3E0] block font-bold">Med</span>
+                      <div className="bg-[#E3F4F5] p-1 rounded border border-[#91D2D5]">
+                        <span className="text-[#087F8C] block font-bold">Med</span>
                         <span className="text-white font-semibold">${project.bountyStructure.medium}</span>
                       </div>
-                      <div className="bg-[#111C33] p-1 rounded border border-[#1E2E4E]">
-                        <span className="text-emerald-400 block font-bold">Run</span>
+                      <div className="bg-[#E7F4EC] p-1 rounded border border-[#A7D2B7]">
+                        <span className="text-[#287A59] block font-bold">Run</span>
                         <span className="text-white font-semibold">${project.bountyStructure.testCaseBounty}</span>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-[#f3ebff] p-3.5 rounded-xl border border-[#d8c8ff] mb-4 text-xs space-y-1.5 shadow-inner shadow-white/10">
+                  <div className="slot-payout-highlight p-3.5 rounded-xl border border-[#E7C47B] mb-4 text-xs space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-semibold text-violet-900">
-                        Test Case / Bundle Amount:
+                      <span className="text-[11px] font-semibold text-[#76500F]">
+                        Slot payout per task bundle:
                       </span>
-                      <span className="text-sm font-black text-emerald-800">
-                        ${project.bountyStructure.testCaseBounty || project.taskRate?.toFixed(2) || '45.00'} / bundle
+                      <span className="text-sm font-black text-[#287A59]">
+                        ${project.taskRate?.toFixed(2) || project.bountyStructure.testCaseBounty || '45.00'} / bundle
                       </span>
                     </div>
                     {project.deliverablesGuide && (
@@ -652,7 +711,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mb-4">
                   <div className="flex items-center space-x-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#00A3E0]" />
-                    <span>Closes: {project.deadline}</span>
+                    <span>{project.status === 'upcoming' ? getProjectAvailabilityLabel(project.status, project.startsAt) : `Closes: ${project.deadline || 'Not set'}`}</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <span className="font-semibold text-slate-300">
@@ -705,6 +764,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 ) : hasApplied ? (
                   <span className="inline-flex items-center justify-center sm:justify-start gap-1 text-xs font-semibold text-amber-400/90 py-1">
                     <Clock className="w-3.5 h-3.5" /> Application Pending
+                  </span>
+                ) : !isProjectOpenForApplications(project) ? (
+                  <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
+                    {getProjectAvailabilityLabel(project.status, project.startsAt)}
                   </span>
                 ) : (
                   <button
@@ -832,62 +895,79 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
               {/* Payment breakdown */}
               {viewingProject.projectTrack === 'qa_functional' ? (
-                <div>
-                  <h4 className="font-semibold text-slate-800 mb-1">Bounty Structure</h4>
+                <div className="slot-payout-highlight rounded-xl border border-[#E7C47B] p-3">
+                  <h4 className="mb-2 font-semibold text-slate-900">Slot Payout Rates</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Critical Defect</span>
-                      <span className="text-rose-500 font-bold text-sm">
+                    <div className="rounded-lg border border-[#E6AAAA] bg-[#FCEAEA] p-2">
+                      <span className="block text-[11px] text-[#9E4141]">Critical Defect</span>
+                      <span className="text-sm font-bold text-[#B94F4F]">
                         ${viewingProject.bountyStructure.critical}
                       </span>
                     </div>
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">High Defect</span>
-                      <span className="text-amber-500 font-bold text-sm">
+                    <div className="rounded-lg border border-[#EAD9B0] bg-[#FFF9E8] p-2">
+                      <span className="block text-[11px] text-[#806018]">High Defect</span>
+                      <span className="text-sm font-bold text-[#9A6714]">
                         ${viewingProject.bountyStructure.high}
                       </span>
                     </div>
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Medium Defect</span>
-                      <span className="text-blue-500 font-bold text-sm">
+                    <div className="rounded-lg border border-[#91D2D5] bg-[#E3F4F5] p-2">
+                      <span className="block text-[11px] text-[#28676A]">Medium Defect</span>
+                      <span className="text-sm font-bold text-[#087F8C]">
                         ${viewingProject.bountyStructure.medium}
                       </span>
                     </div>
-                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <span className="text-slate-500 block text-[11px]">Test Run Bounty</span>
-                      <span className="text-emerald-600 font-bold text-sm">
+                    <div className="rounded-lg border border-[#A7D2B7] bg-[#E7F4EC] p-2">
+                      <span className="block text-[11px] text-[#3E6C52]">Test Run Slot Payout</span>
+                      <span className="text-sm font-bold text-[#287A59]">
                         ${viewingProject.bountyStructure.testCaseBounty}
                       </span>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="p-3 bg-violet-50 rounded-xl border border-violet-200">
-                  <h4 className="font-semibold text-violet-700 mb-1">Bundle / Slot Payout</h4>
+                <div className="slot-payout-highlight rounded-xl border border-[#E7C47B] p-3">
+                  <h4 className="mb-1 font-semibold text-[#76500F]">Bundle / Slot Payout</h4>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">Test Case / Bundle Amount</span>
+                    <span className="text-slate-600">Slot payout per task bundle</span>
                     <span className="font-black text-emerald-700">
-                      ${viewingProject.bountyStructure.testCaseBounty || viewingProject.taskRate?.toFixed(2) || '45.00'}
+                      ${viewingProject.taskRate?.toFixed(2) || viewingProject.bountyStructure.testCaseBounty || '45.00'}
                     </span>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex flex-wrap justify-between items-center gap-3">
               <span className="text-xs text-slate-600">
-                Total Campaign Budget: ${viewingProject.totalBudget.toLocaleString()}
+                Total Project Budget: ${viewingProject.totalBudget.toLocaleString()}
               </span>
-              <button
-                onClick={() => {
-                  const proj = viewingProject;
-                  setViewingProject(null);
-                  handleOpenApplyModal(proj);
-                }}
-                className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30"
-              >
-                Apply for Opportunity
-              </button>
+              {role === 'admin' ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-semibold text-slate-600">Admin task controls</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingProject(viewingProject);
+                      setViewingProject(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0066EE]"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    Edit task
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    const proj = viewingProject;
+                    setViewingProject(null);
+                    handleOpenApplyModal(proj);
+                  }}
+                  className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30"
+                >
+                  Apply for Opportunity
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -898,8 +978,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-4 animate-fade-in">
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-5 h-5 text-[#00A3E0]" />
+              <div>
                 <h3 className="font-bold text-slate-900 text-base">Submit Application</h3>
               </div>
               <button
@@ -1043,6 +1122,39 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       placeholder="Confirm the exact device you will use"
                     />
                   </label>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <label className="block font-semibold text-slate-800" htmlFor="utest-account-screenshot">
+                    uTest account screenshot <span className="text-rose-600">*</span>
+                  </label>
+                  <p className="text-[11px] leading-relaxed text-slate-600">
+                    Upload a screenshot showing your uTest profile or account ID. Crop out passwords, recovery codes, and payment details. Image files up to 8 MB.
+                  </p>
+                  <a href={evidenceImage} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-slate-700 bg-[#080D1A]" aria-label="Open the example uTest account screenshot">
+                    <img src={evidenceImage} alt="Example uTest sidebar with the account name and tester ID highlighted" className="h-40 w-full object-cover object-[center_90%]" />
+                    <span className="block border-t border-slate-700 px-3 py-1.5 text-[10px] font-semibold text-slate-200">Example screenshot: keep your uTest account name and ID visible</span>
+                  </a>
+                  <input
+                    id="utest-account-screenshot"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      void handleUtestScreenshotUpload(event.target.files?.[0]);
+                      event.currentTarget.value = '';
+                    }}
+                    disabled={isUploadingUtestScreenshot}
+                    className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:font-semibold file:text-slate-700 file:ring-1 file:ring-slate-300 hover:file:bg-slate-100 disabled:opacity-60"
+                  />
+                  {isUploadingUtestScreenshot && <p className="text-xs font-medium text-sky-700">Uploading screenshot…</p>}
+                  {applicationDraft?.utestAccountScreenshotUrl && (
+                    <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-white p-2">
+                      <ImageIcon className="h-4 w-4 shrink-0 text-emerald-700" />
+                      <img src={applicationDraft.utestAccountScreenshotUrl} alt="Uploaded uTest account screenshot preview" className="h-14 w-20 rounded border border-slate-200 object-cover" />
+                      <span className="min-w-0 flex-1 text-xs font-semibold text-emerald-800">Screenshot uploaded</span>
+                      <a href={applicationDraft.utestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-sky-700 underline">View</a>
+                    </div>
+                  )}
                 </div>
 
                 <p className="rounded-lg border border-[#00A3E0]/30 bg-[#007AFF]/10 px-3 py-2 text-[11px] leading-relaxed text-[#005b85]">
@@ -1254,6 +1366,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </button>
                   <button
                     type="submit"
+                    disabled={isUploadingUtestScreenshot}
                     className="px-5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white font-bold rounded-xl shadow transition shadow-[#007AFF]/30"
                   >
                     Confirm & Send Application
@@ -1270,6 +1383,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         isOpen={isAddProjectModalOpen}
         onClose={() => setIsAddProjectModalOpen(false)}
       />
+      <EditProjectModal project={editingProject} onClose={() => setEditingProject(null)} />
     </div>
   );
 };

@@ -98,7 +98,7 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setError('Please provide a descriptive title for this deliverable batch.');
@@ -140,7 +140,7 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
     }
 
     try {
-      submitTaskDeliverable({
+      await submitTaskDeliverable({
         projectId: project.id,
         taskType: project.projectTrack || 'data_collection',
         title: title.trim(),
@@ -179,7 +179,7 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
             <div>
               <h3 className="font-bold text-slate-900 text-base">Submit Task Deliverable</h3>
               <p className="text-xs text-slate-600">
-                {project.title} • <span className="text-emerald-600 font-semibold">${project.taskRate?.toFixed(2) || '40.00'} Bounty</span>
+                {project.title} • <span className="text-emerald-600 font-semibold">${project.taskRate?.toFixed(2) || '40.00'} Slot Payout</span>
               </p>
             </div>
           </div>
@@ -463,7 +463,7 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
           <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-700 flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <span>
-              Once approved by {project.company}, the bounty of <strong>${project.taskRate?.toFixed(2) || '40.00'}</strong> will be automatically credited to your available payout balance.
+              Once approved by {project.company}, your slot payout of <strong>${project.taskRate?.toFixed(2) || '40.00'}</strong> will be credited to your available slot payout balance.
             </span>
           </div>
 

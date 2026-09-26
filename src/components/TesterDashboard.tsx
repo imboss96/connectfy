@@ -114,13 +114,13 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
         {/* Quick KPI stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[#1E2E4E] text-xs">
           <div className="bg-[#080D1A] p-3 rounded-xl border border-[#1E2E4E]">
-            <span className="text-slate-400 block text-[11px]">Available Payout</span>
+            <span className="text-slate-400 block text-[11px]">Available Slot Payout</span>
             <span className="text-lg font-bold text-emerald-400">
               ${testerProfile.availableBalance.toFixed(2)}
             </span>
           </div>
           <div className="bg-[#080D1A] p-3 rounded-xl border border-[#1E2E4E]">
-            <span className="text-slate-400 block text-[11px]">In Review Escrow</span>
+            <span className="text-slate-400 block text-[11px]">Slot Payout in Review</span>
             <span className="text-lg font-bold text-amber-400">
               ${testerProfile.pendingEscrow.toFixed(2)}
             </span>
@@ -132,7 +132,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
             </span>
           </div>
           <div className="bg-[#080D1A] p-3 rounded-xl border border-[#1E2E4E]">
-            <span className="text-slate-400 block text-[11px]">Lifetime Earnings</span>
+            <span className="text-slate-400 block text-[11px]">Lifetime Slot Payouts</span>
             <span className="text-lg font-bold text-[#00A3E0]">
               ${testerProfile.lifetimeEarnings.toFixed(2)}
             </span>
@@ -177,7 +177,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
 
                   <div className="flex items-center justify-between pt-2 border-t border-[#1E2E4E]">
                     <span className="text-xs text-emerald-400 font-bold">
-                      Critical Bounty: ${project.bountyStructure.critical}
+                      Critical Slot Payout: ${project.bountyStructure.critical}
                     </span>
                     <button
                       onClick={() => acceptInvite(inv.id)}
@@ -308,7 +308,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                         <span>Active Testing</span>
                       </div>
 
-                      {/* Step 4: Bounty Credited */}
+                      {/* Step 4: Slot Payout Credited */}
                       <div
                         className={`p-1.5 rounded border text-center font-semibold flex items-center justify-center gap-1 ${
                           approvedBugs.length > 0
@@ -324,7 +324,7 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                         <span>
                           {approvedBugs.length > 0
                             ? `${approvedBugs.length} Paid`
-                            : 'Bounties Credited'}
+                            : 'Slot Payouts Credited'}
                         </span>
                       </div>
                     </div>

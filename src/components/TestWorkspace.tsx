@@ -180,7 +180,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
           </div>
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">
-              {isQA ? 'Max Critical Bounty' : 'Deliverable Rate'}
+              {isQA ? 'Max Critical Slot Payout' : 'Slot Payout per Batch'}
             </span>
             <span className="text-base sm:text-lg font-bold text-violet-600">
               {isQA ? `$${project.bountyStructure.critical.toFixed(2)}` : `$${(project.taskRate || 40).toFixed(2)} / batch`}
@@ -256,7 +256,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             <div>
               <h3 className="text-sm font-bold text-slate-900">Your Deliverable Submissions</h3>
               <p className="text-xs text-slate-600">
-                Track verification progress, review feedback, and automatic payout crediting
+                Track verification, slot payout approval, and credited work
               </p>
             </div>
             <button
@@ -292,12 +292,12 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-xs font-bold text-purple-400">
+                        <span className="text-xs font-bold text-purple-700">
                           #{sub.id.toUpperCase().slice(-6)}
                         </span>
                         <h4 className="text-sm font-bold text-slate-900">{sub.title}</h4>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-slate-600 mt-0.5">
                         Submitted on {sub.submittedAt}
                       </p>
                     </div>
@@ -305,28 +305,28 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                     <div className="flex items-center space-x-3">
                       {sub.status === 'approved' ? (
                         <div className="text-right">
-                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                           </span>
-                          <p className="text-[11px] font-bold text-emerald-400 mt-0.5">
+                          <p className="text-[11px] font-bold text-emerald-700 mt-0.5">
                             +${sub.bountyEarned.toFixed(2)} Credited
                           </p>
                         </div>
                       ) : sub.status === 'under_review' ? (
                         <div className="text-right">
-                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 inline-flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" /> Under Client Review
                           </span>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <p className="text-[11px] text-slate-600 mt-0.5">
                             Pending ${sub.bountyEarned.toFixed(2)}
                           </p>
                         </div>
                       ) : sub.status === 'changes_requested' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" /> Changes Requested
                         </span>
                       ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-800 border border-rose-200 inline-flex items-center gap-1">
                           <XCircle className="w-3.5 h-3.5" /> Rejected
                         </span>
                       )}
@@ -341,27 +341,27 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                   {sub.metadata && Object.keys(sub.metadata).length > 0 && (
                     <div className="flex flex-wrap gap-2 text-[11px]">
                       {sub.metadata.sampleCount && (
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
-                          Samples: <strong className="text-white">{sub.metadata.sampleCount}</strong>
+                        <span className="px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700">
+                          Samples: <strong className="text-slate-900">{sub.metadata.sampleCount}</strong>
                         </span>
                       )}
                       {sub.metadata.languageOrDialect && (
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-purple-300">
-                          Language: <strong className="text-white">{sub.metadata.languageOrDialect}</strong>
+                        <span className="px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-800">
+                          Language: <strong className="text-purple-950">{sub.metadata.languageOrDialect}</strong>
                         </span>
                       )}
                       {sub.metadata.audioEnvironment && (
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
-                          Room: <strong className="text-white">{sub.metadata.audioEnvironment}</strong>
+                        <span className="px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700">
+                          Room: <strong className="text-slate-900">{sub.metadata.audioEnvironment}</strong>
                         </span>
                       )}
                       {sub.metadata.storeLocationOrMerchant && (
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-300">
-                          Location: <strong className="text-white">{sub.metadata.storeLocationOrMerchant}</strong>
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">
+                          Location: <strong className="text-emerald-950">{sub.metadata.storeLocationOrMerchant}</strong>
                         </span>
                       )}
                       {sub.metadata.deviceUsed && (
-                        <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400">
+                        <span className="px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700">
                           Device: {sub.metadata.deviceUsed}
                         </span>
                       )}
@@ -369,8 +369,8 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                   )}
 
                   {/* Attachments & Previews */}
-                  <div className="space-y-2 pt-2 border-t border-slate-800/80">
-                    <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
                       <Paperclip className="w-3.5 h-3.5" /> Attached Files ({sub.attachments.length}):
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
@@ -381,15 +381,15 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                         >
                           <div className="flex items-center space-x-2 truncate">
                             {att.type.startsWith('audio/') ? (
-                              <Volume2 className="w-4 h-4 text-purple-400 shrink-0" />
+                              <Volume2 className="w-4 h-4 text-purple-600 shrink-0" />
                             ) : (
-                              <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                              <FileText className="w-4 h-4 text-blue-600 shrink-0" />
                             )}
                             <span className="truncate text-slate-700 text-[11px] font-medium">{att.name}</span>
                           </div>
                           <button
                             onClick={() => setSelectedAttachment(att)}
-                            className="text-xs text-blue-400 hover:text-blue-300 underline font-semibold ml-2 shrink-0"
+                            className="text-xs text-blue-700 hover:text-blue-900 underline font-semibold ml-2 shrink-0"
                           >
                             View
                           </button>
@@ -400,20 +400,20 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
 
                   {/* Client Feedback & Rating */}
                   {sub.clientFeedback && (
-                    <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-xs space-y-1">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-300 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Client Verification Feedback:
+                        <span className="font-semibold text-slate-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Client Verification Feedback:
                         </span>
                         {sub.clientRating && (
-                          <div className="flex items-center text-amber-400">
+                          <div className="flex items-center text-amber-600">
                             {Array.from({ length: sub.clientRating }).map((_, i) => (
                               <Star key={i} className="w-3.5 h-3.5 fill-current" />
                             ))}
                           </div>
                         )}
                       </div>
-                      <p className="text-slate-300 italic text-[11px] leading-relaxed">
+                      <p className="text-slate-700 italic text-[11px] leading-relaxed">
                         "{sub.clientFeedback}"
                       </p>
                     </div>

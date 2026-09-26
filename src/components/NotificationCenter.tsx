@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Check, CheckCheck, Sparkles, DollarSign, Award, AlertCircle, Info, ExternalLink } from 'lucide-react';
+import { Bell, CheckCheck, Sparkles, DollarSign, Award, AlertCircle, Info, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { NotificationItem } from '../types';
 
@@ -10,7 +10,7 @@ interface NotificationCenterProps {
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, onClose, onActionClick }) => {
-  const { notifications, markNotificationRead, markAllNotificationsRead, role, testerProfile, clientProfile } = useApp();
+  const { notifications, markNotificationRead, markAllNotificationsRead, dismissNotification, role, testerProfile, clientProfile } = useApp();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   if (!isOpen) return null;
@@ -114,13 +114,25 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ isOpen, 
                 {getIcon(notif.type)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
+                <div className="mb-1 flex items-center justify-between gap-2">
                   <h4 className={`text-xs font-semibold truncate ${!notif.read ? 'text-white' : 'text-slate-300'}`}>
                     {notif.title}
                   </h4>
-                  {!notif.read && (
-                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 ml-2" />
-                  )}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {!notif.read && <span className="h-2 w-2 rounded-full bg-blue-500" aria-label="Unread" />}
+                    <button
+                      type="button"
+                      aria-label={`Dismiss notification: ${notif.title}`}
+                      title="Dismiss notification"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        dismissNotification(notif.id);
+                      }}
+                      className="rounded p-1 text-slate-500 transition hover:bg-slate-700 hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
                   {notif.message}

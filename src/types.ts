@@ -115,6 +115,7 @@ export interface ProjectApplication {
   testerEmail: string;
   uTestId?: string;
   uTestEmail?: string;
+  uTestAccountScreenshotUrl?: string;
   testerRating: number;
   testerTier: 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
   appliedDate: string;
@@ -195,7 +196,8 @@ export interface Project {
   slotsTotal: number;
   slotsFilled: number;
   deadline: string;
-  status: 'active' | 'upcoming' | 'paused' | 'closed';
+  status: 'active' | 'upcoming' | 'paused' | 'closed' | 'ended' | 'hidden';
+  startsAt?: string;
   bountyStructure: ProjectBountyStructure;
   totalBudget: number;
   budgetDisbursed: number;

@@ -1,21 +1,18 @@
 import React, { useState } from 'react';
 import {
   X,
-  DollarSign,
   ArrowUpRight,
   Clock,
   CheckCircle2,
-  ShieldCheck,
-  CreditCard,
-  Building2,
   Send,
   Download,
   AlertCircle,
-  FileCheck
-  , Globe2
+  FileCheck,
+  ArrowDownLeft,
+  Wallet
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { PayoutRequest } from '../types';
+import { PayoutRequest, TesterPaymentSettings, WalletTransaction } from '../types';
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -23,6 +20,20 @@ interface WalletModalProps {
 }
 
 type PaymentMethod = 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise';
+
+type LedgerFilter = 'all' | 'credits' | 'withdrawals';
+
+const PAYMENT_METHODS: PaymentMethod[] = ['PayPal', 'Payoneer', 'Wise', 'Direct Bank Wire'];
+
+const getSavedDestination = (method: PaymentMethod, settings?: TesterPaymentSettings) => {
+  if (!settings) return '';
+  switch (method) {
+    case 'PayPal': return settings.paypalEmail;
+    case 'Payoneer': return settings.payoneerId;
+    case 'Wise': return settings.wiseEmail;
+    case 'Direct Bank Wire': return settings.bankDetails?.ibanOrAccount || '';
+  }
+};
 
 const PaymentMethodLogo: React.FC<{ method: PaymentMethod; className?: string }> = ({ method, className = 'h-5 w-5' }) => {
   const commonProps = { className, viewBox: '0 0 32 32', fill: 'none' } as const;
@@ -66,15 +77,25 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethod; className?: string }>
 };
 
 export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
-  const { testerProfile, walletTransactions, requestPayout } = useApp();
+  const { testerProfile, walletTransactions, requestPayout, bugReports, taskSubmissions } = useApp();
   
   const [showPayoutForm, setShowPayoutForm] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState<string>('');
-  const [payoutMethod, setPayoutMethod] = useState<'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise'>('PayPal');
-  const [destinationAccount, setDestinationAccount] = useState('ezrahbosire1@gmail.com');
+  const [payoutMethod, setPayoutMethod] = useState<PaymentMethod>(() => testerProfile.paymentSettings?.preferredMethod || 'PayPal');
+  const [destinationAccount, setDestinationAccount] = useState(() => getSavedDestination(payoutMethod, testerProfile.paymentSettings));
   const [isProcessing, setIsProcessing] = useState(false);
   const [completedPayout, setCompletedPayout] = useState<PayoutRequest | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
+
+  const pendingReviewCount =
+    bugReports.filter((report) => report.testerId === testerProfile.id && (report.status === 'submitted' || report.status === 'under_review')).length +
+    taskSubmissions.filter((submission) => submission.testerId === testerProfile.id && (submission.status === 'submitted' || submission.status === 'under_review')).length;
+  const visibleTransactions = walletTransactions.filter((transaction) =>
+    ledgerFilter === 'all' ||
+    (ledgerFilter === 'credits' && transaction.type === 'credit_bounty') ||
+    (ledgerFilter === 'withdrawals' && transaction.type === 'payout_withdrawal')
+  );
 
   if (!isOpen) return null;
 
@@ -106,236 +127,171 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
 
     setIsProcessing(true);
 
-    // Simulate secure 2-second gateway authorization
-    setTimeout(async () => {
-      try {
-        const result = await requestPayout(amt, payoutMethod, destinationAccount);
-        setIsProcessing(false);
-        setCompletedPayout(result);
-        setShowPayoutForm(false);
-      } catch (err: any) {
-        setIsProcessing(false);
-        setErrorMessage(err.message || 'Payment gateway connection error.');
-      }
-    }, 1500);
+    setIsProcessing(true);
+    try {
+      const result = await requestPayout(amt, payoutMethod, destinationAccount.trim());
+      setCompletedPayout(result);
+      setShowPayoutForm(false);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Unable to request this withdrawal.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleExportStatement = () => {
+    const rows = [
+      ['Date', 'Description', 'Type', 'Amount (USD)', 'Status', 'Reference'],
+      ...visibleTransactions.map((transaction: WalletTransaction) => [
+        transaction.date,
+        transaction.description,
+        transaction.type === 'credit_bounty' ? 'Slot payout' : 'Withdrawal',
+        `${transaction.type === 'credit_bounty' ? '' : '-'}${transaction.amount.toFixed(2)}`,
+        transaction.status,
+        transaction.referenceId
+      ])
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const fileUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const downloadLink = document.createElement('a');
+    downloadLink.href = fileUrl;
+    downloadLink.download = 'connectfy-wallet-statement.csv';
+    downloadLink.click();
+    window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-[2px] p-2 sm:p-4 animate-fade-in">
-      <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
-        
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 backdrop-blur-sm sm:p-5">
+      <div role="dialog" aria-modal="true" aria-labelledby="wallet-modal-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl">
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5 sm:space-x-3">
-            <div className="p-2 sm:p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl border border-emerald-200 shrink-0">
-              <DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <Wallet className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 truncate">Tester Earnings & Payouts</h2>
-                <span className="text-[10px] sm:text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Secure Wallet
-                </span>
-              </div>
-              <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-                Automated bounty crediting and multi-rail payment gateway
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">Tester wallet</p>
+              <h2 id="wallet-modal-title" className="truncate text-base font-bold text-slate-950 sm:text-lg">Slot payouts</h2>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition shrink-0"
+            aria-label="Close wallet"
+            className="shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6 bg-white">
-          
+        <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
           {/* Completed Payout Success Notice */}
           {completedPayout && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 space-y-3 animate-fade-in">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-emerald-700">
-                      Payout Successfully Dispatched!
-                    </h3>
-                    <p className="text-xs text-emerald-700/80">
-                      Transaction Ref: <span className="font-mono">{completedPayout.transactionRef}</span>
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setCompletedPayout(null)}
-                  className="text-xs text-slate-500 hover:text-slate-800"
-                >
-                  Dismiss
-                </button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-emerald-200 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />
                 <div>
-                  <span className="text-slate-500 block text-[11px]">Amount</span>
-                  <span className="font-bold text-slate-900 text-sm">${completedPayout.amount.toFixed(2)}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Payment Gateway</span>
-                  <span className="font-medium text-slate-700">{completedPayout.method}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Recipient</span>
-                  <span className="font-medium text-slate-700 truncate block">{completedPayout.destinationAccount}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Status</span>
-                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
-                    <CheckCircle2 className="w-3 h-3" /> Transferred
-                  </span>
+                  <h3 className="text-sm font-bold text-emerald-950">Withdrawal completed</h3>
+                  <p className="text-xs text-emerald-800">${completedPayout.amount.toFixed(2)} via {completedPayout.method} · Ref {completedPayout.transactionRef}</p>
                 </div>
               </div>
+              <button type="button" onClick={() => setCompletedPayout(null)} className="text-xs font-semibold text-emerald-800 underline underline-offset-2">Dismiss</button>
             </div>
           )}
 
-          {/* Balance Cards Bento */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            
-            <div className="p-5 rounded-xl bg-gradient-to-br from-slate-50 to-white border border-slate-200 relative overflow-hidden">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Available for Payout
-                </span>
-                <span className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg">
-                  <CheckCircle2 className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                ${testerProfile.availableBalance.toFixed(2)}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Credited from approved bug reports
-              </p>
-              <div className="mt-4">
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="grid lg:grid-cols-[1.1fr_1.9fr]">
+              <div className="flex flex-col items-start justify-between gap-5 bg-[#eaf6f2] p-5 sm:p-6">
+                <div>
+                  <p className="text-xs font-semibold text-emerald-800">Available to withdraw</p>
+                  <p className="mt-2 text-4xl font-bold tracking-tight text-slate-950">${testerProfile.availableBalance.toFixed(2)}</p>
+                  <p className="mt-1 text-xs text-slate-600">From approved defect and task work</p>
+                </div>
                 <button
-                  onClick={() => setShowPayoutForm(true)}
+                  onClick={() => setShowPayoutForm((visible) => !visible)}
                   disabled={testerProfile.availableBalance < 10}
-                  className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1.5 transition shadow-sm"
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ArrowUpRight className="w-4 h-4" />
-                  <span>Request Payout</span>
+                  <ArrowUpRight className="h-4 w-4" />
+                  {showPayoutForm ? 'Close withdrawal form' : 'Withdraw funds'}
                 </button>
               </div>
-            </div>
-
-            <div className="p-5 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Pending Escrow
-                </span>
-                <span className="p-1.5 bg-amber-100 text-amber-600 rounded-lg">
-                  <Clock className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-extrabold text-slate-800 tracking-tight">
-                ${testerProfile.pendingEscrow.toFixed(2)}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Awaiting client review & sign-off
-              </p>
-              <div className="mt-4 pt-2 text-[11px] text-amber-700 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" /> 2 bugs in review pipeline
+              <div className="grid divide-y divide-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                <div className="flex flex-col justify-center p-5 sm:p-6">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600"><Clock className="h-4 w-4 text-amber-600" /> Pending review</div>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">${testerProfile.pendingEscrow.toFixed(2)}</p>
+                  <p className="mt-1 text-xs text-slate-500">{pendingReviewCount} submission{pendingReviewCount === 1 ? '' : 's'} awaiting review</p>
+                </div>
+                <div className="flex flex-col justify-center p-5 sm:p-6">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600"><FileCheck className="h-4 w-4 text-sky-700" /> Lifetime slot payouts</div>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">${testerProfile.lifetimeEarnings.toFixed(2)}</p>
+                  <p className="mt-1 text-xs text-slate-500">{testerProfile.tier} · {testerProfile.rating.toFixed(2)} tester rating</p>
+                </div>
               </div>
             </div>
-
-            <div className="p-5 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Lifetime Earnings
-                </span>
-                <span className="p-1.5 bg-blue-100 text-[#00A3E0] rounded-lg">
-                  <FileCheck className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="text-3xl font-extrabold text-slate-800 tracking-tight">
-                ${testerProfile.lifetimeEarnings.toFixed(2)}
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {testerProfile.approvedBugsCount} approved bugs in {testerProfile.completedCyclesCount} cycles
-              </p>
-              <div className="mt-4 pt-2 text-[11px] text-[#00A3E0] flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" /> Gold Tier (4.94 rating)
-              </div>
-            </div>
-
-          </div>
+          </section>
 
           {/* Payout Form Drawer/Modal */}
           {showPayoutForm && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div className="flex items-center space-x-2">
-                  <CreditCard className="w-5 h-5 text-[#00A3E0]" />
-                  <h3 className="font-semibold text-slate-900 text-sm">Disburse Funds via Secure Payment Rail</h3>
+            <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950">Withdraw slot payout</h3>
+                  <p className="mt-1 text-xs text-slate-500">Minimum withdrawal: $10.00</p>
                 </div>
                 <button
-                  onClick={() => setShowPayoutForm(false)}
-                  className="text-slate-500 hover:text-slate-800 text-xs"
+                  type="button"
+                  onClick={() => { setShowPayoutForm(false); setErrorMessage(''); }}
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                 >
                   Cancel
                 </button>
               </div>
 
               {errorMessage && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center space-x-2 text-xs text-rose-700">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
                   <span>{errorMessage}</span>
                 </div>
               )}
 
-              <form onSubmit={handleInitiatePayout} className="space-y-4">
+              <form onSubmit={handleInitiatePayout} className="space-y-5">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-2">
-                    Select Payment Gateway Rail
+                  <label className="mb-2 block text-xs font-semibold text-slate-700">
+                    Withdrawal method
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[
-                      { id: 'PayPal', label: 'PayPal', icon: CreditCard, fee: 'No fee', speed: 'Instant' },
-                      { id: 'Payoneer', label: 'Payoneer', icon: CreditCard, fee: 'No fee', speed: '1-2 hrs' },
-                      { id: 'Wise', label: 'Wise', icon: Globe2, fee: '$0.45', speed: 'Same Day' },
-                      { id: 'Direct Bank Wire', label: 'Bank Wire', icon: Building2, fee: '$1.50', speed: '1-3 days' }
-                    ].map((m) => (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {PAYMENT_METHODS.map((method) => (
                       <button
                         type="button"
-                        key={m.id}
-                        onClick={() => setPayoutMethod(m.id as any)}
-                        className={`p-3 rounded-lg border text-left transition ${
-                          payoutMethod === m.id
-                            ? 'bg-[#007AFF]/10 border-[#00A3E0] text-slate-900'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                        key={method}
+                        onClick={() => {
+                          setPayoutMethod(method);
+                          setDestinationAccount(getSavedDestination(method, testerProfile.paymentSettings));
+                        }}
+                        aria-pressed={payoutMethod === method}
+                        className={`flex min-h-16 items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition ${
+                          payoutMethod === method
+                            ? 'border-emerald-600 bg-emerald-50 text-slate-950 ring-1 ring-emerald-600'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                         }`}
                       >
-                        <m.icon className="mb-1 h-5 w-5 text-[#00A3E0]" />
-                        <div className="text-xs font-semibold">{m.label}</div>
-                        <div className="text-[10px] text-slate-500 flex justify-between mt-1">
-                          <span>{m.speed}</span>
-                          <span className="text-emerald-600">{m.fee}</span>
-                        </div>
+                        <PaymentMethodLogo method={method} className="h-6 w-6 shrink-0" />
+                        <span className="text-xs font-semibold">{method === 'Direct Bank Wire' ? 'Bank wire' : method}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Withdrawal Amount (USD)
+                    <label htmlFor="wallet-withdrawal-amount" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                      Amount to withdraw
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-500 text-sm">$</span>
+                      <span className="absolute left-3 top-2.5 text-sm text-slate-500">$</span>
                       <input
+                        id="wallet-withdrawal-amount"
                         type="number"
                         step="0.01"
                         min="10"
@@ -343,112 +299,128 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                         value={payoutAmount}
                         onChange={(e) => setPayoutAmount(e.target.value)}
                         placeholder="0.00"
-                        className="w-full bg-white border border-slate-200 rounded-lg pl-7 pr-16 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#00A3E0]"
+                        className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-7 pr-16 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                       />
                       <button
                         type="button"
                         onClick={handleMaxClick}
-                        className="absolute right-2 top-1.5 px-2 py-1 text-[11px] bg-slate-100 hover:bg-slate-200 text-[#00A3E0] font-semibold rounded"
+                        className="absolute right-2 top-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-slate-200"
                       >
-                        MAX
+                        Max
                       </button>
                     </div>
-                    <span className="text-[11px] text-slate-500 mt-1 block">
-                      Available: ${testerProfile.availableBalance.toFixed(2)} (Min $10.00)
-                    </span>
+                    <p className="mt-1.5 text-[11px] text-slate-500">Available: ${testerProfile.availableBalance.toFixed(2)}</p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      {payoutMethod === 'Direct Bank Wire' ? 'IBAN / Account Number' : `${payoutMethod} Email or Account ID`}
+                    <label htmlFor="wallet-destination-account" className="mb-1.5 block text-xs font-semibold text-slate-700">
+                      {payoutMethod === 'Direct Bank Wire' ? 'Bank account / IBAN' : `${payoutMethod} recipient`}
                     </label>
                     <input
+                      id="wallet-destination-account"
                       type="text"
                       value={destinationAccount}
                       onChange={(e) => setDestinationAccount(e.target.value)}
-                      placeholder={payoutMethod === 'Direct Bank Wire' ? 'US89 3704 0044 0532 0130 00' : 'account@email.com'}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#00A3E0]"
+                      placeholder={payoutMethod === 'Direct Bank Wire' ? 'Enter account number or IBAN' : 'Enter email or account ID'}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
-                    <span className="text-[11px] text-slate-500 mt-1 block">
-                      Protected by 256-bit automated encryption
-                    </span>
+                    <p className="mt-1.5 text-[11px] text-slate-500">Defaults to the payment detail saved in Profile & Fleet.</p>
                   </div>
                 </div>
 
-                <div className="pt-2 flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowPayoutForm(false)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition border border-slate-200"
-                  >
-                    Cancel
-                  </button>
+                <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-[11px] text-slate-500">Minimum withdrawal is $10.00.</p>
                   <button
                     type="submit"
                     disabled={isProcessing}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold rounded-lg flex items-center space-x-2 transition shadow"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
                   >
                     {isProcessing ? (
                       <>
-                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Authorizing Gateway...</span>
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <span>Submitting request…</span>
                       </>
                     ) : (
                       <>
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Authorize & Transfer Funds</span>
+                        <Send className="h-3.5 w-3.5" />
+                        <span>Submit withdrawal</span>
                       </>
                     )}
                   </button>
                 </div>
               </form>
-            </div>
+            </section>
           )}
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm text-slate-800 flex items-center space-x-2">
-                <span>Payout & Bounty Ledger</span>
-                <span className="text-xs text-slate-500 font-normal">
-                  ({walletTransactions.length} recorded events)
-                </span>
-              </h3>
-              <button
-                onClick={() => alert("Ledger downloaded as encrypted CSV format")}
-                className="text-xs text-[#00A3E0] hover:text-[#38BDF8] flex items-center space-x-1 font-medium"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export Statement</span>
-              </button>
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-950">Activity</h3>
+                <p className="mt-0.5 text-xs text-slate-500">Slot payout credits and withdrawal requests</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1" aria-label="Filter wallet activity">
+                  {([{ id: 'all', label: 'All' }, { id: 'credits', label: 'Payouts' }, { id: 'withdrawals', label: 'Withdrawals' }] as const).map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setLedgerFilter(filter.id)}
+                      aria-pressed={ledgerFilter === filter.id}
+                      className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition ${ledgerFilter === filter.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportStatement}
+                  disabled={visibleTransactions.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" /> Export CSV
+                </button>
+              </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-200">
-              {walletTransactions.map((tx) => {
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-200">
+              {visibleTransactions.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <Wallet className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="mt-2 text-sm font-semibold text-slate-800">No wallet activity yet</p>
+                  <p className="mt-1 text-xs text-slate-500">Approved slot payouts and withdrawals will appear here.</p>
+                </div>
+              ) : visibleTransactions.map((tx) => {
                 const isCredit = tx.type === 'credit_bounty';
+                const statusStyle = tx.status === 'completed'
+                  ? 'bg-emerald-50 text-emerald-800'
+                  : tx.status === 'processing'
+                    ? 'bg-amber-50 text-amber-800'
+                    : 'bg-slate-100 text-slate-700';
                 return (
                   <div
                     key={tx.id}
-                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-100 transition"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-6"
                   >
-                    <div className="flex items-start space-x-3">
+                    <div className="flex min-w-0 items-start gap-3">
                       <div
                         className={`p-2 rounded-lg mt-0.5 ${
                           isCredit
-                            ? 'bg-emerald-100 text-emerald-600 border border-emerald-200'
-                            : 'bg-violet-100 text-violet-600 border border-violet-200'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
                         }`}
                       >
                         {isCredit ? (
-                          <DollarSign className="w-4 h-4" />
+                          <ArrowDownLeft className="h-4 w-4" />
                         ) : (
-                          <Building2 className="w-4 h-4" />
+                          <ArrowUpRight className="h-4 w-4" />
                         )}
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold text-slate-900">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-slate-900">
                           {tx.description}
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                           <span>{tx.date}</span>
                           <span>•</span>
                           <span className="font-mono text-slate-500">{tx.referenceId}</span>
@@ -456,39 +428,27 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end space-x-4 pl-11 sm:pl-0">
-                      <div className="text-right">
-                        <div
-                          className={`text-sm font-bold ${
-                            isCredit ? 'text-emerald-600' : 'text-slate-700'
-                          }`}
-                        >
-                          {isCredit ? '+' : '-'}${tx.amount.toFixed(2)}
-                        </div>
-                        <span className="text-[10px] uppercase font-semibold text-emerald-600 flex items-center justify-end gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Cleared
-                        </span>
-                      </div>
+                    <span className={`col-start-2 row-start-1 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${statusStyle} sm:col-start-auto sm:row-start-auto`}>
+                      {tx.status}
+                    </span>
+                    <div className={`col-span-2 text-right text-sm font-bold sm:col-span-1 ${isCredit ? 'text-emerald-700' : 'text-slate-800'}`}>
+                      {isCredit ? '+' : '-'}${tx.amount.toFixed(2)}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
 
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
-          <div className="flex items-center space-x-2 text-slate-600">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>Encrypted Ledger • Automated Instant Disbursals</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <p className="text-[11px] text-slate-500">Manage saved payout details in Profile & Fleet.</p>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span>Minimum withdrawal $10</span>
+            <span aria-hidden="true">·</span>
+            <span>USD</span>
           </div>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition font-medium border border-slate-200"
-          >
-            Close Wallet
-          </button>
         </div>
 
       </div>

@@ -23,6 +23,8 @@ import {
   Globe
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getDeliverableFormatOptions } from '../lib/deliverableFormats';
+import { DeliverableFormatSelect } from './DeliverableFormatSelect';
 import { ProjectIcon } from './ProjectIcon';
 import {
   Project,
@@ -247,8 +249,9 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             sampleCountRequired: parseInt(deliverableCount, 10) || 1,
             acceptanceCriteria: [
               'All required fields and metadata submitted',
-              `Conforms strictly to ${deliverableFormat} standards`,
-              'Clear of background noise, artifacting, or corrupted data'
+              ...(deliverableFormat === 'No file required'
+                ? ['No file attachment is required for this task']
+                : [`Conforms strictly to ${deliverableFormat} standards`, 'Clear of background noise, artifacting, or corrupted data'])
             ]
           }
         : undefined,
@@ -379,12 +382,11 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                 <option value="localization">Localization & Multilingual Translation QA</option>
               </select>
             </div>
-
             <div>
-              <label className="block font-bold text-slate-200 mb-1.5">Domain Category *</label>
+              <label className="block font-bold text-slate-200 mb-1.5">Project Category *</label>
               <select
-                value={category}
                 onChange={(e) => setCategory(e.target.value as ProjectCategory)}
+                value={category}
                 className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-3 py-2.5 text-white font-bold focus:outline-none focus:border-[#007AFF]"
               >
                 <option value="Payment & Checkout">Payment & Checkout</option>
@@ -492,9 +494,9 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="font-bold text-white flex items-center gap-1.5">
                   <DollarSign className="w-4 h-4 text-emerald-400" />
-                  QA Defect Bounty Matrix ($ USD)
+                  Slot Payout Rates ($ USD)
                 </span>
-                <span className="text-[11px] text-slate-400">Credited into tester wallet on client approval</span>
+                <span className="text-[11px] text-slate-400">Paid for approved defects or test runs</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
@@ -550,15 +552,15 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               <div className="flex items-center justify-between">
                 <span className="font-bold text-purple-200 flex items-center gap-1.5">
                   <DollarSign className="w-4 h-4 text-emerald-400" />
-                  Test Case / Bundle Amount
+                  Slot Payout per Task Bundle
                 </span>
-                <span className="text-[11px] text-purple-300">Used for data collection, bundle work, or completed-slot payouts</span>
+                <span className="text-[11px] text-purple-300">Earned when a task bundle or submission is approved</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] text-slate-300 block font-bold mb-1">
-                    Amount per completed bundle / valid submission ($)
+                    Slot payout per completed bundle / valid submission ($)
                   </label>
                   <input
                     type="number"
@@ -597,12 +599,12 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                   <label className="text-[11px] text-slate-300 block font-bold mb-1">
                     Deliverable Format / Spec
                   </label>
-                  <input
-                    type="text"
+                  <DeliverableFormatSelect
                     value={deliverableFormat}
-                    onChange={(e) => setDeliverableFormat(e.target.value)}
-                    placeholder="e.g. 44.1kHz 16-bit WAV, MP4, JSON"
-                    className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-lg px-3 py-2 text-white"
+                    onChange={setDeliverableFormat}
+                    options={getDeliverableFormatOptions(deliverableFormat)}
+                    label="Deliverable file format"
+                    className="rounded-lg bg-[#080D1A] border border-[#1E2E4E] text-white"
                   />
                 </div>
               </div>
@@ -703,7 +705,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             <div>
               <label className="block font-bold text-slate-200 mb-1 flex items-center gap-1">
                 <Users className="w-3.5 h-3.5 text-[#00A3E0]" />
-                Max Freelancer Slots *
+                Total Project Slots *
               </label>
               <input
                 type="number"

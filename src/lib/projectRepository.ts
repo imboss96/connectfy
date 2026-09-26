@@ -1,4 +1,4 @@
-import { Project, ProjectResource } from '../types';
+import { AttachmentFile, BugReport, PayoutRequest, Project, ProjectResource, SubmissionStatus, TaskSubmission } from '../types';
 import { normalizeProjectStatus } from './projectStatus';
 import { supabase } from './supabase';
 
@@ -12,7 +12,9 @@ type ProjectRow = {
   project_track: Project['projectTrack'] | null;
   payment_model: Project['paymentModel'] | null;
   status: Project['status'];
+  is_featured?: boolean;
   deadline: string | null;
+  starts_at: string | null;
   slots_total: number;
   slots_filled: number;
   total_budget: number;
@@ -25,7 +27,7 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
 
   const { data, error } = await supabase
     .from('projects')
-    .select('id,title,company,short_description,full_overview,category,project_track,payment_model,status,deadline,slots_total,slots_filled,total_budget,budget_disbursed,project_data')
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -55,7 +57,9 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
     projectTrack: row.project_track || undefined,
     paymentModel: row.payment_model || undefined,
     status: normalizeProjectStatus(row.status),
+    isFeatured: row.project_data?.isFeatured ?? row.is_featured ?? false,
     deadline: row.deadline || '',
+    startsAt: row.starts_at || '',
     slotsTotal: row.slots_total,
     slotsFilled: row.slots_filled,
     totalBudget: Number(row.total_budget),
@@ -105,7 +109,9 @@ export function normalizeProjectForPersistence(project: Partial<Project>) {
     ...(project.slotsTotal !== undefined && { slotsTotal: project.slotsTotal }),
     ...(project.slotsFilled !== undefined && { slotsFilled: project.slotsFilled }),
     ...(project.deadline !== undefined && { deadline: project.deadline }),
+    ...(project.startsAt !== undefined && { startsAt: project.startsAt }),
     ...(project.status !== undefined && { status: normalizedStatus }),
+    ...(project.isFeatured !== undefined && { isFeatured: project.isFeatured }),
     ...(project.bountyStructure !== undefined && { bountyStructure: project.bountyStructure }),
     ...(project.totalBudget !== undefined && { totalBudget: project.totalBudget }),
     ...(project.budgetDisbursed !== undefined && { budgetDisbursed: project.budgetDisbursed }),
@@ -127,6 +133,7 @@ function toProjectRow(project: Project, clientId: string) {
     payment_model: project.paymentModel || null,
     status: normalizeProjectStatus(project.status),
     deadline: project.deadline || null,
+    starts_at: project.startsAt || null,
     slots_total: project.slotsTotal,
     slots_filled: project.slotsFilled,
     total_budget: project.totalBudget,
@@ -166,6 +173,7 @@ export async function updateProjectInSupabase(projectId: string, updates: Partia
     ...(updates.paymentModel !== undefined && { payment_model: updates.paymentModel }),
     ...(updates.status !== undefined && { status: normalizeProjectStatus(updates.status) }),
     ...(updates.deadline !== undefined && { deadline: updates.deadline }),
+    ...(updates.startsAt !== undefined && { starts_at: updates.startsAt || null }),
     ...(updates.slotsTotal !== undefined && { slots_total: updates.slotsTotal }),
     ...(updates.slotsFilled !== undefined && { slots_filled: updates.slotsFilled }),
     ...(updates.totalBudget !== undefined && { total_budget: updates.totalBudget }),
@@ -195,19 +203,7 @@ export async function fetchApplicationsFromSupabase() {
         title,
         company
       ),
-      application_utest_details (
-        full_name,
-        utest_id,
-        utest_email,
-        date_of_birth,
-        age_range,
-        country,
-        smartphone,
-        device_confirmation,
-        has_valid_id,
-        willing_voice_recording,
-        updated_at
-      ),
+      application_utest_details (*),
       profiles:tester_id (
         id,
         name,
@@ -219,6 +215,124 @@ export async function fetchApplicationsFromSupabase() {
 
   if (error) throw error;
   return data || [];
+}
+
+export async function fetchSubmissionsFromSupabase() {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('submissions')
+    .select('*,attachments(*)')
+    .order('submitted_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+type SubmissionPersistenceInput = {
+  id: string;
+  projectId: string;
+  testerId: string;
+  kind: 'bug' | 'task';
+  title: string;
+  details: string;
+  status: SubmissionStatus;
+  bountyEarned: number;
+  submittedAt: string;
+  payload: Record<string, unknown>;
+  attachments: AttachmentFile[];
+};
+
+export async function createSubmissionInSupabase(submission: SubmissionPersistenceInput) {
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('submissions')
+    .insert({
+      id: submission.id,
+      project_id: submission.projectId,
+      tester_id: submission.testerId,
+      kind: submission.kind,
+      title: submission.title,
+      details: submission.details,
+      status: submission.status,
+      bounty_earned: submission.bountyEarned,
+      submitted_at: submission.submittedAt,
+      payload: submission.payload
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  if (!submission.attachments.length) return data.id as string;
+
+  const { error: attachmentError } = await supabase.from('attachments').insert(
+    submission.attachments.map((attachment) => ({
+      submission_id: data.id,
+      owner_id: submission.testerId,
+      name: attachment.name,
+      mime_type: attachment.type || 'application/octet-stream',
+      bytes: attachment.size || 0,
+      secure_url: attachment.url,
+      public_id: attachment.publicId || attachment.id,
+      resource_type: attachment.resourceType || 'auto',
+      created_at: attachment.uploadedAt || submission.submittedAt
+    }))
+  );
+
+  if (attachmentError) throw attachmentError;
+  return data.id as string;
+}
+
+export async function updateSubmissionInSupabase(submissionId: string, updates: {
+  status: SubmissionStatus;
+  bountyEarned?: number;
+  clientFeedback?: string;
+  clientRating?: number;
+  reviewedAt?: string;
+}) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from('submissions').update({
+    status: updates.status,
+    ...(updates.bountyEarned !== undefined && { bounty_earned: updates.bountyEarned }),
+    ...(updates.clientFeedback !== undefined && { client_feedback: updates.clientFeedback }),
+    ...(updates.clientRating !== undefined && { client_rating: updates.clientRating }),
+    ...(updates.reviewedAt !== undefined && { reviewed_at: updates.reviewedAt })
+  }).eq('id', submissionId);
+
+  if (error) throw error;
+}
+
+export async function fetchPayoutRequestsFromSupabase(testerId: string) {
+  if (!supabase || !testerId) return [];
+
+  const { data, error } = await supabase
+    .from('payout_requests')
+    .select('*')
+    .eq('tester_id', testerId)
+    .order('requested_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createPayoutRequestInSupabase(request: PayoutRequest) {
+  if (!supabase) return;
+
+  const { error } = await supabase.from('payout_requests').insert({
+    id: request.id,
+    tester_id: request.testerId,
+    amount: request.amount,
+    method: request.method,
+    destination_account: request.destinationAccount,
+    status: request.status,
+    transaction_ref: request.transactionRef,
+    requested_at: request.requestedAt,
+    completed_at: request.completedAt || null
+  });
+
+  if (error) throw error;
 }
 
 export async function upsertApplicationInSupabase(app: {
@@ -267,6 +381,7 @@ export async function upsertApplicationUtestDetailsInSupabase(details: {
   device_confirmation: string;
   has_valid_id: boolean;
   willing_voice_recording: boolean;
+  utest_account_screenshot_url: string;
 }) {
   if (!supabase) return;
 

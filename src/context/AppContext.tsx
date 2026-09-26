@@ -15,7 +15,7 @@ import {
   InviteHistoryEntry
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { createProjectInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchProjectsFromSupabase, updateApplicationInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { createPayoutRequestInSupabase, createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
 import { formatProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
@@ -50,17 +50,17 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'>) => Promise<boolean>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
   approveApplication: (appId: string) => void;
   resendInvite: (appId: string) => void;
   rejectApplication: (appId: string) => void;
   acceptInvite: (appId: string) => void;
   declineInvite: (appId: string) => void;
-  submitBugReport: (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => BugReport;
+  submitBugReport: (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<BugReport>;
   approveBugReport: (bugId: string, customBounty?: number, feedback?: string, rating?: number) => void;
   rejectBugReport: (bugId: string, feedback: string) => void;
   requestBugRevision: (bugId: string, feedback: string) => void;
-  submitTaskDeliverable: (data: Omit<TaskSubmission, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => TaskSubmission;
+  submitTaskDeliverable: (data: Omit<TaskSubmission, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<TaskSubmission>;
   approveTaskSubmission: (submissionId: string, customBounty?: number, feedback?: string, rating?: number) => void;
   rejectTaskSubmission: (submissionId: string, feedback: string) => void;
   requestTaskRevision: (submissionId: string, feedback: string) => void;
@@ -70,6 +70,7 @@ interface AppContextType {
   deleteProject: (projectId: string) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  dismissNotification: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -82,6 +83,17 @@ const createApplicationId = () => {
   }
   return 'app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
 };
+
+const createSubmissionId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (placeholder) => {
+    const randomValue = Math.floor(Math.random() * 16);
+    const value = placeholder === 'x' ? randomValue : (randomValue & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const getInitials = (name?: string, email?: string) => {
   const source = (name || email || 'User').trim();
@@ -672,15 +684,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           avatar: savedTesterProfile.avatar || displayAvatar,
           country: savedTesterProfile.country || profile.country || '',
           city: savedTesterProfile.city || profile.city || '',
-          tier: 'Unrated',
-          rating: 0,
-          totalReviews: 0,
-          acceptanceRate: 0,
-          availableBalance: 0,
-          pendingEscrow: 0,
-          lifetimeEarnings: 0,
-          approvedBugsCount: 0,
-          completedCyclesCount: 0,
+          tier: savedTesterProfile.tier || 'Unrated',
+          rating: Number(savedTesterProfile.rating || 0),
+          totalReviews: Number(savedTesterProfile.totalReviews || 0),
+          acceptanceRate: Number(savedTesterProfile.acceptanceRate || 0),
+          availableBalance: Number(savedTesterProfile.availableBalance || 0),
+          pendingEscrow: Number(savedTesterProfile.pendingEscrow || 0),
+          lifetimeEarnings: Number(savedTesterProfile.lifetimeEarnings || 0),
+          approvedBugsCount: Number(savedTesterProfile.approvedBugsCount || 0),
+          completedCyclesCount: Number(savedTesterProfile.completedCyclesCount || 0),
           badges: [],
           skills: Array.isArray(savedTesterProfile.skills) && savedTesterProfile.skills.length > 0 ? savedTesterProfile.skills : emptyTesterProfile.skills,
           deviceFleet: Array.isArray(savedTesterProfile.deviceFleet) && savedTesterProfile.deviceFleet.length > 0 ? savedTesterProfile.deviceFleet : emptyTesterProfile.deviceFleet,
@@ -723,7 +735,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const loadProjects = async () => {
       try {
         const serverProjects = await fetchProjectsFromSupabase();
-        if (mounted && serverProjects.length > 0) setProjects(serverProjects);
+        if (mounted) setProjects(serverProjects);
       } catch (error) {
         console.error('Unable to load projects from Supabase:', error);
       }
@@ -747,6 +759,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           testerEmail: app.profiles?.email || app.tester_email || '',
           uTestId: storedUtestDetails?.utest_id || app.profiles?.profile_data?.testerProfile?.uTestId || '',
           uTestEmail: storedUtestDetails?.utest_email || app.profiles?.profile_data?.testerProfile?.uTestEmail || '',
+          uTestAccountScreenshotUrl: storedUtestDetails?.utest_account_screenshot_url || '',
           testerRating: Number(app.profiles?.profile_data?.testerProfile?.rating || app.tester_rating || 0),
           testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Bronze',
           appliedDate: app.applied_at ? new Date(app.applied_at).toISOString().replace('T', ' ').substring(0, 16) : '',
@@ -768,27 +781,197 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     };
 
-    void loadProjects();
-    void loadApplications();
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const loadSubmissions = async (userId: string, email?: string) => {
+      try {
+        let serverRows = await fetchSubmissionsFromSupabase();
+        const knownSubmissionIds = new Set(serverRows.map((row: any) => String(row.id)));
+        const matchesLocalTester = Boolean(email && testerProfile.email && email.toLowerCase() === testerProfile.email.toLowerCase());
+        const localTesterIds = new Set([userId, ...(matchesLocalTester && testerProfile.id ? [testerProfile.id] : [])]);
+        const localBugReports = bugReports.filter((report) => localTesterIds.has(report.testerId));
+        const localTaskSubmissions = taskSubmissions.filter((submission) => localTesterIds.has(submission.testerId));
+
+        for (const report of localBugReports) {
+          if (!isUuid(report.projectId) || (isUuid(report.id) && knownSubmissionIds.has(report.id))) continue;
+          const submissionId = isUuid(report.id) ? report.id : createSubmissionId();
+          try {
+            await createSubmissionInSupabase({
+              id: submissionId,
+              projectId: report.projectId,
+              testerId: userId,
+              kind: 'bug',
+              title: report.title,
+              details: report.actualResult,
+              status: report.status,
+              bountyEarned: report.bountyEarned,
+              submittedAt: report.submittedAt,
+              payload: { ...report, testerId: userId, attachments: undefined },
+              attachments: report.attachments || []
+            });
+            knownSubmissionIds.add(submissionId);
+          } catch (migrationError) {
+            console.error('Unable to sync a saved local defect submission:', migrationError);
+          }
+        }
+
+        for (const submission of localTaskSubmissions) {
+          if (!isUuid(submission.projectId) || (isUuid(submission.id) && knownSubmissionIds.has(submission.id))) continue;
+          const submissionId = isUuid(submission.id) ? submission.id : createSubmissionId();
+          try {
+            await createSubmissionInSupabase({
+              id: submissionId,
+              projectId: submission.projectId,
+              testerId: userId,
+              kind: 'task',
+              title: submission.title,
+              details: submission.details,
+              status: submission.status,
+              bountyEarned: submission.bountyEarned,
+              submittedAt: submission.submittedAt,
+              payload: { ...submission, testerId: userId, attachments: undefined },
+              attachments: submission.attachments || []
+            });
+            knownSubmissionIds.add(submissionId);
+          } catch (migrationError) {
+            console.error('Unable to sync a saved local task submission:', migrationError);
+          }
+        }
+
+        serverRows = await fetchSubmissionsFromSupabase();
+        if (!mounted) return;
+
+        const mapAttachments = (rows: any[] = []) => rows.map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name || 'Attachment',
+          size: Number(attachment.bytes || 0),
+          type: attachment.mime_type || 'application/octet-stream',
+          url: attachment.secure_url || '',
+          publicId: attachment.public_id || undefined,
+          resourceType: attachment.resource_type || undefined,
+          uploadedAt: attachment.created_at ? new Date(attachment.created_at).toISOString().replace('T', ' ').substring(0, 16) : ''
+        }));
+        const mappedBugReports: BugReport[] = [];
+        const mappedTaskSubmissions: TaskSubmission[] = [];
+
+        serverRows.forEach((row: any) => {
+          const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+          const common = {
+            id: row.id,
+            projectId: row.project_id,
+            testerId: row.tester_id,
+            testerName: payload.testerName || 'Tester',
+            title: row.title,
+            status: row.status || 'under_review',
+            bountyEarned: Number(row.bounty_earned || 0),
+            submittedAt: row.submitted_at ? new Date(row.submitted_at).toISOString().replace('T', ' ').substring(0, 16) : '',
+            reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
+            clientFeedback: row.client_feedback || undefined,
+            clientRating: row.client_rating || undefined,
+            attachments: mapAttachments(row.attachments)
+          };
+
+          if (row.kind === 'bug') {
+            mappedBugReports.push({
+              ...payload,
+              ...common,
+              testCycleId: payload.testCycleId || row.project_id,
+              featureArea: payload.featureArea || '',
+              severity: payload.severity || 'Medium',
+              bugType: payload.bugType || 'Functional',
+              frequency: payload.frequency || 'Every time (100%)',
+              device: payload.device || '',
+              osVersion: payload.osVersion || '',
+              browserOrBuild: payload.browserOrBuild || '',
+              stepsToReproduce: Array.isArray(payload.stepsToReproduce) ? payload.stepsToReproduce : [],
+              expectedResult: payload.expectedResult || '',
+              actualResult: payload.actualResult || row.details || ''
+            } as BugReport);
+          } else if (row.kind === 'task') {
+            const project = projects.find((item) => item.id === row.project_id);
+            mappedTaskSubmissions.push({
+              ...payload,
+              ...common,
+              testerAvatar: payload.testerAvatar || undefined,
+              taskType: payload.taskType || project?.projectTrack || 'data_collection',
+              details: row.details || '',
+              metadata: payload.metadata || {}
+            } as TaskSubmission);
+          }
+        });
+
+        setBugReports(mappedBugReports);
+        setTaskSubmissions(mappedTaskSubmissions);
+
+        if (role === 'tester') {
+          const testerRows = serverRows.filter((row: any) => row.tester_id === userId);
+          const approvedRows = testerRows.filter((row: any) => row.status === 'approved');
+          const pendingRows = testerRows.filter((row: any) => row.status === 'submitted' || row.status === 'under_review');
+          const payoutRows = await fetchPayoutRequestsFromSupabase(userId);
+          const deductedPayoutRows = payoutRows.filter((row: any) => row.status !== 'failed');
+          const lifetimeEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0);
+          const totalWithdrawn = deductedPayoutRows.reduce((total: number, row: any) => total + Number(row.amount || 0), 0);
+          const pendingEscrow = pendingRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0);
+
+          setTesterProfile((previous) => ({
+            ...previous,
+            availableBalance: Math.max(0, Number((lifetimeEarnings - totalWithdrawn).toFixed(2))),
+            lifetimeEarnings: Number(lifetimeEarnings.toFixed(2)),
+            pendingEscrow: Number(pendingEscrow.toFixed(2)),
+            approvedBugsCount: approvedRows.filter((row: any) => row.kind === 'bug').length
+          }));
+
+          const creditTransactions: WalletTransaction[] = approvedRows.map((row: any) => ({
+            id: `submission-${row.id}`,
+            testerId: row.tester_id,
+            type: 'credit_bounty',
+            amount: Number(row.bounty_earned || 0),
+            description: `Slot payout: ${row.title}`,
+            relatedProjectId: row.project_id,
+            status: 'completed',
+            date: row.reviewed_at || row.submitted_at,
+            referenceId: `SUB-${String(row.id).slice(-8).toUpperCase()}`
+          }));
+          const withdrawalTransactions: WalletTransaction[] = payoutRows.map((row: any) => ({
+            id: row.id,
+            testerId: row.tester_id,
+            type: 'payout_withdrawal',
+            amount: Number(row.amount || 0),
+            description: `Withdrawal to ${row.method}`,
+            status: row.status === 'completed' || row.status === 'processing' ? row.status : 'pending',
+            date: row.requested_at,
+            method: row.method,
+            referenceId: row.transaction_ref
+          }));
+          setWalletTransactions([...creditTransactions, ...withdrawalTransactions].sort((left, right) => right.date.localeCompare(left.date)));
+        }
+      } catch (error) {
+        console.error('Unable to load submissions from Supabase:', error);
+      }
+    };
+
+    const loadAuthenticatedData = async (userId: string, email?: string) => {
+      setCurrentUserId(userId);
+      await syncAuthProfile(userId);
+      void loadNotifications(userId);
+      void loadProjects();
+      void loadApplications();
+      void loadSubmissions(userId, email);
+    };
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        setCurrentUserId(session.user.id);
-        await syncAuthProfile(session.user.id);
-        await loadNotifications(session.user.id);
-        void loadProjects();
-        void loadApplications();
-      } else {
+        setTimeout(() => {
+          if (mounted) void loadAuthenticatedData(session.user.id, session.user.email);
+        }, 0);
+      } else if (_event === 'SIGNED_OUT') {
         setCurrentUserId('');
         setNotifications([]);
+        setProjects([]);
+        setApplications([]);
       }
     });
 
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setCurrentUserId(data.session.user.id);
-        void syncAuthProfile(data.session.user.id);
-        void loadNotifications(data.session.user.id);
-      }
+      if (mounted && data.session) void loadAuthenticatedData(data.session.user.id, data.session.user.email);
     });
 
     const realtimeChannel = supabase.channel('live-notifications');
@@ -1051,7 +1234,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'>) => {
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantUtestScreenshotUrl?: string }) => {
+    if (!emailDetails?.applicantUtestScreenshotUrl) return false;
+
     const userContext = await getActiveUserContext();
     let liveEmail = '';
 
@@ -1079,6 +1264,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       testerEmail: effectiveTesterEmail,
       uTestId: emailDetails?.uTestId || '',
       uTestEmail: emailDetails?.uTestEmail || '',
+      uTestAccountScreenshotUrl: emailDetails.applicantUtestScreenshotUrl,
       testerRating: testerProfile.rating,
       testerTier: testerProfile.tier,
       appliedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1118,7 +1304,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             smartphone: emailDetails.applicantSmartphone || '',
             device_confirmation: emailDetails.applicantDeviceConfirmation || emailDetails.applicantDevice || '',
             has_valid_id: Boolean(emailDetails.applicantHasValidId),
-            willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording)
+            willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording),
+            utest_account_screenshot_url: emailDetails.applicantUtestScreenshotUrl || ''
           });
         }
       } catch (error) {
@@ -1351,7 +1538,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 4. Tester submits bug report with attachments
-  const submitBugReport = (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>): BugReport => {
+  const submitBugReport = async (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>): Promise<BugReport> => {
+    const userContext = await getActiveUserContext();
     const project = projects.find(p => p.id === bugData.projectId);
     let calculatedBounty = 20;
     if (project) {
@@ -1363,13 +1551,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const newBug: BugReport = {
       ...bugData,
-      id: 'bug-' + Date.now(),
-      testerId: testerProfile.id,
+      id: createSubmissionId(),
+      testerId: userContext.userId || testerProfile.id,
       testerName: testerProfile.name,
       status: 'under_review',
       bountyEarned: calculatedBounty,
       submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     };
+
+    if (isSupabaseConfigured && isUuid(newBug.projectId) && isUuid(newBug.testerId)) {
+      await createSubmissionInSupabase({
+        id: newBug.id,
+        projectId: newBug.projectId,
+        testerId: newBug.testerId,
+        kind: 'bug',
+        title: newBug.title,
+        details: newBug.actualResult,
+        status: newBug.status,
+        bountyEarned: newBug.bountyEarned,
+        submittedAt: newBug.submittedAt,
+        payload: { ...newBug, attachments: undefined },
+        attachments: newBug.attachments
+      });
+    }
 
     setBugReports(prev => [newBug, ...prev]);
 
@@ -1387,6 +1591,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newBug;
   };
 
+  const persistSubmissionReview = (submissionId: string, updates: Parameters<typeof updateSubmissionInSupabase>[1]) => {
+    if (!isSupabaseConfigured || !isUuid(submissionId)) return;
+    void updateSubmissionInSupabase(submissionId, updates).catch((error) => {
+      console.error('Unable to save submission review to Supabase:', error);
+    });
+  };
+
   // 5. Client approves bug -> CREDITS EARNINGS INTO ONE ACCOUNT AUTOMATICALLY!
   const approveBugReport = (bugId: string, customBounty?: number, feedback?: string, rating: number = 5) => {
     const bug = bugReports.find(b => b.id === bugId);
@@ -1394,6 +1605,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const finalBounty = customBounty !== undefined ? customBounty : bug.bountyEarned;
     const project = projects.find(p => p.id === bug.projectId);
+    const reviewTime = new Date().toISOString();
+    const reviewFeedback = feedback || 'Approved. Great reproduction steps and clear documentation.';
+    persistSubmissionReview(bugId, { status: 'approved', bountyEarned: finalBounty, clientFeedback: reviewFeedback, clientRating: rating, reviewedAt: reviewTime });
 
     // Update bug status
     setBugReports(prev => prev.map(b => {
@@ -1402,8 +1616,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...b,
           status: 'approved',
           bountyEarned: finalBounty,
-          reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          clientFeedback: feedback || 'Approved. Great reproduction steps and clear documentation.',
+          reviewedAt: reviewTime.replace('T', ' ').substring(0, 16),
+          clientFeedback: reviewFeedback,
           clientRating: rating
         };
       }
@@ -1429,7 +1643,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       testerId: bug.testerId,
       type: 'credit_bounty',
       amount: finalBounty,
-      description: `Bounty Approved: "${bug.title.substring(0, 38)}..." (${bug.severity})`,
+      description: `Slot payout approved: "${bug.title.substring(0, 38)}..." (${bug.severity})`,
       relatedProjectId: bug.projectId,
       status: 'completed',
       date: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1460,8 +1674,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: bug.testerId,
       targetRole: 'tester',
-      title: `Bounty Credited: +$${finalBounty.toFixed(2)}`,
-      message: `Your defect report "${bug.title}" was approved by the client! $${finalBounty.toFixed(2)} has been credited to your available balance.`,
+      title: `Slot payout credited: +$${finalBounty.toFixed(2)}`,
+      message: `Your defect report "${bug.title}" was approved by the client! A $${finalBounty.toFixed(2)} slot payout has been credited to your available balance.`,
       type: 'earning',
       amount: finalBounty,
       relatedProjectId: bug.projectId,
@@ -1483,14 +1697,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const rejectBugReport = (bugId: string, feedback: string) => {
     const bug = bugReports.find(b => b.id === bugId);
     if (!bug) return;
+    const reviewTime = new Date().toISOString();
+    const reviewFeedback = feedback || 'Rejected: Does not meet in-scope reproduction criteria.';
+    persistSubmissionReview(bugId, { status: 'rejected', clientFeedback: reviewFeedback, reviewedAt: reviewTime });
 
     setBugReports(prev => prev.map(b => {
       if (b.id === bugId) {
         return {
           ...b,
           status: 'rejected',
-          reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          clientFeedback: feedback || 'Rejected: Does not meet in-scope reproduction criteria.'
+          reviewedAt: reviewTime.replace('T', ' ').substring(0, 16),
+          clientFeedback: reviewFeedback
         };
       }
       return b;
@@ -1510,6 +1727,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const requestBugRevision = (bugId: string, feedback: string) => {
     const bug = bugReports.find(b => b.id === bugId);
     if (!bug) return;
+    persistSubmissionReview(bugId, { status: 'changes_requested', clientFeedback: feedback });
 
     setBugReports(prev => prev.map(b => {
       if (b.id === bugId) {
@@ -1534,20 +1752,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
   // 5b. Task Deliverable Submissions (Data Collection, AI Prompt Eval, UX Studies, In-Field Mystery Shopping)
-  const submitTaskDeliverable = (data: Omit<TaskSubmission, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>): TaskSubmission => {
+  const submitTaskDeliverable = async (data: Omit<TaskSubmission, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>): Promise<TaskSubmission> => {
+    const userContext = await getActiveUserContext();
     const project = projects.find(p => p.id === data.projectId);
     const rate = project?.taskRate || 40.00;
 
     const newSubmission: TaskSubmission = {
       ...data,
-      id: 'task-sub-' + Date.now(),
-      testerId: testerProfile.id,
+      id: createSubmissionId(),
+      testerId: userContext.userId || testerProfile.id,
       testerName: testerProfile.name,
       testerAvatar: testerProfile.avatar,
       status: 'under_review',
       bountyEarned: rate,
       submittedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     };
+
+    if (isSupabaseConfigured && isUuid(newSubmission.projectId) && isUuid(newSubmission.testerId)) {
+      await createSubmissionInSupabase({
+        id: newSubmission.id,
+        projectId: newSubmission.projectId,
+        testerId: newSubmission.testerId,
+        kind: 'task',
+        title: newSubmission.title,
+        details: newSubmission.details,
+        status: newSubmission.status,
+        bountyEarned: newSubmission.bountyEarned,
+        submittedAt: newSubmission.submittedAt,
+        payload: { ...newSubmission, attachments: undefined },
+        attachments: newSubmission.attachments
+      });
+    }
 
     setTaskSubmissions(prev => [newSubmission, ...prev]);
 
@@ -1556,7 +1791,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
       title: 'New Deliverable Submitted',
-      message: `${testerProfile.name} submitted "${data.title}" for "${project?.title || 'Project'}" ($${rate.toFixed(2)} bounty).`,
+      message: `${testerProfile.name} submitted "${data.title}" for "${project?.title || 'Project'}" (slot payout: $${rate.toFixed(2)} if approved).`,
       type: 'status_update',
       relatedProjectId: data.projectId,
       relatedSubmissionId: newSubmission.id
@@ -1571,6 +1806,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const finalBounty = customBounty !== undefined ? customBounty : sub.bountyEarned;
     const project = projects.find(p => p.id === sub.projectId);
+    const reviewTime = new Date().toISOString();
+    const reviewFeedback = feedback || 'Deliverable accepted and verified. High-quality submission!';
+    persistSubmissionReview(submissionId, { status: 'approved', bountyEarned: finalBounty, clientFeedback: reviewFeedback, clientRating: rating, reviewedAt: reviewTime });
 
     // 1. Update task submission status
     setTaskSubmissions(prev => prev.map(s => {
@@ -1579,8 +1817,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...s,
           status: 'approved',
           bountyEarned: finalBounty,
-          reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          clientFeedback: feedback || 'Deliverable accepted and verified. High-quality submission!',
+          reviewedAt: reviewTime.replace('T', ' ').substring(0, 16),
+          clientFeedback: reviewFeedback,
           clientRating: rating
         };
       }
@@ -1600,7 +1838,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       testerId: sub.testerId,
       type: 'credit_bounty',
       amount: finalBounty,
-      description: `Task Approved: "${sub.title}" (${project?.company || 'Client'})`,
+      description: `Slot payout approved: "${sub.title}" (${project?.company || 'Client'})`,
       relatedProjectId: sub.projectId,
       status: 'completed',
       date: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1632,8 +1870,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: sub.testerId,
       targetRole: 'tester',
-      title: `Deliverable Approved: +$${finalBounty.toFixed(2)}`,
-      message: `Your task deliverable "${sub.title}" was approved by the client! $${finalBounty.toFixed(2)} credited to your wallet balance.`,
+      title: `Slot payout credited: +$${finalBounty.toFixed(2)}`,
+      message: `Your task deliverable "${sub.title}" was approved by the client! A $${finalBounty.toFixed(2)} slot payout has been credited to your wallet balance.`,
       type: 'earning',
       amount: finalBounty,
       relatedProjectId: sub.projectId,
@@ -1655,14 +1893,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const rejectTaskSubmission = (submissionId: string, feedback: string) => {
     const sub = taskSubmissions.find(s => s.id === submissionId);
     if (!sub) return;
+    const reviewTime = new Date().toISOString();
+    const reviewFeedback = feedback || 'Rejected: Deliverable does not meet project guidelines.';
+    persistSubmissionReview(submissionId, { status: 'rejected', clientFeedback: reviewFeedback, reviewedAt: reviewTime });
 
     setTaskSubmissions(prev => prev.map(s => {
       if (s.id === submissionId) {
         return {
           ...s,
           status: 'rejected',
-          reviewedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          clientFeedback: feedback || 'Rejected: Deliverable does not meet project guidelines.'
+          reviewedAt: reviewTime.replace('T', ' ').substring(0, 16),
+          clientFeedback: reviewFeedback
         };
       }
       return s;
@@ -1682,6 +1923,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const requestTaskRevision = (submissionId: string, feedback: string) => {
     const sub = taskSubmissions.find(s => s.id === submissionId);
     if (!sub) return;
+    persistSubmissionReview(submissionId, { status: 'changes_requested', clientFeedback: feedback });
 
     setTaskSubmissions(prev => prev.map(s => {
       if (s.id === submissionId) {
@@ -1715,39 +1957,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       throw new Error('Requested amount exceeds available balance.');
     }
 
-    // Deduct balance
-    setTesterProfile(prev => ({
-      ...prev,
-      availableBalance: Number((prev.availableBalance - amount).toFixed(2))
-    }));
-
     const ref = 'PAY-' + Date.now().toString().slice(-6) + '-' + Math.floor(100 + Math.random() * 900);
-
-    const newTx: WalletTransaction = {
-      id: 'tx-payout-' + Date.now(),
-      testerId: testerProfile.id,
-      type: 'payout_withdrawal',
-      amount,
-      description: `Payout Transfer to ${method} (${destination})`,
-      status: 'completed',
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      method,
-      referenceId: ref
-    };
-
-    setWalletTransactions(prev => [newTx, ...prev]);
-
+    const requestedAt = new Date().toISOString();
     const payoutReq: PayoutRequest = {
-      id: 'payout-' + Date.now(),
+      id: createApplicationId(),
       testerId: testerProfile.id,
       amount,
       method,
       destinationAccount: destination,
       status: 'completed',
-      requestedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      completedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      requestedAt: requestedAt.replace('T', ' ').substring(0, 16),
+      completedAt: requestedAt.replace('T', ' ').substring(0, 16),
       transactionRef: ref
     };
+
+    if (isSupabaseConfigured && isUuid(payoutReq.testerId)) {
+      await createPayoutRequestInSupabase(payoutReq);
+    }
+
+    setTesterProfile(prev => ({
+      ...prev,
+      availableBalance: Number((prev.availableBalance - amount).toFixed(2))
+    }));
+
+    const newTx: WalletTransaction = {
+      id: payoutReq.id,
+      testerId: testerProfile.id,
+      type: 'payout_withdrawal',
+      amount,
+      description: `Payout Transfer to ${method} (${destination})`,
+      status: 'completed',
+      date: payoutReq.requestedAt,
+      method,
+      referenceId: ref
+    };
+
+    setWalletTransactions(prev => [newTx, ...prev]);
 
     addNotification({
       userId: testerProfile.id,
@@ -1772,6 +2017,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const createProject = (newProjectData: Omit<Project, 'id' | 'createdAt' | 'budgetDisbursed' | 'slotsFilled'>) => {
+    if (role === 'tester') return;
+
     const newProj: Project = {
       ...newProjectData,
       id: createApplicationId(),
@@ -1796,7 +2043,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       userId: testerProfile.id,
       targetRole: 'tester',
       title: `New Test Cycle Available: "${newProj.title}"`,
-      message: `${newProj.company} launched a new ${newProj.category} cycle with up to $${newProj.bountyStructure.critical} per critical defect. Apply now!`,
+      message: `${newProj.company} launched a new ${newProj.category} project with a slot payout up to $${newProj.bountyStructure.critical} per approved critical defect. Apply now!`,
       type: 'status_update',
       relatedProjectId: newProj.id
     });
@@ -2037,6 +2284,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const dismissNotification = (id: string) => {
+    setNotifications(prev => prev.filter(notification => notification.id !== id));
+
+    if (isSupabaseConfigured && supabase && currentUserId && isUuid(id)) {
+      void supabase.from('notifications').delete().eq('id', id).eq('user_id', currentUserId);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2084,7 +2339,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateProject,
         deleteProject,
         markNotificationRead,
-        markAllNotificationsRead
+        markAllNotificationsRead,
+        dismissNotification
       }}
     >
       {children}

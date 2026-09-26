@@ -48,6 +48,7 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -108,7 +109,7 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -129,25 +130,31 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
       return;
     }
 
-    submitBugReport({
-      projectId: project.id,
-      testCycleId: project.id,
-      title,
-      featureArea,
-      severity,
-      bugType,
-      frequency,
-      device,
-      osVersion: device.includes('iOS') ? 'iOS 17.5' : device.includes('Android') ? 'Android 14' : 'macOS / Windows',
-      browserOrBuild,
-      stepsToReproduce: steps,
-      expectedResult,
-      actualResult,
-      attachments
-    });
-
-    onSuccess();
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await submitBugReport({
+        projectId: project.id,
+        testCycleId: project.id,
+        title,
+        featureArea,
+        severity,
+        bugType,
+        frequency,
+        device,
+        osVersion: device.includes('iOS') ? 'iOS 17.5' : device.includes('Android') ? 'Android 14' : 'macOS / Windows',
+        browserOrBuild,
+        stepsToReproduce: steps,
+        expectedResult,
+        actualResult,
+        attachments
+      });
+      onSuccess();
+      onClose();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Could not save the defect submission. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -489,10 +496,11 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
+              disabled={isSubmitting}
               className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-2 transition shadow-md"
             >
               <Bug className="w-4 h-4" />
-              <span>Submit Defect (${getBountyForSeverity(severity).toFixed(2)})</span>
+              <span>{isSubmitting ? 'Saving submission…' : `Submit Defect ($${getBountyForSeverity(severity).toFixed(2)})`}</span>
             </button>
           </div>
         </div>

@@ -1320,7 +1320,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-              <span className="text-xs text-slate-400 block mb-1">Lifetime Earnings</span>
+              <span className="text-xs text-slate-400 block mb-1">Lifetime Slot Payouts</span>
               <span className="text-2xl font-black text-emerald-400">
                 ${testerProfile.lifetimeEarnings.toFixed(2)}
               </span>
@@ -1909,10 +1909,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
               </div>
             </div>
 
-            {/* Default Defect Bounty Matrix */}
+            {/* Default slot payout rates */}
             <div className="pt-4 border-t border-slate-800">
               <h4 className="text-xs font-bold text-white mb-2">
-                Default Defect Bounty Structure (Auto-applied to new test cycles)
+                Default Slot Payout Rates per Approved Defect (Auto-applied to new projects)
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">

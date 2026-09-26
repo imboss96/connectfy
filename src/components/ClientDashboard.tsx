@@ -256,7 +256,7 @@ export const ClientDashboard: React.FC = () => {
           </div>
 
           <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-            <span className="text-slate-400 block text-[11px]">Disbursed Payouts</span>
+            <span className="text-slate-400 block text-[11px]">Disbursed Slot Payouts</span>
             <span className="text-base sm:text-lg font-black text-emerald-400">
               ${clientProfile.totalPaidOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
@@ -375,6 +375,13 @@ export const ClientDashboard: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {bugReports.length + taskSubmissions.length === 0 && (
+            <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-5 py-10 text-center">
+              <h4 className="text-sm font-semibold text-slate-200">No submissions to review yet</h4>
+              <p className="mt-1 text-xs text-slate-400">Tester bug reports and task deliverables will appear here when submitted.</p>
+            </div>
+          )}
 
           <div className="space-y-4">
             {/* Task Deliverables List */}
@@ -521,7 +528,7 @@ export const ClientDashboard: React.FC = () => {
                       <div className="text-xs text-slate-400">
                         {isApproved && (
                           <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Bounty of ${task.bountyEarned.toFixed(2)} disbursed into {task.testerName}'s balance.
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Slot payout of ${task.bountyEarned.toFixed(2)} disbursed to {task.testerName} for approved work.
                           </span>
                         )}
                         {isChanges && (
@@ -644,7 +651,7 @@ export const ClientDashboard: React.FC = () => {
                             {isApproved && <CheckCircle2 className="w-3.5 h-3.5" />}
                             {isReview && <Clock className="w-3.5 h-3.5" />}
                             {isApproved
-                              ? 'Approved & Credited'
+                              ? 'Approved & Slot Payout Credited'
                               : isReview
                               ? 'Needs Client Review'
                               : isChanges
@@ -704,7 +711,7 @@ export const ClientDashboard: React.FC = () => {
                       <div className="text-xs text-slate-400">
                         {isApproved && (
                           <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Bounty of ${bug.bountyEarned.toFixed(2)} credited into {bug.testerName}'s wallet account.
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Slot payout of ${bug.bountyEarned.toFixed(2)} credited to {bug.testerName} for the approved defect.
                           </span>
                         )}
                         {isChanges && (
@@ -798,6 +805,14 @@ export const ClientDashboard: React.FC = () => {
                     <p className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
                       "{app.experienceNote}"
                     </p>
+
+                    {app.uTestAccountScreenshotUrl ? (
+                      <a href={app.uTestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-300 underline underline-offset-2 hover:text-sky-200">
+                        <Eye className="h-3.5 w-3.5" /> Review uTest account screenshot
+                      </a>
+                    ) : (
+                      <p className="text-[11px] font-semibold text-rose-300">No uTest account screenshot submitted</p>
+                    )}
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                       <span className="font-semibold text-slate-300">Applying For:</span>
