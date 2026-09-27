@@ -105,6 +105,17 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   // Active settings tab
   const [currentTab, setCurrentTab] = useState<SettingsTab>(role === 'client' ? 'client' : 'personal');
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedSettingsTab = params.get('settings');
+    if (requestedSettingsTab === 'utest') {
+      setCurrentTab('utest');
+      params.delete('settings');
+      const query = params.toString();
+      window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    }
+  }, []);
+
   // Form states for Tester Profile
   const [name, setName] = useState(testerProfile.name || '');
   const [email, setEmail] = useState(testerProfile.email || '');

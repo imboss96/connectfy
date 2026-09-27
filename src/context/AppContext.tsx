@@ -1158,7 +1158,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     const actionUrl = type === 'invite' && applicationId
       ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
-      : `${window.location.origin}?project=${projectId}`;
+      : type === 'utest_update_required'
+        ? `${window.location.origin}?project=${projectId}&settings=utest`
+        : `${window.location.origin}?project=${projectId}`;
     const normalizedType = formatProjectEmailType(type);
     let emailSent = false;
 

@@ -48,7 +48,7 @@ const buildHtml = (payload: Record<string, any>) => {
   const applicationDetails = payload.type === 'application'
     ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
     : payload.type === 'utest_update_required'
-      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action needed</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">This project requires a new uTest account created less than 7 days ago. If your current account is older than one week, please create a fresh uTest account before continuing. Then update your Connectfy settings → uTest details with the correct uTest ID and email. Watch the video guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
+      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">We noticed that your uTest account details are inconsistent with the requirements for this project. Please create a new uTest account and update your details in Account Settings → uTest Details. Once the correct information is submitted, we will review it and share the project invite with you shortly.</p></div>`
       : '';
   const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : payload.type === 'utest_update_required' ? 'utest_update_required' : 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : type === 'utest_update_required' ? 'Update uTest Details' : 'Review Project';
@@ -112,23 +112,27 @@ const buildText = (payload: Record<string, any>) => {
   const applicationSummary = payload.type === 'application'
     ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
     : payload.type === 'utest_update_required'
-      ? `Action required:\nThis project requires a new uTest account created less than 7 days ago. If your current uTest account is older than one week, please create a new account before continuing.\nThen update your Connectfy settings → uTest details with the correct uTest ID and email.\nVideo guide: https://www.youtube.com/watch?v=F_XmEVQZaHc\n\nPlease keep the new uTest account active and accessible while our team reviews your application.`
+      ? `Action required:\nWe noticed that your uTest account details are inconsistent with the requirements for this project. Please create a new uTest account and update your details in Account Settings → uTest Details. Once the correct information is submitted, we will review it and share the project invite with you shortly.`
       : '';
 
   return [
-    `Hello ${payload.toName || 'there'},`,
+    `Hello ${payload.toName || 'Tester'},`,
     payload.type === 'invite'
       ? `You have been invited to work on a live opportunity with ${projectCompany}.`
       : payload.type === 'utest_update_required'
-        ? `Your application for ${projectCompany}'s ${projectTitle} project was received, but this project requires a new uTest account created within the last 7 days.`
+        ? `Thank you for applying to this project. We noticed that your uTest account details are inconsistent with the requirements for this opportunity.`
         : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`,
     '',
-    `${projectTitle} | ${projectCompany} | ${projectCategory}`,
+    payload.type === 'utest_update_required'
+      ? 'Please create a new uTest account and share the updated details in your Account Settings → uTest Details section.'
+      : `${projectTitle} | ${projectCompany} | ${projectCategory}`,
     description,
     deadline,
     applicationSummary,
     '',
-    `Open the project: ${projectLink}`
+    payload.type === 'utest_update_required'
+      ? 'Once the information is updated, we will review it and share the invite with you shortly.'
+      : `Open the project: ${projectLink}`
   ].join('\n');
 };
 

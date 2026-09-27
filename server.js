@@ -74,23 +74,27 @@ const buildText = (payload) => {
   const applicationSummary = payload.type === 'application'
     ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
     : payload.type === 'utest_update_required'
-      ? `Action required:\nThis project requires a new uTest account created less than 7 days ago. If your current uTest account is older than one week, please create a new account before continuing.\nThen update your Connectfy settings → uTest details with the correct uTest ID and email.\nVideo guide: https://www.youtube.com/watch?v=F_XmEVQZaHc\n\nPlease keep your new uTest account active and accessible while our team reviews your application.`
+      ? `Action required:\nWe noticed that your uTest account details are inconsistent with the requirements for this project. Please create a new uTest account and update your details in Account Settings → uTest Details. Once the correct information is submitted, we will review it and share the project invite with you shortly.`
       : '';
 
   return [
-    `Hello ${payload.toName || 'there'},`,
+    `Hello ${payload.toName || 'Tester'},`,
     payload.type === 'utest_update_required'
-      ? `Your application for ${projectCompany} was received, but this project requires a new uTest account created within the last 7 days.`
+      ? `Thank you for applying to this project. We noticed that your uTest account details are inconsistent with the requirements for this opportunity.`
       : `You have been invited to work on the live opportunity with ${projectCompany}.`,
     '',
-    'Project Overview',
+    payload.type === 'utest_update_required'
+      ? 'Please create a new uTest account and share the updated details in your Account Settings → uTest Details section.'
+      : 'Project Overview',
     description,
     '',
     consentLink ? `Submit Your Consent Here: ${consentLink}` : '',
     deadline,
     applicationSummary,
     '',
-    `Open Project: ${projectLink}`,
+    payload.type === 'utest_update_required'
+      ? 'Once the information is updated, we will review it and share the invite with you shortly.'
+      : `Open Project: ${projectLink}`,
     `Support: ${payload.supportEmail || 'support@connectfy.tech'}`,
     'Connectfy will never ask for your password or payment details.',
     '',

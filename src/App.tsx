@@ -406,6 +406,17 @@ const AppExperience: React.FC = () => {
   }, [applications, acceptInvite, testerProfile.id]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedSettingsTab = params.get('settings');
+    if (requestedSettingsTab === 'utest') {
+      setActiveTab('profile_settings');
+      params.delete('settings');
+      const query = params.toString();
+      window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    }
+  }, [setActiveTab]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsAuthLoading(false);
       return;
