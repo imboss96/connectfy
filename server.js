@@ -31,7 +31,7 @@ const buildHtml = (payload) => {
   const applicationDetails = payload.type === 'application'
     ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
     : payload.type === 'utest_update_required'
-      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">This project requires a new uTest account created less than 7 days ago. Please create a fresh uTest account if your current account is older than one week, then update your Connectfy settings → uTest details with the correct uTest ID and email. Watch the setup guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
+      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">Your application was received, but this project requires a new uTest account created less than 7 days ago. Please create a fresh uTest account, then update your Connectfy settings → uTest Details with the correct uTest ID and email. Once the details are submitted, we’ll review them and send the project invite. Watch the setup guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
       : '';
   const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'utest_update_required' ? 'Update uTest Details' : 'Open Project';
@@ -40,7 +40,7 @@ const buildHtml = (payload) => {
     : type === 'accepted'
       ? `Your invitation for the live opportunity with ${projectCompany} has been accepted.`
       : type === 'utest_update_required'
-        ? `Your application for ${projectCompany} was received, but this project requires a new uTest account created within the last 7 days.`
+        ? `Your application for ${projectCompany} was received, but this project requires a new uTest account created less than 7 days ago.`
         : `Your project update from ${projectCompany} is ready.`;
 
   return `
@@ -74,17 +74,17 @@ const buildText = (payload) => {
   const applicationSummary = payload.type === 'application'
     ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
     : payload.type === 'utest_update_required'
-      ? `Action required:\nWe noticed that your uTest account details are inconsistent with the requirements for this project. Please create a new uTest account and update your details in Account Settings → uTest Details. Once the correct information is submitted, we will review it and share the project invite with you shortly.`
+      ? `Action required:\nYour application was received, but this project requires a new uTest account created less than 7 days ago. Please create a fresh uTest account, then update your Connectfy settings → uTest Details with the correct uTest ID and email. Once the details are submitted, we will review them and send the project invite.`
       : '';
 
   return [
     `Hello ${payload.toName || 'Tester'},`,
     payload.type === 'utest_update_required'
-      ? `Thank you for applying to this project. We noticed that your uTest account details are inconsistent with the requirements for this opportunity.`
+      ? `Thank you for applying to this project. Your application was received, but this project requires a new uTest account created less than 7 days ago.`
       : `You have been invited to work on the live opportunity with ${projectCompany}.`,
     '',
     payload.type === 'utest_update_required'
-      ? 'Please create a new uTest account and share the updated details in your Account Settings → uTest Details section.'
+      ? 'Please create a new uTest account and update your Connectfy settings → uTest Details with the correct uTest ID and email.'
       : 'Project Overview',
     description,
     '',
@@ -93,7 +93,7 @@ const buildText = (payload) => {
     applicationSummary,
     '',
     payload.type === 'utest_update_required'
-      ? 'Once the information is updated, we will review it and share the invite with you shortly.'
+      ? 'Once the information is updated, we will review it and send the project invite.'
       : `Open Project: ${projectLink}`,
     `Support: ${payload.supportEmail || 'support@connectfy.tech'}`,
     'Connectfy will never ask for your password or payment details.',
