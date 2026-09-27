@@ -1,3 +1,6 @@
+// @ts-nocheck
+declare const Deno: { env: { get(name: string): string | undefined } };
+
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
 const allowedOrigins = [
@@ -44,9 +47,11 @@ const buildHtml = (payload: Record<string, any>) => {
   const projectDescription = formatProjectDescription(payload.projectDescription || '');
   const applicationDetails = payload.type === 'application'
     ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
-    : '';
-  const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : 'application';
-  const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : 'Review Project';
+    : payload.type === 'utest_update_required'
+      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action needed</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">This project requires a new uTest account created less than 7 days ago. If your current account is older than one week, please create a fresh uTest account before continuing. Then update your Connectfy settings → uTest details with the correct uTest ID and email. Watch the video guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
+      : '';
+  const type = payload.type === 'accepted' ? 'accepted' : payload.type === 'rejected' ? 'rejected' : payload.type === 'declined' ? 'declined' : payload.type === 'invite' ? 'invite' : payload.type === 'utest_update_required' ? 'utest_update_required' : 'application';
+  const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'accepted' ? 'View Dashboard' : type === 'rejected' ? 'Browse More Projects' : type === 'declined' ? 'Review Status' : type === 'utest_update_required' ? 'Update uTest Details' : 'Review Project';
 
   return `
     <div style="font-family: Arial, sans-serif; background: #f6f9fc; padding: 32px; color: #10213b;">
@@ -70,7 +75,9 @@ const buildHtml = (payload: Record<string, any>) => {
                   ? `Your application for ${projectCompany}'s ${projectTitle} project was not selected for this cycle.`
                   : type === 'declined'
                     ? `You declined the project invite for ${projectCompany}'s ${projectTitle} project.`
-                    : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`}
+                    : type === 'utest_update_required'
+                      ? `Your application for ${projectCompany}'s ${projectTitle} project was received, but we need an active uTest account before we can send your invite.`
+                      : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`}
           </p>
           <div style="background: #f8fbff; border: 1px solid #dfeaf5; border-radius: 12px; padding: 16px 18px; margin: 20px 0;">
             <div style="font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; color: #4c7cff; font-weight: bold;">Project overview</div>
@@ -104,13 +111,17 @@ const buildText = (payload: Record<string, any>) => {
   const description = formatProjectDescription(payload.projectDescription || '');
   const applicationSummary = payload.type === 'application'
     ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
-    : '';
+    : payload.type === 'utest_update_required'
+      ? `Action required:\nThis project requires a new uTest account created less than 7 days ago. If your current uTest account is older than one week, please create a new account before continuing.\nThen update your Connectfy settings → uTest details with the correct uTest ID and email.\nVideo guide: https://www.youtube.com/watch?v=F_XmEVQZaHc\n\nPlease keep the new uTest account active and accessible while our team reviews your application.`
+      : '';
 
   return [
     `Hello ${payload.toName || 'there'},`,
     payload.type === 'invite'
       ? `You have been invited to work on a live opportunity with ${projectCompany}.`
-      : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`,
+      : payload.type === 'utest_update_required'
+        ? `Your application for ${projectCompany}'s ${projectTitle} project was received, but this project requires a new uTest account created within the last 7 days.`
+        : `Your application for ${projectCompany}'s ${projectTitle} project has been received successfully.`,
     '',
     `${projectTitle} | ${projectCompany} | ${projectCategory}`,
     description,
@@ -142,8 +153,8 @@ serve(async (req) => {
       errors.push('Request body must be a JSON object.');
     }
 
-    if (!['application', 'invite', 'accepted', 'rejected', 'declined'].includes(type)) {
-      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'invite', 'accepted', 'rejected', or 'declined'.`);
+    if (!['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required'].includes(type)) {
+      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'invite', 'accepted', 'rejected', 'declined', or 'utest_update_required'.`);
     }
 
     if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
@@ -192,7 +203,9 @@ serve(async (req) => {
             ? `Application Update: ${payload.projectTitle || 'Project Review'}`
             : payload.type === 'declined'
               ? `Invite Declined: ${payload.projectTitle || 'Project Update'}`
-              : `Application Received: ${payload.projectTitle || 'Project Review'}`,
+              : payload.type === 'utest_update_required'
+                ? `Action Required: Update your uTest account for ${payload.projectTitle || 'your application'}`
+                : `Application Received: ${payload.projectTitle || 'Project Review'}`,
       htmlContent: buildHtml({ ...payload, projectLink }),
       textContent: buildText({ ...payload, projectLink })
     };

@@ -30,7 +30,7 @@ const supportedDeliverableFormats = [
 export function getDeliverableFormatOptions(currentFormat?: string): string[] {
   const formats = [...supportedDeliverableFormats];
   if (currentFormat && !formats.includes(currentFormat as typeof supportedDeliverableFormats[number])) {
-    formats.unshift(currentFormat);
+    formats.unshift(currentFormat as typeof supportedDeliverableFormats[number]);
   }
   return formats;
 }

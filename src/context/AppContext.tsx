@@ -16,7 +16,7 @@ import {
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { createPayoutRequestInSupabase, createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
-import { formatProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
+import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 
 interface AppContextType {
   role: UserRole;
@@ -53,6 +53,7 @@ interface AppContextType {
   applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
   approveApplication: (appId: string) => void;
   resendInvite: (appId: string) => void;
+  requestUtestAccountUpdate: (appId: string) => void;
   rejectApplication: (appId: string) => void;
   acceptInvite: (appId: string) => void;
   declineInvite: (appId: string) => void;
@@ -611,6 +612,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
+    const client = supabase;
     let mounted = true;
 
     const loadNotifications = async (userId: string) => {
@@ -620,7 +622,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       try {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from('notifications')
           .select('*')
           .eq('user_id', userId)
@@ -656,7 +658,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const persistedTesterProfile = savedTester ? JSON.parse(savedTester) : null;
         const persistedClientProfile = savedClient ? JSON.parse(savedClient) : null;
 
-        const { data: profile, error } = await supabase
+        const { data: profile, error } = await client
           .from('profiles')
           .select('id, name, email, role, company, avatar_url, country, city, profile_data')
           .eq('id', userId)
@@ -1266,7 +1268,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       uTestEmail: emailDetails?.uTestEmail || '',
       uTestAccountScreenshotUrl: emailDetails.applicantUtestScreenshotUrl,
       testerRating: testerProfile.rating,
-      testerTier: testerProfile.tier,
+      testerTier: testerProfile.tier === 'Unrated' ? 'Bronze' : testerProfile.tier,
       appliedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
       selectedDevices: devices,
       experienceNote,
@@ -1306,6 +1308,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             has_valid_id: Boolean(emailDetails.applicantHasValidId),
             willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording),
             utest_account_screenshot_url: emailDetails.applicantUtestScreenshotUrl || ''
+          });
+
+          await updateTesterApplicationUtestDetailsInSupabase(effectiveTesterId, {
+            full_name: emailDetails.applicantFullName || effectiveTesterName,
+            utest_id: emailDetails.uTestId || '',
+            utest_email: emailDetails.uTestEmail || '',
+            date_of_birth: emailDetails.applicantDateOfBirth || '',
+            country: emailDetails.applicantCountry || ''
           });
         }
       } catch (error) {
@@ -1398,6 +1408,51 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (project && app.testerEmail) {
       void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id);
+    }
+  };
+
+  const requestUtestAccountUpdate = (appId: string) => {
+    const app = applications.find(a => a.id === appId);
+    if (!app) return;
+    const project = projects.find(p => p.id === app.projectId);
+
+    setApplications(prev => prev.map(a => {
+      if (a.id === appId) {
+        return {
+          ...a,
+          status: 'pending',
+          inviteStatus: undefined
+        };
+      }
+      return a;
+    }));
+
+    if (isSupabaseConfigured && supabase) {
+      void updateApplicationInSupabase(app.id, {
+        status: 'pending',
+        invite_status: null,
+        updated_at: new Date().toISOString()
+      }).catch(error => console.error('Unable to flag application for uTest update:', error));
+    }
+
+    addNotification({
+      userId: app.testerId,
+      targetRole: 'tester',
+      title: 'Action Required: Update Your uTest Account',
+      message: `Your application for "${project?.title || 'this project'}" was received. Please create or update your uTest account, then update your Connectfy uTest details in settings to receive your invite.`,
+      type: 'status_update',
+      relatedProjectId: app.projectId
+    });
+
+    if (project && app.testerEmail) {
+      void triggerProjectEmail('utest_update_required', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id, {
+        applicantCountry: '',
+        applicantDevice: '',
+        uTestId: app.uTestId || '',
+        uTestEmail: app.uTestEmail || app.testerEmail,
+        applicationReference: app.id,
+        submittedAt: app.appliedDate
+      });
     }
   };
 
@@ -2323,6 +2378,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         applyToProject,
         approveApplication,
         resendInvite,
+        requestUtestAccountUpdate,
         rejectApplication,
         acceptInvite,
         declineInvite,

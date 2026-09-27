@@ -350,7 +350,7 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const { setRole, applications, acceptInvite, testerProfile, setActiveTab } = useApp();
+  const { setRole, applications, acceptInvite, testerProfile, setActiveTab, setActiveWorkspaceProjectId } = useApp();
   const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);

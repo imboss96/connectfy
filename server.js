@@ -6,7 +6,7 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.PORT || 3002);
+const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
 const allowedOrigins = [
   'http://localhost:3000',
@@ -30,14 +30,18 @@ const buildHtml = (payload) => {
   const consentLink = resources[0]?.url || '';
   const applicationDetails = payload.type === 'application'
     ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
-    : '';
+    : payload.type === 'utest_update_required'
+      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">This project requires a new uTest account created less than 7 days ago. Please create a fresh uTest account if your current account is older than one week, then update your Connectfy settings → uTest details with the correct uTest ID and email. Watch the setup guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
+      : '';
   const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
-  const actionLabel = type === 'invite' ? 'Accept Invite' : 'Open Project';
+  const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'utest_update_required' ? 'Update uTest Details' : 'Open Project';
   const greetingText = type === 'invite'
     ? `You have been invited to work on the live opportunity with ${projectCompany}.`
     : type === 'accepted'
       ? `Your invitation for the live opportunity with ${projectCompany} has been accepted.`
-      : `Your project update from ${projectCompany} is ready.`;
+      : type === 'utest_update_required'
+        ? `Your application for ${projectCompany} was received, but this project requires a new uTest account created within the last 7 days.`
+        : `Your project update from ${projectCompany} is ready.`;
 
   return `
     <div style="margin:0;padding:16px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;">
@@ -69,11 +73,15 @@ const buildText = (payload) => {
   const consentLink = resources[0]?.url || '';
   const applicationSummary = payload.type === 'application'
     ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
-    : '';
+    : payload.type === 'utest_update_required'
+      ? `Action required:\nThis project requires a new uTest account created less than 7 days ago. If your current uTest account is older than one week, please create a new account before continuing.\nThen update your Connectfy settings → uTest details with the correct uTest ID and email.\nVideo guide: https://www.youtube.com/watch?v=F_XmEVQZaHc\n\nPlease keep your new uTest account active and accessible while our team reviews your application.`
+      : '';
 
   return [
     `Hello ${payload.toName || 'there'},`,
-    `You have been invited to work on the live opportunity with ${projectCompany}.`,
+    payload.type === 'utest_update_required'
+      ? `Your application for ${projectCompany} was received, but this project requires a new uTest account created within the last 7 days.`
+      : `You have been invited to work on the live opportunity with ${projectCompany}.`,
     '',
     'Project Overview',
     description,
@@ -125,6 +133,8 @@ app.post('/api/project-email', async (req, res) => {
     const toEmail = String(payload.toEmail || '').trim();
     const toName = String(payload.toName || '').trim();
 
+    const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
+
     if (!brevoApiKey) {
       return res.status(500).json({ ok: false, message: 'Missing BREVO_API_KEY' });
     }
@@ -140,17 +150,19 @@ app.post('/api/project-email', async (req, res) => {
     const requestPayload = {
       sender: { name: 'Connectfy', email: senderEmail },
       to: [{ email: toEmail, name: toName }],
-      subject: payload.type === 'invite'
+      subject: requestType === 'invite'
         ? `Project Invite: ${payload.projectTitle || 'New Opportunity'}`
-        : payload.type === 'accepted'
+        : requestType === 'accepted'
           ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
-          : payload.type === 'rejected'
+          : requestType === 'rejected'
             ? `Application Update: ${payload.projectTitle || 'Project Review'}`
-            : payload.type === 'declined'
+            : requestType === 'declined'
               ? `Invite Declined: ${payload.projectTitle || 'Project Update'}`
-              : `Application Received: ${payload.projectTitle || 'Project Review'}`,
-      htmlContent: buildHtml({ ...payload, type }),
-      textContent: buildText({ ...payload, type })
+              : requestType === 'utest_update_required'
+                ? `Action Required: Update your uTest account for ${payload.projectTitle || 'your application'}`
+                : `Application Received: ${payload.projectTitle || 'Project Review'}`,
+      htmlContent: buildHtml({ ...payload, type: requestType }),
+      textContent: buildText({ ...payload, type: requestType })
     };
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -176,6 +188,21 @@ app.post('/api/project-email', async (req, res) => {
   }
 });
 
-app.listen(port, host, () => {
-  console.log(`Email backend running on http://${host}:${port}`);
-});
+const startServer = (portToUse = preferredPort) => {
+  const server = app.listen(portToUse, host, () => {
+    console.log(`Email backend running on http://${host}:${portToUse}`);
+  });
+
+  server.on('error', (error) => {
+    if (error && error.code === 'EADDRINUSE' && portToUse < preferredPort + 20) {
+      const nextPort = portToUse + 1;
+      console.warn(`Port ${portToUse} is busy. Retrying on ${nextPort}...`);
+      startServer(nextPort);
+      return;
+    }
+
+    throw error;
+  });
+};
+
+startServer();

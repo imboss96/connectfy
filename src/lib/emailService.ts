@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required';
 
 export function formatProjectEmailType(type?: string | null): ProjectEmailType {
   switch (type) {
@@ -13,6 +13,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'rejected';
     case 'declined':
       return 'declined';
+    case 'utest_update_required':
+      return 'utest_update_required';
     case 'application':
     default:
       return 'application';

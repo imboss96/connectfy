@@ -117,7 +117,7 @@ export interface ProjectApplication {
   uTestEmail?: string;
   uTestAccountScreenshotUrl?: string;
   testerRating: number;
-  testerTier: 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
+  testerTier: 'Unrated' | 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
   appliedDate: string;
   selectedDevices: string[];
   experienceNote: string;

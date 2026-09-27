@@ -6,6 +6,7 @@ assert.equal(formatProjectEmailType('invite'), 'invite');
 assert.equal(formatProjectEmailType('accepted'), 'accepted');
 assert.equal(formatProjectEmailType('rejected'), 'rejected');
 assert.equal(formatProjectEmailType('declined'), 'declined');
+assert.equal(formatProjectEmailType('utest_update_required'), 'utest_update_required');
 assert.equal(formatProjectEmailType('unknown' as any), 'application');
 
 console.log('email stage regression checks passed');

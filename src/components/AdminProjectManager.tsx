@@ -28,7 +28,7 @@ import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
-  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite } = useApp();
+  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -273,6 +273,7 @@ export const AdminProjectManager: React.FC = () => {
                       <>
                         <button type="button" onClick={() => rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
                         <button type="button" onClick={() => approveApplication(app.id)} className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE]">Approve & Send Invite</button>
+                        <button type="button" onClick={() => requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request uTest Update</button>
                       </>
                     )}
 
