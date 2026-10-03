@@ -53,6 +53,7 @@ export const ClientDashboard: React.FC = () => {
     taskSubmissions,
     approveApplication,
     rejectApplication,
+    requestUtestAccountUpdate,
     resendInvite,
     approveBugReport,
     rejectBugReport,
@@ -544,7 +545,7 @@ export const ClientDashboard: React.FC = () => {
                       </div>
 
                       {isReview && (
-                        <div className="flex items-center space-x-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => setActionTask({ task, type: 'reject' })}
                             className="px-3 py-1.5 bg-slate-800 hover:bg-rose-900/30 text-rose-300 hover:text-rose-200 text-xs font-semibold rounded-lg transition"
@@ -845,6 +846,12 @@ export const ClientDashboard: React.FC = () => {
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Approve & Send Invite</span>
                         </button>
+                        <button
+                          onClick={() => requestUtestAccountUpdate(app.id)}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded-lg transition"
+                        >
+                          Request New uTest Account & Reapply
+                        </button>
                       </div>
                     ) : isApproved ? (
                       <div className="text-right space-y-2">
@@ -864,7 +871,7 @@ export const ClientDashboard: React.FC = () => {
                       </div>
                     ) : (
                       <span className="text-xs font-semibold text-slate-500">
-                        Application Declined
+                        {app.status === 'needs_utest_update' ? 'Waiting for a new uTest account and reapplication' : 'Application Declined'}
                       </span>
                     )}
                   </div>

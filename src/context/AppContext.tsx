@@ -33,8 +33,8 @@ interface AppContextType {
   setActiveWorkspaceProjectId: (id: string | null) => void;
   
   // Navigation tabs
-  activeTab: 'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager' | 'crm';
-  setActiveTab: (tab: any) => void;
+  activeTab: ActiveTab;
+  setActiveTab: (tab: ActiveTab) => void;
   isProfileModalOpen: boolean;
   setIsProfileModalOpen: (open: boolean) => void;
 
@@ -50,7 +50,7 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
   approveApplication: (appId: string) => void;
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => void;
@@ -77,6 +77,11 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
+const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'google_sheet', 'email_history'] as const;
+type ActiveTab = typeof ACTIVE_TABS[number];
+
+const isActiveTab = (value: string | null): value is ActiveTab =>
+  ACTIVE_TABS.some(tab => tab === value);
 
 const createApplicationId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -365,7 +370,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return (saved === 'client' || saved === 'tester' || saved === 'admin') ? (saved as UserRole) : 'tester';
   });
 
-  const [activeTab, setActiveTab] = useState<'projects' | 'tasks' | 'wallet' | 'client_cycles' | 'client_applicants' | 'client_submissions' | 'profile_settings' | 'admin_manager' | 'crm'>('projects');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const saved = localStorage.getItem(STORAGE_PREFIX + 'activeTab');
+    return isActiveTab(saved) ? saved : 'projects';
+  });
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
@@ -576,6 +584,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     localStorage.setItem(STORAGE_PREFIX + 'role', role);
   }, [role]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_PREFIX + 'activeTab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_PREFIX + 'projects', JSON.stringify(projects));
@@ -1022,6 +1034,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [currentUserId]);
 
   const setRole = (newRole: UserRole) => {
+    if (newRole === role) return;
     setRoleState(newRole);
     if (newRole === 'client') {
       setActiveTab('client_cycles');
@@ -1159,7 +1172,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const actionUrl = type === 'invite' && applicationId
       ? `${window.location.origin}?project=${projectId}&application=${applicationId}&accept=1`
       : type === 'utest_update_required'
-        ? `${window.location.origin}?project=${projectId}&settings=utest`
+        ? `${window.location.origin}?project=${projectId}&reapply=1`
         : `${window.location.origin}?project=${projectId}`;
     const normalizedType = formatProjectEmailType(type);
     let emailSent = false;
@@ -1238,8 +1251,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantDeviceConfirmation' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantUtestScreenshotUrl?: string }) => {
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => {
     if (!emailDetails?.applicantUtestScreenshotUrl) return false;
+    const { applicantPhone = '', ...emailPayloadDetails } = emailDetails;
 
     const userContext = await getActiveUserContext();
     let liveEmail = '';
@@ -1256,10 +1270,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const effectiveTesterEmail = await resolveTesterEmail(effectiveTesterId, liveEmail || testerProfile.email || userContext.email || '');
 
     const existing = applications.find(a => a.projectId === projectId && a.testerId === effectiveTesterId);
-    if (existing) return false;
+    if (existing && existing.status !== 'needs_utest_update') return false;
 
     const project = projects.find(p => p.id === projectId);
-    const newAppId = createApplicationId();
+    const newAppId = existing?.id || createApplicationId();
     const newApp: ProjectApplication = {
       id: newAppId,
       projectId,
@@ -1275,10 +1289,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       selectedDevices: devices,
       experienceNote,
       status: 'pending',
-      inviteHistory: []
+      inviteHistory: existing?.inviteHistory || []
     };
 
-    setApplications(prev => [newApp, ...prev]);
+    setApplications(prev => [newApp, ...prev.filter(application => application.id !== newAppId)]);
 
     if (isSupabaseConfigured && supabase && effectiveTesterId) {
       try {
@@ -1306,7 +1320,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             age_range: emailDetails.applicantAgeRange || '',
             country: emailDetails.applicantCountry || '',
             smartphone: emailDetails.applicantSmartphone || '',
-            device_confirmation: emailDetails.applicantDeviceConfirmation || emailDetails.applicantDevice || '',
+            phone_number: applicantPhone,
+            device_confirmation: emailDetails.applicantDevice || emailDetails.applicantSmartphone || '',
             has_valid_id: Boolean(emailDetails.applicantHasValidId),
             willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording),
             utest_account_screenshot_url: emailDetails.applicantUtestScreenshotUrl || ''
@@ -1338,7 +1353,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (effectiveTesterEmail) {
       void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail);
       void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail, newAppId, {
-        ...emailDetails,
+        ...emailPayloadDetails,
         applicationReference: newAppId
       });
     } else {
@@ -1422,7 +1437,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (a.id === appId) {
         return {
           ...a,
-          status: 'pending',
+          status: 'needs_utest_update',
           inviteStatus: undefined
         };
       }
@@ -1431,7 +1446,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (isSupabaseConfigured && supabase) {
       void updateApplicationInSupabase(app.id, {
-        status: 'pending',
+        status: 'needs_utest_update',
         invite_status: null,
         updated_at: new Date().toISOString()
       }).catch(error => console.error('Unable to flag application for uTest update:', error));
@@ -1440,8 +1455,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: app.testerId,
       targetRole: 'tester',
-      title: 'Action Required: Update Your uTest Account',
-      message: `Your application for "${project?.title || 'this project'}" was received. Please create or update your uTest account, then update your Connectfy uTest details in settings to receive your invite.`,
+      title: 'Action Required: Create a New uTest Account',
+      message: `This project requires a uTest account created within the last 7 days. Please create a new account, then reapply to "${project?.title || 'this project'}" using its new uTest ID and email.`,
       type: 'status_update',
       relatedProjectId: app.projectId
     });

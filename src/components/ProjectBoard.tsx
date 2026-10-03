@@ -43,7 +43,7 @@ type ApplicationDraft = {
   ageRange: string;
   country: string;
   smartphone: string;
-  deviceConfirmation: string;
+  phoneNumber: string;
   hasValidId: boolean;
   willingVoiceRecording: boolean;
   utestAccountScreenshotUrl: string;
@@ -60,7 +60,7 @@ const createDraftFromProject = (project: Project): ApplicationDraft => ({
   ageRange: '18-24',
   country: '',
   smartphone: '',
-  deviceConfirmation: '',
+  phoneNumber: '',
   hasValidId: false,
   willingVoiceRecording: false,
   utestAccountScreenshotUrl: '',
@@ -172,6 +172,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   const featuredProject = filteredProjects.find((project) => project.isFeatured === true);
   const regularProjects = filteredProjects.filter((project) => project.id !== featuredProject?.id);
+  const featuredNeedsUtestUpdate = featuredProject
+    ? applications.some((application) => application.projectId === featuredProject.id && application.testerId === testerProfile.id && application.status === 'needs_utest_update')
+    : false;
 
   const getApplicationForProject = (projectId: string) => {
     return applications.find(
@@ -185,23 +188,30 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
+    const requiresNewUtestAccount = getApplicationForProject(project.id)?.status === 'needs_utest_update';
     const draft = {
       ...createDraftFromProject(project),
-      testerId: testerProfile.uTestId || '',
-      utestEmail: testerProfile.uTestEmail || '',
+      testerId: requiresNewUtestAccount ? '' : testerProfile.uTestId || '',
+      utestEmail: requiresNewUtestAccount ? '' : testerProfile.uTestEmail || '',
       fullName: testerProfile.legalName || '',
-      dateOfBirth: testerProfile.dateOfBirth || ''
+      dateOfBirth: testerProfile.dateOfBirth || '',
+      phoneNumber: testerProfile.phone || ''
     };
 
     setApplyingProject(project);
     setApplicationDraft(draft);
-    setSelectedDevices(draft.deviceConfirmation ? [draft.deviceConfirmation] : []);
+    setSelectedDevices(draft.smartphone ? [draft.smartphone] : []);
 
     void fetchApplicationDraft(project.id).then((savedDraft) => {
       if (!savedDraft) return;
-      const restoredDraft = { ...draft, ...savedDraft, projectId: project.id } as ApplicationDraft;
+      const restoredDraft = {
+        ...draft,
+        ...savedDraft,
+        ...(requiresNewUtestAccount ? { testerId: '', utestEmail: '', utestAccountScreenshotUrl: '' } : {}),
+        projectId: project.id
+      } as ApplicationDraft;
       setApplicationDraft(restoredDraft);
-      setSelectedDevices(restoredDraft.deviceConfirmation ? [restoredDraft.deviceConfirmation] : []);
+      setSelectedDevices(restoredDraft.smartphone ? [restoredDraft.smartphone] : []);
     });
 
     if (project.projectTrack === 'data_collection') {
@@ -272,7 +282,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     e.preventDefault();
     if (!applyingProject || !applicationDraft) return;
 
-    if (!applicationDraft.fullName || !applicationDraft.utestEmail || !applicationDraft.dateOfBirth || !applicationDraft.country || !applicationDraft.deviceConfirmation || !applicationDraft.smartphone) {
+    if (!applicationDraft.fullName || !applicationDraft.utestEmail || !applicationDraft.dateOfBirth || !applicationDraft.country || !applicationDraft.phoneNumber.trim() || !applicationDraft.smartphone) {
       setApplyError('Please complete all required fields before submitting your application.');
       return;
     }
@@ -292,7 +302,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
-    const finalDevices = selectedDevices.length > 0 ? selectedDevices : [applicationDraft.deviceConfirmation].filter(Boolean);
+    const finalDevices = selectedDevices.length > 0 ? selectedDevices : [applicationDraft.smartphone].filter(Boolean);
     if (finalDevices.length === 0) {
       setApplyError('Please choose at least one device you will use.');
       return;
@@ -302,7 +312,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       ...applicationDraft,
       updatedAt: new Date().toISOString(),
       smartphone: applicationDraft.smartphone || finalDevices[0],
-      deviceConfirmation: applicationDraft.deviceConfirmation || finalDevices[0]
+      phoneNumber: applicationDraft.phoneNumber.trim()
     };
     await saveApplicationDraft(applyingProject.id, finalDraft);
 
@@ -313,7 +323,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       `DOB: ${finalDraft.dateOfBirth}`,
       `Age range: ${finalDraft.ageRange}`,
       `Country: ${finalDraft.country}`,
-      `Device: ${finalDraft.deviceConfirmation}`,
+      `Device: ${finalDraft.smartphone}`,
       `Government ID available: ${finalDraft.hasValidId ? 'Yes' : 'No'}`,
       `Voice recordings consent: ${finalDraft.willingVoiceRecording ? 'Yes' : 'No'}`
     ].filter(Boolean).join(' | ');
@@ -327,14 +337,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
     const ok = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
       applicantCountry: finalDraft.country,
-      applicantDevice: finalDraft.deviceConfirmation,
+      applicantDevice: finalDraft.smartphone,
       uTestId: finalDraft.testerId,
       uTestEmail: finalDraft.utestEmail,
       applicantFullName: finalDraft.fullName,
       applicantDateOfBirth: finalDraft.dateOfBirth,
       applicantAgeRange: finalDraft.ageRange,
       applicantSmartphone: finalDraft.smartphone,
-      applicantDeviceConfirmation: finalDraft.deviceConfirmation,
+      applicantPhone: finalDraft.phoneNumber,
       applicantHasValidId: finalDraft.hasValidId,
       applicantWillingVoiceRecording: finalDraft.willingVoiceRecording,
       applicantUtestScreenshotUrl: finalDraft.utestAccountScreenshotUrl,
@@ -585,7 +595,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 disabled={!isProjectOpenForApplications(featuredProject)}
                 className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
               >
-                {isProjectOpenForApplications(featuredProject) ? 'Apply to Featured Project' : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}
+                {isProjectOpenForApplications(featuredProject)
+                  ? featuredNeedsUtestUpdate ? 'Create Account & Reapply' : 'Apply to Featured Project'
+                  : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}
               </button>
             </div>
           </div>
@@ -601,6 +613,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
           const isInvited = app?.inviteStatus === 'invited';
           const isAccepted = app?.inviteStatus === 'accepted';
           const isRejected = app?.status === 'rejected';
+          const requiresNewUtestAccount = app?.status === 'needs_utest_update';
 
           const isQA = !project.projectTrack || project.projectTrack === 'qa_functional';
 
@@ -757,6 +770,20 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-400 py-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                   </span>
+                ) : requiresNewUtestAccount ? (
+                  isProjectOpenForApplications(project) ? (
+                    <button
+                      onClick={() => handleOpenApplyModal(project)}
+                      className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition shadow"
+                    >
+                      <span>Create Account & Reapply</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
+                      {getProjectAvailabilityLabel(project.status, project.startsAt)}
+                    </span>
+                  )
                 ) : hasApplied && isRejected ? (
                   <span className="text-xs font-semibold text-slate-500 text-center sm:text-left py-1">
                     Not Selected
@@ -1099,27 +1126,22 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     Smartphone / Device used for this project
                     <input
                       value={applicationDraft?.smartphone || ''}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        updateDraft({ smartphone: value, deviceConfirmation: value || applicationDraft?.deviceConfirmation || '' });
-                        setSelectedDevices((current) => (value && !current.includes(value) ? [value, ...current].slice(0, 4) : current));
-                      }}
+                      onChange={(event) => updateDraft({ smartphone: event.target.value })}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
                       placeholder="e.g. iPhone 15 Pro (iOS 17.5)"
                     />
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700 sm:col-span-2">
-                    Device Confirmation
+                    Phone number <span className="text-rose-600">*</span>
                     <input
-                      value={applicationDraft?.deviceConfirmation || ''}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        updateDraft({ deviceConfirmation: value, smartphone: value || applicationDraft?.smartphone || '' });
-                        setSelectedDevices((current) => (value && !current.includes(value) ? [value, ...current].slice(0, 4) : current));
-                      }}
+                      type="tel"
+                      autoComplete="tel"
+                      required
+                      value={applicationDraft?.phoneNumber || ''}
+                      onChange={(event) => updateDraft({ phoneNumber: event.target.value })}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
-                      placeholder="Confirm the exact device you will use"
+                      placeholder="Phone number"
                     />
                   </label>
                 </div>

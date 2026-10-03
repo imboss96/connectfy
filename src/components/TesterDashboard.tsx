@@ -259,6 +259,13 @@ export const TesterDashboard: React.FC<TesterDashboardProps> = ({
                         <span className="text-xs text-amber-400 font-medium flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" /> Awaiting Client Review
                         </span>
+                      ) : app.status === 'needs_utest_update' ? (
+                        <button
+                          onClick={onBrowseProjects}
+                          className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg transition"
+                        >
+                          Create Account & Reapply
+                        </button>
                       ) : (
                         <span className="text-xs text-slate-500">Not Selected</span>
                       )}

@@ -38,7 +38,7 @@ export const AdminProjectManager: React.FC = () => {
   const [editingSlotsId, setEditingSlotsId] = useState<string | null>(null);
   const [newSlotsInput, setNewSlotsInput] = useState<string>('');
   const [applicationSearch, setApplicationSearch] = useState('');
-  const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invited' | 'accepted' | 'rejected'>('all');
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invited' | 'accepted' | 'rejected' | 'needs_utest_update'>('all');
   const [applicationProjectFilter, setApplicationProjectFilter] = useState<string>('all');
 
   // Metrics
@@ -69,7 +69,8 @@ export const AdminProjectManager: React.FC = () => {
       (applicationStatusFilter === 'approved' && app.status === 'approved' && app.inviteStatus !== 'accepted') ||
       (applicationStatusFilter === 'invited' && app.inviteStatus === 'invited') ||
       (applicationStatusFilter === 'accepted' && app.inviteStatus === 'accepted') ||
-      (applicationStatusFilter === 'rejected' && app.status === 'rejected');
+      (applicationStatusFilter === 'rejected' && app.status === 'rejected') ||
+      (applicationStatusFilter === 'needs_utest_update' && app.status === 'needs_utest_update');
     const matchSearch =
       applicationSearch.trim() === '' ||
       app.testerName.toLowerCase().includes(applicationSearch.toLowerCase()) ||
@@ -150,7 +151,7 @@ export const AdminProjectManager: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-amber-700">Pending</p>
             <p className="mt-2 text-2xl font-black text-amber-700">{applicationMetrics.pending}</p>
@@ -166,6 +167,10 @@ export const AdminProjectManager: React.FC = () => {
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
             <p className="text-[10px] uppercase tracking-[0.14em] text-rose-700">Rejected</p>
             <p className="mt-2 text-2xl font-black text-rose-700">{applicationMetrics.rejected}</p>
+          </div>
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <p className="text-[10px] uppercase tracking-[0.14em] text-orange-700">Needs new uTest account</p>
+            <p className="mt-2 text-2xl font-black text-orange-700">{applications.filter((app) => app.status === 'needs_utest_update').length}</p>
           </div>
         </div>
 
@@ -187,6 +192,7 @@ export const AdminProjectManager: React.FC = () => {
             <option value="invited">Invited</option>
             <option value="accepted">Accepted</option>
             <option value="rejected">Rejected</option>
+            <option value="needs_utest_update">Needs new uTest account</option>
           </select>
         </div>
 
@@ -197,7 +203,7 @@ export const AdminProjectManager: React.FC = () => {
             filteredApplications.map((app) => {
               const project = projects.find((p) => p.id === app.projectId);
               const inviteHistory = app.inviteHistory || [];
-              const statusLabel = app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.inviteStatus === 'invited' || app.status === 'approved' ? 'Invite sent' : 'Pending review';
+              const statusLabel = app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.inviteStatus === 'invited' || app.status === 'approved' ? 'Invite sent' : 'Pending review';
 
               return (
                 <div key={app.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -216,7 +222,7 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
 
                     <div className="flex flex-col md:flex-row md:items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${app.status === 'rejected' ? 'bg-rose-100 text-rose-700 border border-rose-200' : app.inviteStatus === 'accepted' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'bg-sky-100 text-sky-700 border border-sky-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{statusLabel}</span>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${app.status === 'rejected' ? 'bg-rose-100 text-rose-700 border border-rose-200' : app.status === 'needs_utest_update' ? 'bg-orange-100 text-orange-700 border border-orange-200' : app.inviteStatus === 'accepted' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'bg-sky-100 text-sky-700 border border-sky-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{statusLabel}</span>
                       <span className="text-[10px] text-slate-500">Applied {app.appliedDate}</span>
                     </div>
                   </div>
@@ -273,7 +279,7 @@ export const AdminProjectManager: React.FC = () => {
                       <>
                         <button type="button" onClick={() => rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
                         <button type="button" onClick={() => approveApplication(app.id)} className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE]">Approve & Send Invite</button>
-                        <button type="button" onClick={() => requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request uTest Update</button>
+                        <button type="button" onClick={() => requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request New uTest Account & Reapply</button>
                       </>
                     )}
 
@@ -282,6 +288,7 @@ export const AdminProjectManager: React.FC = () => {
                     )}
 
                     {app.status === 'rejected' && <span className="text-[11px] text-slate-500">Rejected from this cycle.</span>}
+                    {app.status === 'needs_utest_update' && <span className="text-[11px] text-amber-700">Waiting for the tester to create a new uTest account and reapply.</span>}
                   </div>
                 </div>
               );

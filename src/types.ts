@@ -41,7 +41,7 @@ export type BugSeverity = 'Critical' | 'High' | 'Medium' | 'Low';
 export type BugType = 'Crash' | 'Functional' | 'UI / Visual' | 'Performance' | 'Content / Localization' | 'Security';
 export type BugFrequency = 'Every time (100%)' | 'Frequently (~70%)' | 'Occasionally (~30%)' | 'Once';
 
-export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected' | 'needs_utest_update';
 export type InviteStatus = 'invited' | 'accepted' | 'declined' | 'completed';
 export type SubmissionStatus = 'draft' | 'submitted' | 'under_review' | 'changes_requested' | 'approved' | 'rejected';
 export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed';

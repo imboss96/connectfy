@@ -378,6 +378,7 @@ export async function upsertApplicationUtestDetailsInSupabase(details: {
   age_range: string;
   country: string;
   smartphone: string;
+  phone_number: string;
   device_confirmation: string;
   has_valid_id: boolean;
   willing_voice_recording: boolean;

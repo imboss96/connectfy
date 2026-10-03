@@ -1,7 +1,15 @@
 import { supabase } from './supabase';
 import { ProjectResource } from '../types';
+import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply';
+
+export class EmailTemplateMismatchError extends Error {
+  constructor() {
+    super('The email service accepted this message but did not confirm the expected template. It may have sent an older email version; do not retry until the email service is updated.');
+    this.name = 'EmailTemplateMismatchError';
+  }
+}
 
 export function formatProjectEmailType(type?: string | null): ProjectEmailType {
   switch (type) {
@@ -15,6 +23,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'declined';
     case 'utest_update_required':
       return 'utest_update_required';
+    case 'legacy_sheet_reapply':
+      return 'legacy_sheet_reapply';
     case 'application':
     default:
       return 'application';
@@ -42,7 +52,6 @@ export interface ProjectEmailPayload {
   applicantDateOfBirth?: string;
   applicantAgeRange?: string;
   applicantSmartphone?: string;
-  applicantDeviceConfirmation?: string;
   applicantHasValidId?: boolean;
   applicantWillingVoiceRecording?: boolean;
   applicationReference?: string;
@@ -60,11 +69,21 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
     const backendUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_EMAIL_BACKEND_URL)
       || 'http://localhost:3002/api/project-email';
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (safePayload.type === 'legacy_sheet_reapply') {
+      if (!supabase) throw new Error('Sign in with an administrator account to send this email.');
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (!data.session?.access_token) throw new Error('Sign in with an administrator account to send this email.');
+      headers.Authorization = `Bearer ${data.session.access_token}`;
+    }
+
     const response = await fetch(backendUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(safePayload)
     });
 
@@ -78,6 +97,18 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
         // Keep the raw response when the backend did not return JSON.
       }
       throw new Error(message);
+    }
+
+    if (safePayload.type === 'legacy_sheet_reapply') {
+      let result: { emailType?: string; subject?: string };
+      try {
+        result = await response.json();
+      } catch {
+        throw new EmailTemplateMismatchError();
+      }
+      if (result.emailType !== safePayload.type || result.subject !== LEGACY_SHEET_EMAIL_SUBJECT) {
+        throw new EmailTemplateMismatchError();
+      }
     }
 
     return true;

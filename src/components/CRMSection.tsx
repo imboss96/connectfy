@@ -1,9 +1,106 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Briefcase, Mail, MapPin, PlusCircle, Search, ShieldCheck, Users } from 'lucide-react';
+import { Briefcase, CheckCircle2, ExternalLink, Mail, MapPin, PlusCircle, RefreshCw, Search, Send, ShieldCheck, Users, X, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { EmailTemplateMismatchError, sendProjectEmail } from '../lib/emailService';
+import {
+  LEGACY_SHEET_EMAIL_INSTRUCTIONS,
+  LEGACY_SHEET_EMAIL_INTRO,
+  LEGACY_SHEET_EMAIL_SIGN_OFF,
+  LEGACY_SHEET_EMAIL_SUPPORT,
+  LEGACY_SHEET_EMAIL_SUBJECT,
+  LEGACY_SHEET_EMAIL_UTEST_SIGNUP
+} from '../lib/legacySheetEmail.js';
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
-type CRMView = 'members' | 'utest';
+type CRMView = 'members' | 'utest' | 'sheet';
+
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1_iHEYxp6e1JN8dxI01n3iuqCbPHUijo244ocEhBJmyg/export?format=csv';
+const SHEET_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const LEGACY_PROJECT_TITLE = 'MyGov Identity & Video Verification Study';
+const EMAIL_VALIDATION_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type LegacySheetMember = {
+  timestamp: string;
+  consent: string;
+  fullName: string;
+  dateOfBirth: string;
+  gender: string;
+  email: string;
+  termsAgreed: string;
+  utestId: string;
+};
+
+const parseCsv = (csv: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let value = '';
+  let quoted = false;
+
+  for (let index = 0; index < csv.length; index += 1) {
+    const char = csv[index];
+    if (char === '"') {
+      if (quoted && csv[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === ',' && !quoted) {
+      row.push(value);
+      value = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && csv[index + 1] === '\n') index += 1;
+      row.push(value);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      value = '';
+    } else {
+      value += char;
+    }
+  }
+
+  if (value || row.length) {
+    row.push(value);
+    if (row.some((cell) => cell.trim())) rows.push(row);
+  }
+  return rows;
+};
+
+const parseLegacySheet = (csv: string): LegacySheetMember[] => {
+  const [rawHeaders, ...rows] = parseCsv(csv);
+  if (!rawHeaders || rows.length === 0) return [];
+
+  const headers = rawHeaders.map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/\s+/g, ' '));
+  const findColumn = (matches: (header: string) => boolean) => headers.findIndex(matches);
+  const columns = {
+    timestamp: findColumn((header) => header.includes('timestamp')),
+    consent: findColumn((header) => header.includes('consent to the information')),
+    fullName: findColumn((header) => header.includes('your name')),
+    dateOfBirth: findColumn((header) => header.includes('date of birth') || header.includes('(dob)')),
+    gender: findColumn((header) => header.includes('gender')),
+    email: findColumn((header) => header.includes('email address')),
+    termsAgreed: findColumn((header) => header.includes('agree to the above terms')),
+    utestId: findColumn((header) => header.includes('what is your utest id') || header === 'utest id')
+  };
+
+  if (columns.fullName < 0 || columns.email < 0) {
+    throw new Error('The sheet is missing the expected name or email column. Check its header row.');
+  }
+
+  const read = (cells: string[], column: number) => column < 0 ? '' : (cells[column] || '').trim();
+  return rows
+    .map((cells) => ({
+      timestamp: read(cells, columns.timestamp),
+      consent: read(cells, columns.consent),
+      fullName: read(cells, columns.fullName),
+      dateOfBirth: read(cells, columns.dateOfBirth),
+      gender: read(cells, columns.gender),
+      email: read(cells, columns.email),
+      termsAgreed: read(cells, columns.termsAgreed),
+      utestId: read(cells, columns.utestId)
+    }))
+    .filter((member) => member.fullName || member.email || member.utestId);
+};
 
 type PlatformMember = {
   id: string;
@@ -28,16 +125,30 @@ type ApplicationUtestDetails = {
   age_range: string;
   country: string;
   smartphone: string;
+  phone_number: string;
   device_confirmation: string;
   has_valid_id: boolean;
   willing_voice_recording: boolean;
   updated_at: string;
 };
 
-export const CRMSection: React.FC = () => {
+export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 'members' }) => {
   const [members, setMembers] = useState<PlatformMember[]>([]);
   const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
-  const [activeView, setActiveView] = useState<CRMView>('members');
+  const [activeView, setActiveView] = useState<CRMView>(initialView);
+  const [sheetMembers, setSheetMembers] = useState<LegacySheetMember[]>([]);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [sheetSearch, setSheetSearch] = useState('');
+  const [selectedSheetEmails, setSelectedSheetEmails] = useState<Set<string>>(() => new Set());
+  const [sentSheetEmails, setSentSheetEmails] = useState<Set<string>>(() => new Set());
+  const [blockedSheetEmails, setBlockedSheetEmails] = useState<Set<string>>(() => new Set());
+  const [isSheetEmailTrackingReady, setIsSheetEmailTrackingReady] = useState(false);
+  const [isSheetEmailPreviewOpen, setIsSheetEmailPreviewOpen] = useState(false);
+  const [isSendingSheetEmails, setIsSendingSheetEmails] = useState(false);
+  const [sheetEmailResult, setSheetEmailResult] = useState<string | null>(null);
+  const [sheetEmailError, setSheetEmailError] = useState<string | null>(null);
+  const [sheetLastRefreshed, setSheetLastRefreshed] = useState<Date | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -74,6 +185,251 @@ export const CRMSection: React.FC = () => {
     void loadUtestDetails();
   }, []);
 
+  const refreshSheet = async (signal?: AbortSignal) => {
+    setSheetLoading(true);
+    setSheetError(null);
+    try {
+      const response = await fetch(`${SHEET_CSV_URL}&_=${Date.now()}`, { signal, cache: 'no-store' });
+      if (!response.ok) throw new Error(`Google Sheets returned HTTP ${response.status}.`);
+      const csv = await response.text();
+      const parsedMembers = parseLegacySheet(csv);
+      setSheetMembers(parsedMembers);
+      setSheetLastRefreshed(new Date());
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('Unable to refresh Google Sheets members:', error);
+      setSheetError(error instanceof Error ? error.message : 'Unable to load the Google Sheet.');
+    } finally {
+      if (!signal?.aborted) setSheetLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView !== 'sheet') return;
+
+    const controller = new AbortController();
+    void refreshSheet(controller.signal);
+    setIsSheetEmailTrackingReady(false);
+    if (supabase) {
+      void supabase
+        .from('legacy_sheet_email_log')
+        .select('recipient_email,status')
+        .in('status', ['sent', 'pending', 'unverified'])
+        .then(({ data, error }) => {
+          if (controller.signal.aborted) return;
+          if (error) {
+            console.error('Unable to load previously emailed sheet recipients:', error);
+            setSheetEmailError(`Email tracking is unavailable: ${error.message}`);
+            setIsSheetEmailTrackingReady(false);
+            return;
+          }
+          setBlockedSheetEmails(new Set((data || []).map((entry) => entry.recipient_email.trim().toLowerCase())));
+          setSentSheetEmails(new Set((data || [])
+            .filter((entry) => entry.status === 'sent')
+            .map((entry) => entry.recipient_email.trim().toLowerCase())));
+          setIsSheetEmailTrackingReady(true);
+        });
+    } else {
+      setSheetEmailError('Supabase is not configured. Email sending and tracking are unavailable.');
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshSheet(controller.signal);
+    }, SHEET_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+      controller.abort();
+    };
+  }, [activeView]);
+
+  const filteredSheetMembers = useMemo(() => {
+    const term = sheetSearch.trim().toLowerCase();
+    if (!term) return sheetMembers;
+    return sheetMembers.filter((member) =>
+      [member.fullName, member.email, member.utestId, member.gender, member.consent, member.termsAgreed]
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    );
+  }, [sheetMembers, sheetSearch]);
+
+  const membersWithUtestId = useMemo(
+    () => sheetMembers.filter((member) => member.utestId).length,
+    [sheetMembers]
+  );
+
+  const selectedSheetRecipients = useMemo(() => {
+    const recipientsByEmail = new Map<string, LegacySheetMember>();
+    sheetMembers.forEach((member) => {
+      const email = member.email.trim().toLowerCase();
+      if (selectedSheetEmails.has(email) && !blockedSheetEmails.has(email) && EMAIL_VALIDATION_PATTERN.test(email) && !recipientsByEmail.has(email)) {
+        recipientsByEmail.set(email, member);
+      }
+    });
+    return [...recipientsByEmail.entries()].map(([email, member]) => ({ email, member }));
+  }, [selectedSheetEmails, blockedSheetEmails, sheetMembers]);
+
+  const visibleSheetEmails = useMemo(
+    () => [...new Set(filteredSheetMembers
+      .map((member) => member.email.trim().toLowerCase())
+      .filter((email) => EMAIL_VALIDATION_PATTERN.test(email) && !blockedSheetEmails.has(email)))],
+    [filteredSheetMembers, blockedSheetEmails]
+  );
+
+  const toggleSheetRecipient = (email: string) => {
+    if (blockedSheetEmails.has(email)) return;
+    setSelectedSheetEmails((current) => {
+      const next = new Set(current);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+    setSheetEmailResult(null);
+    setSheetEmailError(null);
+  };
+
+  const toggleVisibleSheetRecipients = () => {
+    setSelectedSheetEmails((current) => {
+      const next = new Set(current);
+      const allVisibleSelected = visibleSheetEmails.every((email) => next.has(email));
+      visibleSheetEmails.forEach((email) => {
+        if (allVisibleSelected) next.delete(email);
+        else if (!blockedSheetEmails.has(email)) next.add(email);
+      });
+      return next;
+    });
+    setSheetEmailResult(null);
+    setSheetEmailError(null);
+  };
+
+  const sendSheetEmails = async () => {
+    if (selectedSheetRecipients.length === 0) return;
+    if (!supabase || !isSheetEmailTrackingReady) {
+      setSheetEmailError('Email tracking is not ready. Confirm the email log migration is applied and retry.');
+      return;
+    }
+
+    setIsSendingSheetEmails(true);
+    setSheetEmailResult(null);
+    setSheetEmailError(null);
+    const sent: string[] = [];
+    const failed: string[] = [];
+    const unverified: string[] = [];
+    const blocked: string[] = [];
+    const failureMessages: string[] = [];
+    let userData;
+    let userError;
+    try {
+      ({ data: userData, error: userError } = await supabase.auth.getUser());
+    } catch (error) {
+      setIsSendingSheetEmails(false);
+      setSheetEmailError(error instanceof Error ? error.message : 'Unable to verify your admin session.');
+      return;
+    }
+    if (userError || !userData.user) {
+      setIsSendingSheetEmails(false);
+      setSheetEmailError(userError?.message || 'Sign in again before sending and tracking emails.');
+      return;
+    }
+
+    for (const { email, member } of selectedSheetRecipients) {
+      let logEntry;
+      let logInsertError;
+      try {
+        ({ data: logEntry, error: logInsertError } = await supabase
+          .from('legacy_sheet_email_log')
+          .insert({
+            recipient_email: email,
+            recipient_name: member.fullName || '',
+            email_type: 'legacy_sheet_reapply',
+            subject: LEGACY_SHEET_EMAIL_SUBJECT,
+            status: 'pending',
+            created_by: userData.user.id
+          })
+          .select('id')
+          .single());
+      } catch (error) {
+        failed.push(email);
+        failureMessages.push(`${email}: Could not create the email tracking record, so no email was sent. ${error instanceof Error ? error.message : ''}`);
+        continue;
+      }
+
+      if (logInsertError || !logEntry) {
+        failureMessages.push(`${email}: Could not create the email tracking record, so no email was sent. ${logInsertError?.message || ''}`);
+        failed.push(email);
+        continue;
+      }
+
+      let sendError: unknown;
+      try {
+        await sendProjectEmail({
+          type: 'legacy_sheet_reapply',
+          toEmail: email,
+          toName: member.fullName || 'there',
+          projectTitle: LEGACY_PROJECT_TITLE,
+          projectCompany: 'Connectfy',
+          projectDescription: 'Thank you for your interest in our project. This opportunity has a uTest account eligibility requirement.',
+          actionUrl: window.location.origin,
+          projectLink: window.location.origin,
+          supportEmail: 'support@connectfy.tech'
+        });
+      } catch (error) {
+        sendError = error;
+      }
+
+      const templateMismatch = sendError instanceof EmailTemplateMismatchError;
+      const sendMessage = sendError instanceof Error ? sendError.message : 'Email request failed.';
+      let updateError: { message: string } | null = null;
+      try {
+        const result = await supabase
+          .from('legacy_sheet_email_log')
+          .update(sendError
+            ? { status: templateMismatch ? 'unverified' : 'failed', error_message: sendMessage }
+            : { status: 'sent', sent_at: new Date().toISOString(), error_message: null })
+          .eq('id', logEntry.id);
+        updateError = result.error;
+      } catch (error) {
+        updateError = { message: error instanceof Error ? error.message : 'Database update failed.' };
+      }
+
+      if (!sendError) {
+        if (updateError) {
+          sent.push(email);
+          unverified.push(email);
+          blocked.push(email);
+          failureMessages.push(`${email}: The email service confirmed the send, but the tracking record could not be updated from pending. ${updateError.message}`);
+        } else {
+          sent.push(email);
+        }
+      } else if (templateMismatch || updateError) {
+        unverified.push(email);
+        blocked.push(email);
+        failureMessages.push(`${email}: ${sendMessage}${updateError ? ` Tracking update failed: ${updateError.message}` : ''}`);
+      } else {
+        failed.push(email);
+        failureMessages.push(`${email}: ${sendMessage}`);
+      }
+    }
+
+    if (sent.length > 0) {
+      setSentSheetEmails((current) => new Set([...current, ...sent]));
+    }
+    if (sent.length > 0 || blocked.length > 0) {
+      setBlockedSheetEmails((current) => new Set([...current, ...sent, ...blocked]));
+    }
+    setSelectedSheetEmails(new Set(failed));
+    setIsSendingSheetEmails(false);
+    setIsSheetEmailPreviewOpen(false);
+    setSheetEmailResult(
+      failed.length > 0 || unverified.length > 0
+        ? `Sent ${sent.length} email${sent.length === 1 ? '' : 's'}; ${failed.length} failed${unverified.length > 0 ? `, and ${unverified.length} accepted or attempted without a confirmed tracking update (not marked for retry to avoid duplicates)` : ''}.${failed.length > 0 ? ' Failed recipients remain selected so you can retry.' : ''}`
+        : `Successfully sent ${sent.length} email${sent.length === 1 ? '' : 's'}.`
+    );
+    if (failureMessages.length > 0) {
+      setSheetEmailError(failureMessages.slice(0, 5).join(' '));
+    }
+  };
+
   const loadUtestDetails = async () => {
     if (!supabase) {
       setUtestDetails([]);
@@ -83,7 +439,7 @@ export const CRMSection: React.FC = () => {
     try {
       const { data, error } = await supabase
         .from('application_utest_details')
-        .select('application_id,tester_id,full_name,utest_id,utest_email,date_of_birth,age_range,country,smartphone,device_confirmation,has_valid_id,willing_voice_recording,updated_at')
+        .select('application_id,tester_id,full_name,utest_id,utest_email,date_of_birth,age_range,country,smartphone,phone_number,device_confirmation,has_valid_id,willing_voice_recording,updated_at')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -159,7 +515,7 @@ export const CRMSection: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative overflow-hidden">
+      {activeView !== 'sheet' && <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#00A3E0]/8 via-[#007AFF]/4 to-transparent pointer-events-none rounded-full blur-2xl" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -191,10 +547,10 @@ export const CRMSection: React.FC = () => {
             <span className="text-lg font-bold text-emerald-600">{roleCounts.client + roleCounts.admin}</span>
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-        <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+        {activeView !== 'sheet' && <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
           <button
             type="button"
             onClick={() => setActiveView('members')}
@@ -210,8 +566,257 @@ export const CRMSection: React.FC = () => {
             uTest Details
           </button>
         </div>
+        }
 
-        {activeView === 'utest' ? (
+        {activeView === 'sheet' ? (
+          <div className="overflow-hidden rounded-2xl border border-[#1E2E4E] bg-[#0B132B] shadow-lg">
+            <div className="flex flex-col gap-4 border-b border-[#1E2E4E] bg-gradient-to-r from-[#0B132B] to-[#111C33] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-bold text-white">Legacy project-interest responses</h2>
+                  <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-300">Live sheet view</span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">Read-only platform-style view. Updates automatically every 5 minutes. Select responses to send the project eligibility email.</p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {sheetLastRefreshed ? `Last synced ${sheetLastRefreshed.toLocaleString()}` : 'Waiting for first sync'}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void refreshSheet()}
+                  disabled={sheetLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E2E4E] bg-[#0B132B] px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-[#131E35] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${sheetLoading ? 'animate-spin' : ''}`} />
+                  {sheetLoading ? 'Syncing...' : 'Refresh'}
+                </button>
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1_iHEYxp6e1JN8dxI01n3iuqCbPHUijo244ocEhBJmyg/edit?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#005fce]"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open sheet
+                </a>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 border-b border-[#1E2E4E] p-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Response rows</span>
+                <span className="mt-1 block text-lg font-black text-white">{sheetMembers.length}</span>
+              </div>
+              <div className="rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2">
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">With uTest ID</span>
+                <span className="mt-1 block text-lg font-black text-cyan-300">{membersWithUtestId}</span>
+              </div>
+              <label className="relative col-span-2 sm:col-span-2">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-cyan-400" />
+                <input
+                  type="search"
+                  value={sheetSearch}
+                  onChange={(event) => setSheetSearch(event.target.value)}
+                  placeholder="Search name, email, uTest ID..."
+                  className="h-full min-h-10 w-full rounded-xl border border-[#1E2E4E] bg-[#080D1A] py-2 pl-9 pr-3 text-xs text-white outline-none placeholder:text-slate-500 focus:border-cyan-400"
+                />
+              </label>
+              <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2 sm:col-span-4">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                  <button
+                    type="button"
+                    onClick={toggleVisibleSheetRecipients}
+                  disabled={visibleSheetEmails.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
+                    className="rounded-lg border border-[#1E2E4E] bg-[#0B132B] px-3 py-1.5 font-semibold text-slate-200 hover:border-cyan-400/40 disabled:opacity-50"
+                  >
+                    {visibleSheetEmails.length > 0 && visibleSheetEmails.every((email) => selectedSheetEmails.has(email))
+                      ? 'Clear visible'
+                      : `Select visible emails (${visibleSheetEmails.length})`}
+                  </button>
+                  <span>{selectedSheetRecipients.length} selected</span>
+                  {sentSheetEmails.size > 0 && <span className="text-emerald-300">{sentSheetEmails.size} already sent</span>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSheetEmailPreviewOpen(true);
+                    setSheetEmailResult(null);
+                    setSheetEmailError(null);
+                  }}
+                  disabled={selectedSheetRecipients.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-bold text-white hover:bg-[#005fce] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Send eligibility email
+                </button>
+              </div>
+            </div>
+
+            {sheetEmailResult && (
+              <div role="status" className="mx-3 mt-3 rounded-xl border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+                {sheetEmailResult}
+              </div>
+            )}
+            {sheetEmailError && (
+              <div role="alert" className="mx-3 mt-3 rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-200">
+                {sheetEmailError}
+              </div>
+            )}
+
+            {sheetError ? (
+              <div className="m-4 rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+                <p className="font-semibold">Could not refresh the Google Sheet.</p>
+                <p className="mt-1 text-xs text-rose-200/80">{sheetError}</p>
+                <button type="button" onClick={() => void refreshSheet()} className="mt-3 rounded-lg border border-rose-300/30 px-3 py-1.5 text-xs font-semibold hover:bg-rose-400/10">
+                  Try again
+                </button>
+              </div>
+            ) : sheetLoading && sheetMembers.length === 0 ? (
+              <div className="p-12 text-center text-sm text-slate-400">
+                <RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin text-cyan-400" />
+                Loading responses from Google Sheets...
+              </div>
+            ) : filteredSheetMembers.length === 0 ? (
+              <div className="p-12 text-center text-sm text-slate-400">
+                {sheetMembers.length ? 'No responses match that search.' : 'No responses found in the connected sheet.'}
+              </div>
+            ) : (
+              <div className="max-h-[70vh] overflow-auto">
+                <table className="min-w-[1120px] w-full border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-[#111C33] text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    <tr>
+                      <th className="border-b border-[#1E2E4E] px-3 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all visible email addresses"
+                          checked={visibleSheetEmails.length > 0 && visibleSheetEmails.every((email) => selectedSheetEmails.has(email))}
+                          onChange={toggleVisibleSheetRecipients}
+                          disabled={!isSheetEmailTrackingReady || isSendingSheetEmails}
+                          className="h-4 w-4 accent-cyan-400"
+                        />
+                      </th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">#</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Member</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Email</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Date of birth</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Gender</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">uTest ID</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Consent</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Terms</th>
+                      <th className="border-b border-[#1E2E4E] px-4 py-3">Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1E2E4E]">
+                    {filteredSheetMembers.map((member, index) => (
+                      <tr key={`${member.email}-${member.timestamp}-${index}`} className="transition hover:bg-[#111C33]">
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${member.email || member.fullName || 'row'}`}
+                            checked={Boolean(member.email && selectedSheetEmails.has(member.email.trim().toLowerCase()))}
+                            disabled={!EMAIL_VALIDATION_PATTERN.test(member.email.trim().toLowerCase()) || blockedSheetEmails.has(member.email.trim().toLowerCase()) || isSendingSheetEmails || !isSheetEmailTrackingReady}
+                            onChange={() => toggleSheetRecipient(member.email.trim().toLowerCase())}
+                            className="h-4 w-4 accent-cyan-400 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-[10px] font-semibold text-slate-500">{index + 1}</td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-white">{member.fullName || 'Name not provided'}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-cyan-300">{member.email || 'Email not provided'}{sentSheetEmails.has(member.email.trim().toLowerCase()) && <span className="ml-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300">Sent</span>}{blockedSheetEmails.has(member.email.trim().toLowerCase()) && !sentSheetEmails.has(member.email.trim().toLowerCase()) && <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">Check status</span>}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-300">{member.dateOfBirth || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-300">{member.gender || '—'}</td>
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-slate-200">{member.utestId || <span className="text-slate-500">Not provided</span>}</td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold ${
+                            member.consent.toLowerCase() === 'yes'
+                              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+                              : member.consent ? 'border-rose-400/20 bg-rose-400/10 text-rose-300' : 'border-slate-600 bg-slate-700/30 text-slate-400'
+                          }`}>
+                            {member.consent.toLowerCase() === 'yes' ? <CheckCircle2 className="h-3 w-3" /> : member.consent ? <XCircle className="h-3 w-3" /> : null}
+                            {member.consent || 'No response'}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold ${
+                            member.termsAgreed.toLowerCase() === 'yes'
+                              ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+                              : member.termsAgreed ? 'border-rose-400/20 bg-rose-400/10 text-rose-300' : 'border-slate-600 bg-slate-700/30 text-slate-400'
+                          }`}>
+                            {member.termsAgreed.toLowerCase() === 'yes' ? <CheckCircle2 className="h-3 w-3" /> : member.termsAgreed ? <XCircle className="h-3 w-3" /> : null}
+                            {member.termsAgreed || 'No response'}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-400">{member.timestamp || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="border-t border-[#1E2E4E] px-4 py-2.5 text-[10px] text-slate-500">
+              Showing {filteredSheetMembers.length} of {sheetMembers.length} responses. Column 7 is intentionally excluded from this view.
+            </div>
+
+            {isSheetEmailPreviewOpen && (
+              <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+                <div role="dialog" aria-modal="true" aria-labelledby="sheet-email-preview-title" className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[#1E2E4E] bg-[#0B132B] shadow-2xl">
+                  <div className="flex items-start justify-between gap-4 border-b border-[#1E2E4E] bg-[#111C33] p-5">
+                    <div>
+                      <h3 id="sheet-email-preview-title" className="text-base font-bold text-white">Review email before sending</h3>
+                      <p className="mt-1 text-xs text-slate-400">This will send separate emails to {selectedSheetRecipients.length} selected recipient{selectedSheetRecipients.length === 1 ? '' : 's'}.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsSheetEmailPreviewOpen(false)}
+                      disabled={isSendingSheetEmails}
+                      aria-label="Close email preview"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-[#1E2E4E] hover:text-white disabled:opacity-50"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="max-h-[65vh] space-y-4 overflow-y-auto p-5">
+                    <div className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] p-4 text-xs">
+                      <p className="text-slate-500">Subject</p>
+                      <p className="mt-1 font-bold text-white">{LEGACY_SHEET_EMAIL_SUBJECT}</p>
+                    </div>
+                    <div className="rounded-xl border border-[#1E2E4E] bg-[#080D1A] p-4 text-sm leading-6 text-slate-200">
+                      <p>Hello [Member name],</p>
+                      <p className="mt-3">{LEGACY_SHEET_EMAIL_INTRO}</p>
+                      <p className="mt-3">{LEGACY_SHEET_EMAIL_INSTRUCTIONS}</p>
+                      <p className="mt-3"><a href={LEGACY_SHEET_EMAIL_UTEST_SIGNUP} target="_blank" rel="noreferrer" className="font-semibold text-cyan-300 underline">Create a uTest account</a></p>
+                      <p className="mt-3"><a href={window.location.origin} target="_blank" rel="noreferrer" className="font-semibold text-cyan-300 underline">Open Connectfy</a></p>
+                      <p className="mt-3 whitespace-pre-line">{LEGACY_SHEET_EMAIL_SIGN_OFF}</p>
+                      <p className="mt-3 whitespace-pre-line text-xs text-slate-400">{LEGACY_SHEET_EMAIL_SUPPORT}</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-[11px] text-amber-200">
+                      Please verify the selected recipients before sending. Emails are sent individually; this action cannot be undone.
+                    </div>
+                  </div>
+                  <div className="flex flex-col-reverse justify-end gap-2 border-t border-[#1E2E4E] bg-[#111C33] p-4 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setIsSheetEmailPreviewOpen(false)}
+                      disabled={isSendingSheetEmails}
+                      className="rounded-lg border border-[#1E2E4E] px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-[#1E2E4E] disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void sendSheetEmails()}
+                      disabled={isSendingSheetEmails || selectedSheetRecipients.length === 0}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#007AFF] px-4 py-2 text-xs font-bold text-white hover:bg-[#005fce] disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {isSendingSheetEmails ? 'Sending...' : `Send to ${selectedSheetRecipients.length} recipient${selectedSheetRecipients.length === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : activeView === 'utest' ? (
           <div className="space-y-3">
             <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3 text-xs text-[#075985]">
               uTest IDs and emails saved by testers are shown here for project payment processing. Passwords and payment credentials are never stored.
@@ -251,12 +856,16 @@ export const CRMSection: React.FC = () => {
                           <strong className="text-slate-900">{details.utest_email || 'Not provided'}</strong>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                          <span className="block text-slate-500">Phone number</span>
+                          <strong className="text-slate-900">{details.phone_number || 'Not provided'}</strong>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">Country / age range</span>
                           <strong className="text-slate-900">{details.country || 'Not provided'}{details.age_range ? ` • ${details.age_range}` : ''}</strong>
                         </div>
                         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
                           <span className="block text-slate-500">Application device</span>
-                          <strong className="text-slate-900">{details.device_confirmation || details.smartphone || 'Not provided'}</strong>
+                          <strong className="text-slate-900">{details.smartphone || details.device_confirmation || 'Not provided'}</strong>
                         </div>
                       </div>
                     </div>

@@ -9,6 +9,7 @@ import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { CRMSection } from './components/CRMSection';
+import { EmailHistorySection } from './components/EmailHistorySection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -22,6 +23,8 @@ import {
   Layers,
   Sliders,
   FileCheck,
+  FileSpreadsheet,
+  Mail,
   Users,
   Briefcase,
   ArrowRight,
@@ -110,6 +113,10 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
         ) : activeTab === 'admin_manager' || role === 'admin' ? (
           activeTab === 'crm' ? (
             <CRMSection />
+          ) : activeTab === 'google_sheet' ? (
+            <CRMSection initialView="sheet" />
+          ) : activeTab === 'email_history' ? (
+            <EmailHistorySection />
           ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
@@ -218,6 +225,30 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <Users className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">CRM</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('google_sheet')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'google_sheet'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileSpreadsheet className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Sheet</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('email_history')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'email_history'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Mail className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Emails</span>
               </button>
 
               {/* Listings */}
@@ -417,6 +448,13 @@ const AppExperience: React.FC = () => {
   }, [setActiveTab]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('project') && params.get('reapply') === '1') {
+      setActiveTab('projects');
+    }
+  }, [setActiveTab]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsAuthLoading(false);
       return;
@@ -464,6 +502,7 @@ const AppExperience: React.FC = () => {
     localStorage.removeItem('utest_crowdqa_taskSubmissions');
     localStorage.removeItem('utest_crowdqa_notifications');
     localStorage.removeItem('utest_crowdqa_walletTransactions');
+    localStorage.removeItem('utest_crowdqa_activeTab');
   };
 
   const handleLandingApply = (projectId?: string) => {
@@ -538,6 +577,7 @@ const AppExperience: React.FC = () => {
     setPendingProjectId(null);
     setActiveWorkspaceProjectId(null);
     setScreen('landing');
+    setActiveTab('projects');
     setRole('tester');
   };
 
