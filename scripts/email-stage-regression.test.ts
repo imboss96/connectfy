@@ -23,6 +23,8 @@ const edgeSource = fs.readFileSync(new URL('../supabase/functions/project-email/
 const emailLogMigration = fs.readFileSync(new URL('../supabase/migrations/202610030001_legacy_sheet_email_log.sql', import.meta.url), 'utf8');
 const crmSource = fs.readFileSync(new URL('../src/components/CRMSection.tsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const onboardingSource = fs.readFileSync(new URL('../src/components/LegacyOnboardingSection.tsx', import.meta.url), 'utf8');
+const legacyResponseMigration = fs.readFileSync(new URL('../supabase/migrations/202610030002_legacy_sheet_responses.sql', import.meta.url), 'utf8');
 
 assert.match(serverSource, /valid uTest account created within the last 7 days/i);
 assert.match(edgeSource, /valid uTest account created within the last 7 days/i);
@@ -47,5 +49,12 @@ assert.match(emailLogMigration, /using \(public\.is_admin\(\)\)/);
 assert.match(crmSource, /\.insert\(\{/);
 assert.match(crmSource, /legacy_sheet_email_log/);
 assert.match(appSource, /EmailHistorySection/);
+assert.match(crmSource, /Sync responses to Connectfy/);
+assert.match(legacyResponseMigration, /create table public\.legacy_sheet_responses/);
+assert.match(legacyResponseMigration, /using \(public\.is_admin\(\)\)/);
+assert.match(onboardingSource, /matched_profile_id/);
+assert.match(onboardingSource, /Consent needs review/);
+assert.match(onboardingSource, /Tester details need confirmation/);
+assert.match(appSource, /LegacyOnboardingSection/);
 
 console.log('email stage regression checks passed');

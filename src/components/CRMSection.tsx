@@ -149,6 +149,8 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
   const [sheetEmailResult, setSheetEmailResult] = useState<string | null>(null);
   const [sheetEmailError, setSheetEmailError] = useState<string | null>(null);
   const [sheetLastRefreshed, setSheetLastRefreshed] = useState<Date | null>(null);
+  const [isSyncingLegacyRecords, setIsSyncingLegacyRecords] = useState(false);
+  const [legacySyncMessage, setLegacySyncMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -201,6 +203,67 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
       setSheetError(error instanceof Error ? error.message : 'Unable to load the Google Sheet.');
     } finally {
       if (!signal?.aborted) setSheetLoading(false);
+    }
+  };
+
+  const syncLegacyResponses = async () => {
+    if (!supabase) {
+      setLegacySyncMessage('Supabase is not configured.');
+      return;
+    }
+    if (sheetMembers.length === 0) {
+      setLegacySyncMessage('Load the Google Sheet responses before syncing.');
+      return;
+    }
+
+    setIsSyncingLegacyRecords(true);
+    setLegacySyncMessage(null);
+    try {
+      const emails = sheetMembers.map((member) => member.email.trim().toLowerCase()).filter(Boolean);
+      const matchingProfiles = members.filter((profile) => emails.includes((profile.email || '').trim().toLowerCase()));
+      const profilesByEmail = new Map<string, PlatformMember[]>();
+      matchingProfiles.forEach((profile) => {
+        const email = (profile.email || '').trim().toLowerCase();
+        profilesByEmail.set(email, [...(profilesByEmail.get(email) || []), profile]);
+      });
+
+      const rows = await Promise.all(sheetMembers.map(async (member) => {
+        const email = member.email.trim().toLowerCase();
+        const matches = profilesByEmail.get(email) || [];
+        const match = matches.length === 1 ? matches[0] : null;
+        const identity = member.timestamp.trim()
+          ? `timestamp:${member.timestamp.trim()}|email:${email}`
+          : `row:${JSON.stringify([email, member.fullName, member.dateOfBirth, member.gender, member.utestId])}`;
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+        const sourceKey = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+        return {
+          source_key: sourceKey,
+          source_timestamp: member.timestamp,
+          consent: member.consent,
+          full_name: member.fullName,
+          date_of_birth: member.dateOfBirth,
+          gender: member.gender,
+          email,
+          terms_agreed: member.termsAgreed,
+          utest_id: member.utestId,
+          matched_profile_id: match?.id || null,
+          match_status: matches.length > 1 ? 'ambiguous' : match ? 'matched' : 'unmatched',
+          synced_at: new Date().toISOString()
+        };
+      }));
+      const { error } = await supabase
+        .from('legacy_sheet_responses')
+        .upsert(rows, { onConflict: 'source_key' });
+      if (error) throw error;
+
+      const matchedCount = rows.filter((row) => row.match_status === 'matched').length;
+      const reviewCount = rows.filter((row) => row.match_status === 'ambiguous').length;
+      setLegacySyncMessage(`Synced ${rows.length} responses. Matched ${matchedCount} Connectfy accounts${reviewCount ? `; ${reviewCount} need manual review` : ''}.`);
+    } catch (error) {
+      console.error('Unable to sync legacy sheet responses to Connectfy:', error);
+      setLegacySyncMessage(error instanceof Error ? error.message : 'Unable to sync sheet responses.');
+    } finally {
+      setIsSyncingLegacyRecords(false);
     }
   };
 
@@ -584,6 +647,15 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
+                  onClick={() => void syncLegacyResponses()}
+                  disabled={isSyncingLegacyRecords || sheetLoading || loading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  {isSyncingLegacyRecords ? 'Syncing records...' : 'Sync responses to Connectfy'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void refreshSheet()}
                   disabled={sheetLoading}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E2E4E] bg-[#0B132B] px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-[#131E35] disabled:cursor-wait disabled:opacity-60"
@@ -602,6 +674,11 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
                 </a>
               </div>
             </div>
+            {legacySyncMessage && (
+              <div role="status" className="border-b border-[#1E2E4E] bg-[#111C33] px-4 py-2 text-xs text-cyan-200">
+                {legacySyncMessage}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 border-b border-[#1E2E4E] p-3 sm:grid-cols-4">
               <div className="rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2">

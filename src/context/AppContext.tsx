@@ -77,7 +77,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'google_sheet', 'email_history'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'google_sheet', 'email_history', 'legacy_onboarding'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>

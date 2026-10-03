@@ -10,6 +10,7 @@ import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { CRMSection } from './components/CRMSection';
 import { EmailHistorySection } from './components/EmailHistorySection';
+import { LegacyOnboardingSection } from './components/LegacyOnboardingSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -25,6 +26,7 @@ import {
   FileCheck,
   FileSpreadsheet,
   Mail,
+  ClipboardCheck,
   Users,
   Briefcase,
   ArrowRight,
@@ -117,6 +119,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <CRMSection initialView="sheet" />
           ) : activeTab === 'email_history' ? (
             <EmailHistorySection />
+          ) : activeTab === 'legacy_onboarding' ? (
+            <LegacyOnboardingSection />
           ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
@@ -249,6 +253,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <Mail className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Emails</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('legacy_onboarding')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'legacy_onboarding'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ClipboardCheck className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Onboard</span>
               </button>
 
               {/* Listings */}
