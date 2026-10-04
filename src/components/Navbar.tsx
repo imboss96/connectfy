@@ -3,10 +3,7 @@ import {
   Bell,
   Briefcase,
   Bug,
-  ClipboardCheck,
   FileCheck,
-  FileSpreadsheet,
-  Mail,
   Layers,
   Menu,
   ShieldCheck,
@@ -96,9 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
       ? [
           { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck },
           { label: 'CRM & Members', tab: 'crm', icon: Users },
-          { label: 'Google Sheet', tab: 'google_sheet', icon: FileSpreadsheet },
-          { label: 'Email History', tab: 'email_history', icon: Mail },
-          { label: 'Legacy Onboarding', tab: 'legacy_onboarding', icon: ClipboardCheck },
+          { label: 'Project Operations', tab: 'project_operations', icon: Briefcase },
           { label: 'Project Listings', tab: 'projects', icon: Briefcase },
           { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck },
           { label: 'Settings', tab: 'profile_settings', icon: Sliders }

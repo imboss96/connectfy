@@ -18,6 +18,10 @@ Run these after the first migration:
 - `supabase/migrations/202609230002_project_seed_key.sql` adds the unique key needed for repeatable project seeding.
 - `supabase/migrations/202609230003_connectfy_owner_admin.sql` marks the single demo owner account as the admin project owner.
 
+Run each not-yet-applied migration in `supabase/migrations/` in filename order in the Supabase SQL Editor; do not rerun migrations already applied. In particular, admin role management requires `supabase/migrations/202609240001_admin_invite_function.sql` and `supabase/migrations/202610030003_admin_dismissal_function.sql`. Project-specific operations and payroll require `supabase/migrations/202610040004_project_scoped_operations_payroll.sql`, which creates per-project integrations, completion status and scheduled payroll, adds project ownership to email/onboarding records, and installs the project-scoped Applause status sync RPC. Also apply `supabase/migrations/202610040005_project_eligibility_snapshot_sync.sql` to enable atomic, project-scoped replacement of persisted eligibility-sheet snapshots. Earlier `202610040001` through `202610040003` migrations created the initial single-sheet completion view and sync repairs; the project-scoped migration replaces that sync flow. Reload the PostgREST schema cache after applying migrations.
+
+After applying both project-operations migrations, open **PM Operations**, choose **Manage** on a project listing, then configure that project’s status sheet, optional eligibility sheet, fixed completion payment, and payment date under **Integrations**. Save the settings and sync from **Completion & issues**; rows marked **Claimed Complete** with an email are added to that project’s payroll schedule. Participant and status views display their saved database snapshots until the next sheet sync. Each project has separate settings and records.
+
 ## 2. Configure local environment
 
 Copy `.env.example` to `.env.local` and set:

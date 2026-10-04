@@ -9,8 +9,7 @@ import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { CRMSection } from './components/CRMSection';
-import { EmailHistorySection } from './components/EmailHistorySection';
-import { LegacyOnboardingSection } from './components/LegacyOnboardingSection';
+import { ProjectOperationsSection } from './components/ProjectOperationsSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -24,9 +23,6 @@ import {
   Layers,
   Sliders,
   FileCheck,
-  FileSpreadsheet,
-  Mail,
-  ClipboardCheck,
   Users,
   Briefcase,
   ArrowRight,
@@ -115,12 +111,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
         ) : activeTab === 'admin_manager' || role === 'admin' ? (
           activeTab === 'crm' ? (
             <CRMSection />
-          ) : activeTab === 'google_sheet' ? (
-            <CRMSection initialView="sheet" />
-          ) : activeTab === 'email_history' ? (
-            <EmailHistorySection />
-          ) : activeTab === 'legacy_onboarding' ? (
-            <LegacyOnboardingSection />
+          ) : activeTab === 'project_operations' ? (
+            <ProjectOperationsSection />
           ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
@@ -232,39 +224,15 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               </button>
 
               <button
-                onClick={() => handleMobileNav('google_sheet')}
+                onClick={() => handleMobileNav('project_operations')}
                 className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'google_sheet'
+                  activeTab === 'project_operations'
                     ? 'text-[#00A3E0] font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <FileSpreadsheet className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Sheet</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('email_history')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'email_history'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Mail className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Emails</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('legacy_onboarding')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'legacy_onboarding'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ClipboardCheck className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Onboard</span>
+                <Briefcase className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Project Ops</span>
               </button>
 
               {/* Listings */}

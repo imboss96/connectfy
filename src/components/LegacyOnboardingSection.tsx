@@ -31,7 +31,7 @@ type OnboardingStatus = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-export const LegacyOnboardingSection: React.FC = () => {
+export const LegacyOnboardingSection: React.FC<{ projectId?: string }> = ({ projectId }) => {
   const [responses, setResponses] = useState<LegacyResponse[]>([]);
   const [profiles, setProfiles] = useState<AccountProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,11 +48,13 @@ export const LegacyOnboardingSection: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [responseResult, profileResult] = await Promise.all([
-        supabase
+      let responseQuery = supabase
           .from('legacy_sheet_responses')
           .select('source_key,source_timestamp,consent,full_name,date_of_birth,gender,email,terms_agreed,utest_id,matched_profile_id,match_status,synced_at')
-          .order('source_timestamp', { ascending: false }),
+          .order('source_timestamp', { ascending: false });
+      if (projectId) responseQuery = responseQuery.eq('project_id', projectId);
+      const [responseResult, profileResult] = await Promise.all([
+        responseQuery,
         supabase
           .from('profiles')
           .select('id,name,email,profile_data')
@@ -67,7 +69,7 @@ export const LegacyOnboardingSection: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void loadResponses();

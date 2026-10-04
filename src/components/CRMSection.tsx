@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Briefcase, CheckCircle2, ExternalLink, Mail, MapPin, PlusCircle, RefreshCw, Search, Send, ShieldCheck, Users, X, XCircle } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
+import { fetchSheetCsv, parseProjectApplauseSheet, parseProjectEligibilitySheet } from '../lib/projectSheetSync';
 import { EmailTemplateMismatchError, sendProjectEmail } from '../lib/emailService';
 import {
   LEGACY_SHEET_EMAIL_INSTRUCTIONS,
@@ -12,7 +14,38 @@ import {
 } from '../lib/legacySheetEmail.js';
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
-type CRMView = 'members' | 'utest' | 'sheet';
+type CRMView = 'members' | 'utest' | 'sheet' | 'participants';
+
+type ImportedParticipant = {
+  key: string;
+  utestId: string;
+  names: string[];
+  emails: string[];
+  projectIds: string[];
+  sources: string[];
+  statuses: string[];
+  consent: string[];
+  lastActivity: string;
+};
+
+type ParticipantSource = 'Website application' | 'Eligibility form' | 'Applause status sheet';
+type ProjectSheetSettings = {
+  project_id: string;
+  eligibility_sheet_url: string;
+  applause_sheet_url: string;
+};
+
+const normalizedUtestId = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+const cleanText = (value: string | null | undefined) => (value || '').trim();
+const toCsvUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+\/export\?/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/docs\.google\.com\/spreadsheets\/d\/([^/]+)/);
+  if (match) return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) return `https://docs.google.com/spreadsheets/d/${trimmed}/export?format=csv`;
+  return '';
+};
 
 const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1_iHEYxp6e1JN8dxI01n3iuqCbPHUijo244ocEhBJmyg/export?format=csv';
 const SHEET_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -132,10 +165,27 @@ type ApplicationUtestDetails = {
   updated_at: string;
 };
 
-export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 'members' }) => {
+export const CRMSection: React.FC<{
+  initialView?: CRMView;
+  projectId?: string;
+  projectTitle?: string;
+  sheetCsvUrl?: string;
+}> = ({
+  initialView = 'members',
+  projectId,
+  projectTitle,
+  sheetCsvUrl = SHEET_CSV_URL
+}) => {
+  const { projects } = useApp();
   const [members, setMembers] = useState<PlatformMember[]>([]);
   const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
   const [activeView, setActiveView] = useState<CRMView>(initialView);
+  const [projectParticipants, setProjectParticipants] = useState<ImportedParticipant[]>([]);
+  const [projectParticipantsLoading, setProjectParticipantsLoading] = useState(false);
+  const [projectParticipantsSyncing, setProjectParticipantsSyncing] = useState(false);
+  const [projectParticipantsError, setProjectParticipantsError] = useState<string | null>(null);
+  const [projectParticipantsSyncMessage, setProjectParticipantsSyncMessage] = useState<string | null>(null);
+  const [projectParticipantsSearch, setProjectParticipantsSearch] = useState('');
   const [sheetMembers, setSheetMembers] = useState<LegacySheetMember[]>([]);
   const [sheetLoading, setSheetLoading] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
@@ -158,6 +208,9 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [dismissingAdminId, setDismissingAdminId] = useState<string | null>(null);
+  const [adminDismissStatus, setAdminDismissStatus] = useState<string | null>(null);
+  const [adminDismissError, setAdminDismissError] = useState<string | null>(null);
 
   const loadMembers = async () => {
     if (!supabase) {
@@ -187,11 +240,256 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
     void loadUtestDetails();
   }, []);
 
+  const loadProjectParticipants = async (): Promise<string | null> => {
+    if (!supabase) {
+      const message = 'Supabase is not configured.';
+      setProjectParticipantsError(message);
+      setProjectParticipantsLoading(false);
+      return message;
+    }
+
+    setProjectParticipantsLoading(true);
+    setProjectParticipantsError(null);
+    try {
+      const [formsResult, applauseResult, applicationsResult] = await Promise.all([
+        supabase
+          .from('legacy_sheet_responses')
+          .select('source_key,project_id,source_timestamp,full_name,email,utest_id,consent,terms_agreed'),
+        supabase
+          .from('project_applause_status')
+          .select('source_key,project_id,tester_id,tester_email,google_email,utest_id,status,consent_name,synced_at'),
+        supabase
+          .from('applications')
+          .select('id,project_id,tester_id,status,applied_at,profiles:tester_id(name,email),application_utest_details(utest_id,utest_email,full_name)')
+          .order('applied_at', { ascending: false })
+      ]);
+      if (formsResult.error) throw formsResult.error;
+      if (applauseResult.error) throw applauseResult.error;
+      if (applicationsResult.error) throw applicationsResult.error;
+
+      const participants = new Map<string, ImportedParticipant>();
+      const addParticipant = (
+        source: ParticipantSource,
+        rowKey: string,
+        projectId: string,
+        name: string,
+        email: string,
+        utestId: string,
+        status: string,
+        consent: string,
+        activity: string
+      ) => {
+        const normalizedId = normalizedUtestId(utestId);
+        const key = normalizedId ? `utest:${normalizedId}` : `${source}:${projectId}:${rowKey}`;
+        let participant = participants.get(key);
+        if (!participant) {
+          participant = {
+            key,
+            utestId: cleanText(utestId),
+            names: [],
+            emails: [],
+            projectIds: [],
+            sources: [],
+            statuses: [],
+            consent: [],
+            lastActivity: ''
+          };
+          participants.set(key, participant);
+        }
+        if (name) participant.names.push(name);
+        if (email) participant.emails.push(email);
+        if (projectId) participant.projectIds.push(projectId);
+        participant.sources.push(source);
+        if (status) participant.statuses.push(status);
+        if (consent) participant.consent.push(consent);
+        if (activity > participant.lastActivity) participant.lastActivity = activity;
+        if (!participant.utestId) participant.utestId = cleanText(utestId);
+      };
+
+      (applicationsResult.data || []).forEach((application) => {
+        const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
+        const details = Array.isArray(application.application_utest_details)
+          ? application.application_utest_details[0]
+          : application.application_utest_details;
+        addParticipant(
+          'Website application',
+          application.id,
+          application.project_id,
+          cleanText(details?.full_name) || cleanText(profile?.name),
+          cleanText(details?.utest_email) || cleanText(profile?.email),
+          cleanText(details?.utest_id),
+          cleanText(application.status),
+          '',
+          cleanText(application.applied_at)
+        );
+      });
+
+      (formsResult.data || []).forEach((response) => {
+        addParticipant(
+          'Eligibility form',
+          response.source_key,
+          response.project_id || '',
+          cleanText(response.full_name),
+          cleanText(response.email),
+          cleanText(response.utest_id),
+          cleanText(response.terms_agreed),
+          cleanText(response.consent),
+          cleanText(response.source_timestamp)
+        );
+      });
+
+      (applauseResult.data || []).forEach((response) => {
+        addParticipant(
+          'Applause status sheet',
+          response.source_key,
+          response.project_id,
+          '',
+          cleanText(response.tester_email) || cleanText(response.google_email),
+          cleanText(response.utest_id),
+          cleanText(response.status),
+          cleanText(response.consent_name),
+          cleanText(response.synced_at)
+        );
+      });
+
+      setProjectParticipants([...participants.values()].map((participant) => ({
+        ...participant,
+        names: [...new Set(participant.names)],
+        emails: [...new Set(participant.emails)],
+        projectIds: [...new Set(participant.projectIds)],
+        sources: [...new Set(participant.sources)],
+        statuses: [...new Set(participant.statuses)],
+        consent: [...new Set(participant.consent)]
+      })).sort((left, right) => right.lastActivity.localeCompare(left.lastActivity)));
+      return null;
+    } catch (error) {
+      console.error('Unable to load unified CRM project participants:', error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+            ? error.message
+            : 'Unable to load participants from project sources.';
+      setProjectParticipantsError(message);
+      return message;
+    } finally {
+      setProjectParticipantsLoading(false);
+    }
+  };
+
+  const syncProjectParticipantSheets = async () => {
+    if (!supabase) {
+      setProjectParticipantsError('Supabase is not configured.');
+      return;
+    }
+
+    setProjectParticipantsSyncing(true);
+    setProjectParticipantsError(null);
+    setProjectParticipantsSyncMessage(null);
+    const syncErrors: string[] = [];
+    let syncedCount = 0;
+
+    try {
+      if (projects.length === 0) throw new Error('No projects are available to sync.');
+      const { data, error } = await supabase
+        .from('project_operations_settings')
+        .select('project_id,eligibility_sheet_url,applause_sheet_url')
+        .in('project_id', projects.map((project) => project.id));
+      if (error) throw error;
+
+      const settingsByProject = new Map(
+        ((data || []) as ProjectSheetSettings[]).map((settings) => [settings.project_id, settings])
+      );
+      const configuredProjects = projects.filter((project) => {
+        const settings = settingsByProject.get(project.id);
+        return Boolean(settings?.eligibility_sheet_url.trim() || settings?.applause_sheet_url.trim());
+      });
+      if (configuredProjects.length === 0) {
+        throw new Error('No project Google Sheets are configured yet. Add eligibility or Applause sheet URLs under Project Operations → Integrations.');
+      }
+
+      for (const project of configuredProjects) {
+        const settings = settingsByProject.get(project.id);
+        if (!settings) continue;
+
+        const eligibilityUrl = toCsvUrl(settings.eligibility_sheet_url);
+        if (settings.eligibility_sheet_url.trim()) {
+          try {
+            if (!eligibilityUrl) throw new Error('The configured eligibility sheet URL is not a supported Google Sheets link.');
+            const rows = await parseProjectEligibilitySheet(await fetchSheetCsv(eligibilityUrl), project.id);
+            const { error: syncError } = await supabase.rpc('sync_project_eligibility_responses', {
+              p_project_id: project.id,
+              p_rows: rows
+            });
+            if (syncError) throw syncError;
+            syncedCount += rows.length;
+          } catch (error) {
+            syncErrors.push(`${project.title} eligibility sheet: ${error instanceof Error ? error.message : 'sync failed'}`);
+          }
+        }
+
+        const applauseUrl = toCsvUrl(settings.applause_sheet_url);
+        if (settings.applause_sheet_url.trim()) {
+          try {
+            if (!applauseUrl) throw new Error('The configured Applause sheet URL is not a supported Google Sheets link.');
+            const rows = await parseProjectApplauseSheet(await fetchSheetCsv(applauseUrl));
+            const { error: syncError } = await supabase.rpc('sync_project_applause_status', {
+              p_project_id: project.id,
+              p_rows: rows
+            });
+            if (syncError) throw syncError;
+            syncedCount += rows.length;
+          } catch (error) {
+            syncErrors.push(`${project.title} Applause sheet: ${error instanceof Error ? error.message : 'sync failed'}`);
+          }
+        }
+      }
+
+      const databaseError = await loadProjectParticipants();
+      if (syncErrors.length > 0 || databaseError) {
+        const message = [
+          syncErrors.length ? `Some sheets could not be synced; showing the last saved database snapshot for those sources. ${syncErrors.join(' ')}` : '',
+          databaseError ? `Unable to reload the saved database snapshot: ${databaseError}` : ''
+        ].filter(Boolean).join(' ');
+        setProjectParticipantsError(message);
+        setProjectParticipantsSyncMessage(`Sync finished with errors. Successfully imported ${syncedCount} sheet rows.`);
+      } else {
+        setProjectParticipantsSyncMessage(`Synced ${syncedCount} rows from configured project sheets and loaded the saved database snapshot.`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to sync project participant sheets.';
+      console.error('Unable to sync project participant sheets:', error);
+      const databaseError = await loadProjectParticipants();
+      setProjectParticipantsError(databaseError
+        ? `${message} Unable to reload the saved database snapshot: ${databaseError}`
+        : `${message} Showing the last saved database snapshot.`);
+    } finally {
+      setProjectParticipantsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === 'participants') void loadProjectParticipants();
+  }, [activeView, projects]);
+
+  const filteredProjectParticipants = useMemo(() => {
+    const term = projectParticipantsSearch.trim().toLowerCase();
+    if (!term) return projectParticipants;
+    return projectParticipants.filter((participant) => [
+      participant.utestId,
+      ...participant.names,
+      ...participant.emails,
+      ...participant.sources,
+      ...participant.statuses,
+      ...participant.projectIds.map((id) => projects.find((project) => project.id === id)?.title || '')
+    ].join(' ').toLowerCase().includes(term));
+  }, [projectParticipants, projectParticipantsSearch, projects]);
+
   const refreshSheet = async (signal?: AbortSignal) => {
     setSheetLoading(true);
     setSheetError(null);
     try {
-      const response = await fetch(`${SHEET_CSV_URL}&_=${Date.now()}`, { signal, cache: 'no-store' });
+      const response = await fetch(`${sheetCsvUrl}${sheetCsvUrl.includes('?') ? '&' : '?'}_=${Date.now()}`, { signal, cache: 'no-store' });
       if (!response.ok) throw new Error(`Google Sheets returned HTTP ${response.status}.`);
       const csv = await response.text();
       const parsedMembers = parseLegacySheet(csv);
@@ -231,9 +529,9 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
         const email = member.email.trim().toLowerCase();
         const matches = profilesByEmail.get(email) || [];
         const match = matches.length === 1 ? matches[0] : null;
-        const identity = member.timestamp.trim()
+        const identity = `${projectId || 'global'}|${member.timestamp.trim()
           ? `timestamp:${member.timestamp.trim()}|email:${email}`
-          : `row:${JSON.stringify([email, member.fullName, member.dateOfBirth, member.gender, member.utestId])}`;
+          : `row:${JSON.stringify([email, member.fullName, member.dateOfBirth, member.gender, member.utestId])}`}`;
         const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
         const sourceKey = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
         return {
@@ -244,6 +542,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
           date_of_birth: member.dateOfBirth,
           gender: member.gender,
           email,
+          project_id: projectId || null,
           terms_agreed: member.termsAgreed,
           utest_id: member.utestId,
           matched_profile_id: match?.id || null,
@@ -274,11 +573,12 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
     void refreshSheet(controller.signal);
     setIsSheetEmailTrackingReady(false);
     if (supabase) {
-      void supabase
+      let emailLogQuery = supabase
         .from('legacy_sheet_email_log')
         .select('recipient_email,status')
-        .in('status', ['sent', 'pending', 'unverified'])
-        .then(({ data, error }) => {
+        .in('status', ['sent', 'pending', 'unverified']);
+      if (projectId) emailLogQuery = emailLogQuery.eq('project_id', projectId);
+      void emailLogQuery.then(({ data, error }) => {
           if (controller.signal.aborted) return;
           if (error) {
             console.error('Unable to load previously emailed sheet recipients:', error);
@@ -303,7 +603,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
       window.clearInterval(intervalId);
       controller.abort();
     };
-  }, [activeView]);
+  }, [activeView, projectId, projectTitle, sheetCsvUrl]);
 
   const filteredSheetMembers = useMemo(() => {
     const term = sheetSearch.trim().toLowerCase();
@@ -404,6 +704,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
           .insert({
             recipient_email: email,
             recipient_name: member.fullName || '',
+            project_id: projectId || null,
             email_type: 'legacy_sheet_reapply',
             subject: LEGACY_SHEET_EMAIL_SUBJECT,
             status: 'pending',
@@ -429,7 +730,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
           type: 'legacy_sheet_reapply',
           toEmail: email,
           toName: member.fullName || 'there',
-          projectTitle: LEGACY_PROJECT_TITLE,
+          projectTitle: projectTitle || LEGACY_PROJECT_TITLE,
           projectCompany: 'Connectfy',
           projectDescription: 'Thank you for your interest in our project. This opportunity has a uTest account eligibility requirement.',
           actionUrl: window.location.origin,
@@ -546,6 +847,46 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
     }
   };
 
+  const handleDismissAdmin = async (member: PlatformMember) => {
+    if (!supabase) {
+      setAdminDismissError('Supabase is not configured.');
+      setAdminDismissStatus(null);
+      return;
+    }
+
+    const memberLabel = member.name || member.email || 'this member';
+    if (!window.confirm(`Remove admin access for ${memberLabel}? Their account will become a tester account.`)) {
+      return;
+    }
+
+    setDismissingAdminId(member.id);
+    setAdminDismissError(null);
+    setAdminDismissStatus(null);
+    try {
+      const { error } = await supabase.rpc('dismiss_admin', { p_user_id: member.id });
+      if (error) {
+        if (error.code === 'PGRST202') {
+          throw new Error('The admin-dismissal function is not installed in this Supabase project yet. Run supabase/migrations/202610030003_admin_dismissal_function.sql in the Supabase SQL Editor, then retry.');
+        }
+        throw error;
+      }
+
+      setAdminDismissStatus(`Admin access removed for ${memberLabel}. The account is now a tester.`);
+      await loadMembers();
+    } catch (error) {
+      console.error('Unable to remove admin access:', error);
+      setAdminDismissError(
+        error instanceof Error
+          ? error.message
+          : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+            ? error.message
+            : 'Unable to remove admin access.'
+      );
+    } finally {
+      setDismissingAdminId(null);
+    }
+  };
+
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
 
@@ -591,14 +932,14 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">CRM & Platform Members</h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">Operations Access</span>
               </div>
-              <p className="text-xs text-slate-600 mt-1 max-w-xl">View and manage all platform member records, including testers, clients, and admin accounts from one unified view.</p>
+              <p className="text-xs text-slate-600 mt-1 max-w-xl">Registered Connectfy accounts are shown under Platform Members. Project Participants includes people who applied through the website or project Google Forms and sheets, even if they do not have a Connectfy account.</p>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6 pt-5 border-t border-slate-200 text-xs">
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-            <span className="text-slate-500 block text-[11px]">Total Members</span>
+            <span className="text-slate-500 block text-[11px]">Connectfy Accounts</span>
             <span className="text-lg font-bold text-slate-900">{members.length}</span>
           </div>
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
@@ -628,6 +969,13 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
           >
             uTest Details
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('participants')}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'participants' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+          >
+            Project Participants
+          </button>
         </div>
         }
 
@@ -636,7 +984,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
             <div className="flex flex-col gap-4 border-b border-[#1E2E4E] bg-gradient-to-r from-[#0B132B] to-[#111C33] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-bold text-white">Legacy project-interest responses</h2>
+                  <h2 className="text-sm font-bold text-white">{projectTitle ? `${projectTitle} eligibility responses` : 'Legacy project-interest responses'}</h2>
                   <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-300">Live sheet view</span>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">Read-only platform-style view. Updates automatically every 5 minutes. Select responses to send the project eligibility email.</p>
@@ -664,7 +1012,7 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
                   {sheetLoading ? 'Syncing...' : 'Refresh'}
                 </button>
                 <a
-                  href="https://docs.google.com/spreadsheets/d/1_iHEYxp6e1JN8dxI01n3iuqCbPHUijo244ocEhBJmyg/edit?usp=sharing"
+                  href={sheetCsvUrl.replace(/\/export\?format=csv(?:&.*)?$/, '/edit?usp=sharing')}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#005fce]"
@@ -893,6 +1241,102 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
               </div>
             )}
           </div>
+        ) : activeView === 'participants' ? (
+          <section className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Project participants across onboarding sources</h2>
+                <p className="mt-1 max-w-3xl text-[11px] text-slate-500">Displays the saved database snapshot from website applications, eligibility forms, and Applause sheets. Google Sheets are fetched and persisted only when you choose Sync sheets now; viewing or reloading this page does not replace the saved snapshot.</p>
+                <p className="mt-1 text-[11px] text-slate-500">{filteredProjectParticipants.length} of {projectParticipants.length} participants</p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadProjectParticipants()}
+                  disabled={projectParticipantsLoading || projectParticipantsSyncing}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${projectParticipantsLoading && !projectParticipantsSyncing ? 'animate-spin' : ''}`} />
+                  Reload saved data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void syncProjectParticipantSheets()}
+                  disabled={projectParticipantsLoading || projectParticipantsSyncing}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#005fce] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${projectParticipantsSyncing ? 'animate-spin' : ''}`} />
+                  {projectParticipantsSyncing ? 'Fetching and saving sheets...' : 'Sync sheets now'}
+                </button>
+              </div>
+            </div>
+            {projectParticipantsSyncMessage && (
+              <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                {projectParticipantsSyncMessage}
+              </p>
+            )}
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="search"
+                value={projectParticipantsSearch}
+                onChange={(event) => setProjectParticipantsSearch(event.target.value)}
+                placeholder="Search participant, uTest ID, project, source, or status..."
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs text-slate-900 outline-none focus:border-[#007AFF]"
+              />
+            </label>
+            {projectParticipantsError && (
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                Project participant data issue: {projectParticipantsError}
+              </div>
+            )}
+            {projectParticipantsLoading && projectParticipants.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">Loading project participants...</div>
+            ) : filteredProjectParticipants.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">
+                No saved project participants match this search. Configure project sheets under Project Operations → Integrations, then use Sync sheets now.
+              </div>
+            ) : (
+              <div className="max-h-[70vh] overflow-auto rounded-xl border border-slate-200">
+                <table className="min-w-full border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3">Participant</th>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3">uTest ID</th>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3">Project</th>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3">Onboarding sources</th>
+                      <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3">Status / consent</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredProjectParticipants.map((participant) => (
+                      <tr key={participant.key} className="align-top hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-slate-800">{participant.names.join(' / ') || 'Name unavailable'}</p>
+                          <p className="mt-1 text-slate-500">{participant.emails.join(' / ') || 'Email unavailable'}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-700">{participant.utestId || 'Not provided — kept separate'}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {participant.projectIds.length
+                            ? participant.projectIds.map((id) => projects.find((project) => project.id === id)?.title || 'Project unavailable').join(' / ')
+                            : 'Unassigned / legacy source'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {participant.sources.map((source) => <span key={source} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{source}</span>)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {[...participant.statuses, ...participant.consent].join(' · ') || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-[11px] text-slate-400">Email and name are displayed as contact details only; they are not used to merge records. Rows without uTest IDs remain distinct.</p>
+          </section>
         ) : activeView === 'utest' ? (
           <div className="space-y-3">
             <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3 text-xs text-[#075985]">
@@ -1002,6 +1446,8 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
 
           {inviteStatus && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{inviteStatus}</div>}
           {inviteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{inviteError}</div>}
+          {adminDismissStatus && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{adminDismissStatus}</div>}
+          {adminDismissError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{adminDismissError}</div>}
         </div>
 
         {loading ? (
@@ -1057,6 +1503,19 @@ export const CRMSection: React.FC<{ initialView?: CRMView }> = ({ initialView = 
                       <span className="block text-slate-500">Member ID</span>
                       <strong className="text-slate-800">{member.id.slice(0, 8)}</strong>
                     </div>
+                    {member.role === 'admin' && (
+                      <div className="col-span-full mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleDismissAdmin(member)}
+                          disabled={dismissingAdminId !== null}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <XCircle className="h-4 w-4" />
+                          {dismissingAdminId === member.id ? 'Removing access...' : 'Remove admin access'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

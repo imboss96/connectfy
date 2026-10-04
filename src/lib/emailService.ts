@@ -81,11 +81,23 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
       headers.Authorization = `Bearer ${data.session.access_token}`;
     }
 
-    const response = await fetch(backendUrl, {
+    const requestOptions: RequestInit = {
       method: 'POST',
       headers,
       body: JSON.stringify(safePayload)
-    });
+    };
+
+    let response = await fetch(backendUrl, requestOptions);
+    if (response.status === 401 && safePayload.type === 'legacy_sheet_reapply' && supabase) {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) throw error;
+      if (!data.session?.access_token) {
+        throw new Error('Your admin session has expired. Please sign in again before sending emails.');
+      }
+
+      headers.Authorization = `Bearer ${data.session.access_token}`;
+      response = await fetch(backendUrl, requestOptions);
+    }
 
     if (!response.ok) {
       const text = await response.text();

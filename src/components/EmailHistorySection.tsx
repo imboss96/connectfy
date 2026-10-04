@@ -25,7 +25,7 @@ const statusPresentation: Record<EmailLogStatus, { label: string; className: str
   unverified: { label: 'Sent, confirmation unavailable', className: 'border-amber-200 bg-amber-50 text-amber-700', icon: AlertCircle }
 };
 
-export const EmailHistorySection: React.FC = () => {
+export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: string }> = ({ projectId, projectTitle }) => {
   const [entries, setEntries] = useState<EmailLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,10 +41,12 @@ export const EmailHistorySection: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: queryError } = await supabase
+      let query = supabase
         .from('legacy_sheet_email_log')
         .select('id,recipient_email,recipient_name,email_type,subject,status,error_message,created_by,created_at,sent_at')
         .order('created_at', { ascending: false });
+      if (projectId) query = query.eq('project_id', projectId);
+      const { data, error: queryError } = await query;
       if (queryError) throw queryError;
       setEntries((data || []) as EmailLogEntry[]);
     } catch (loadError) {
@@ -53,7 +55,7 @@ export const EmailHistorySection: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void loadEntries();
@@ -79,8 +81,8 @@ export const EmailHistorySection: React.FC = () => {
             <Mail className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900">Email History</h1>
-            <p className="mt-1 text-xs text-slate-600">Track eligibility emails sent to people from the connected Google Sheet.</p>
+            <h1 className="text-xl font-black text-slate-900">{projectTitle ? `${projectTitle} · Email History` : 'Email History'}</h1>
+            <p className="mt-1 text-xs text-slate-600">Track eligibility emails sent to people from this project’s connected Google Sheet.</p>
           </div>
         </div>
         <button

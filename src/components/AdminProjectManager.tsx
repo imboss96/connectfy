@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Plus,
+  Briefcase,
   Layers,
   DollarSign,
   Users,
@@ -28,7 +29,7 @@ import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
-  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate } = useApp();
+  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate, setActiveAdminProjectId, setActiveTab } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -404,6 +405,18 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
 
                     <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveAdminProjectId(project.id);
+                          setActiveTab('project_operations');
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#007AFF]/20 bg-[#007AFF]/5 px-2.5 py-1.5 text-[11px] font-bold text-[#007AFF] transition hover:bg-[#007AFF]/10"
+                        title={`Open ${project.title} operations`}
+                      >
+                        <Briefcase className="h-3.5 w-3.5" />
+                        Manage
+                      </button>
                       <button onClick={() => setEditingProject(project)} className="p-1.5 rounded-lg bg-slate-50 hover:bg-sky-50 text-slate-500 hover:text-sky-600 transition border border-slate-200" title="Edit project listing"><Edit3 className="w-4 h-4" /></button>
                       <select aria-label={`Set status for ${project.title}`} value={normalizedStatus} onChange={(event) => updateProject(project.id, { status: event.target.value as Project['status'] })} className="max-w-36 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
                         <option value="active">Open</option>

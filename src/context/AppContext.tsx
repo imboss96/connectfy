@@ -31,6 +31,8 @@ interface AppContextType {
   clientProfile: ClientProfile;
   activeWorkspaceProjectId: string | null;
   setActiveWorkspaceProjectId: (id: string | null) => void;
+  activeAdminProjectId: string | null;
+  setActiveAdminProjectId: (id: string | null) => void;
   
   // Navigation tabs
   activeTab: ActiveTab;
@@ -77,7 +79,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'google_sheet', 'email_history', 'legacy_onboarding'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'project_operations'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -375,6 +377,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return isActiveTab(saved) ? saved : 'projects';
   });
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState<string | null>(null);
+  const [activeAdminProjectId, setActiveAdminProjectId] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   const [projects, setProjects] = useState<Project[]>(() => {
@@ -2379,6 +2382,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         clientProfile,
         activeWorkspaceProjectId,
         setActiveWorkspaceProjectId,
+        activeAdminProjectId,
+        setActiveAdminProjectId,
         activeTab,
         setActiveTab,
         isProfileModalOpen,
