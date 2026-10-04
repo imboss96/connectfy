@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { formatProjectEmailType } from '../src/lib/emailService';
+import { formatProjectEmailType, requiresAdminSession } from '../src/lib/emailService';
 import {
   buildLegacySheetEmailHtml,
   buildLegacySheetEmailText,
@@ -17,6 +17,13 @@ assert.equal(formatProjectEmailType('declined'), 'declined');
 assert.equal(formatProjectEmailType('utest_update_required'), 'utest_update_required');
 assert.equal(formatProjectEmailType('legacy_sheet_reapply'), 'legacy_sheet_reapply');
 assert.equal(formatProjectEmailType('unknown' as any), 'application');
+assert.equal(requiresAdminSession('invite'), true);
+assert.equal(requiresAdminSession('rejected'), true);
+assert.equal(requiresAdminSession('utest_update_required'), true);
+assert.equal(requiresAdminSession('legacy_sheet_reapply'), true);
+assert.equal(requiresAdminSession('application'), false);
+assert.equal(requiresAdminSession('accepted'), false);
+assert.equal(requiresAdminSession('declined'), false);
 
 const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const edgeSource = fs.readFileSync(new URL('../supabase/functions/project-email/index.ts', import.meta.url), 'utf8');
@@ -34,9 +41,13 @@ assert.match(serverSource, /return to Connectfy and reapply/i);
 assert.match(edgeSource, /return to Connectfy and reapply/i);
 assert.match(serverSource, /https:\/\/www\.utest\.com\/signup/);
 assert.match(edgeSource, /https:\/\/www\.utest\.com\/signup/);
-assert.match(serverSource, /Only administrators can send legacy sheet emails/);
-assert.match(edgeSource, /Only administrators can send legacy sheet emails/);
-assert.match(emailServiceSource, /response\.status === 401 && safePayload\.type === 'legacy_sheet_reapply'/);
+assert.match(serverSource, /Only administrators can send this email/);
+assert.match(edgeSource, /Only administrators can send this email/);
+assert.match(serverSource, /adminEmailTypes\.has\(requestType\)/);
+assert.match(edgeSource, /adminEmailTypes\.has\(type\)/);
+assert.match(serverSource, /Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration/);
+assert.match(edgeSource, /Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration/);
+assert.match(emailServiceSource, /response\.status === 401 && requiresAdmin/);
 assert.match(emailServiceSource, /supabase\.auth\.refreshSession\(\)/);
 assert.match(serverSource, /buildLegacySheetEmailHtml/);
 assert.match(edgeSource, /buildLegacySheetEmailHtml/);

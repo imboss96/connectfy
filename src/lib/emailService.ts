@@ -4,6 +4,12 @@ import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
 export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply';
 
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply'];
+
+export function requiresAdminSession(type: ProjectEmailType): boolean {
+  return ADMIN_EMAIL_TYPES.includes(type);
+}
+
 export class EmailTemplateMismatchError extends Error {
   constructor() {
     super('The email service accepted this message but did not confirm the expected template. It may have sent an older email version; do not retry until the email service is updated.');
@@ -73,7 +79,8 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
       'Content-Type': 'application/json'
     };
 
-    if (safePayload.type === 'legacy_sheet_reapply') {
+    const requiresAdmin = requiresAdminSession(safePayload.type);
+    if (requiresAdmin) {
       if (!supabase) throw new Error('Sign in with an administrator account to send this email.');
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
@@ -88,7 +95,7 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
     };
 
     let response = await fetch(backendUrl, requestOptions);
-    if (response.status === 401 && safePayload.type === 'legacy_sheet_reapply' && supabase) {
+    if (response.status === 401 && requiresAdmin && supabase) {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) throw error;
       if (!data.session?.access_token) {

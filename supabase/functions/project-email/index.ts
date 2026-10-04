@@ -14,6 +14,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000'
 ];
+const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply']);
 
 const isAllowedOrigin = (value?: string | null) => {
   if (!value) return false;
@@ -40,8 +41,11 @@ const corsHeadersFor = (origin?: string | null) => {
 const verifyAdminRequest = async (authorization: string | null) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!authorization || !supabaseUrl || !supabaseAnonKey) {
+  if (!authorization) {
     return { status: 401, message: 'Sign in with an administrator account to send this email.' };
+  }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { status: 500, message: 'Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration.' };
   }
 
   const baseUrl = supabaseUrl.replace(/\/$/, '');
@@ -61,7 +65,7 @@ const verifyAdminRequest = async (authorization: string | null) => {
   }
   const profiles = await roleResponse.json();
   if (!Array.isArray(profiles) || profiles[0]?.role !== 'admin') {
-    return { status: 403, message: 'Only administrators can send legacy sheet emails.' };
+    return { status: 403, message: 'Only administrators can send this email.' };
   }
 
   return null;
@@ -211,7 +215,7 @@ serve(async (req) => {
   try {
     const payload = await req.json();
     const type = payload?.type;
-    if (type === 'legacy_sheet_reapply') {
+    if (adminEmailTypes.has(type)) {
       const authorization = req.headers.get('authorization');
       const adminFailure = await verifyAdminRequest(authorization);
       if (adminFailure) {

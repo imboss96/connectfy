@@ -13,6 +13,7 @@ dotenv.config();
 const app = express();
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
+const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply']);
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -173,12 +174,15 @@ app.post('/api/project-email', async (req, res) => {
       return res.status(400).json({ ok: false, message: `Unsupported email type: ${requestType}` });
     }
 
-    if (requestType === 'legacy_sheet_reapply') {
+    if (adminEmailTypes.has(requestType)) {
       const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const authorization = req.headers.authorization;
-      if (!authorization || !supabaseUrl || !supabaseAnonKey) {
+      if (!authorization) {
         return res.status(401).json({ ok: false, message: 'Sign in with an administrator account to send this email.' });
+      }
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return res.status(500).json({ ok: false, message: 'Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration.' });
       }
 
       const authResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
@@ -197,7 +201,7 @@ app.post('/api/project-email', async (req, res) => {
       }
       const profiles = await roleResponse.json();
       if (!Array.isArray(profiles) || profiles[0]?.role !== 'admin') {
-        return res.status(403).json({ ok: false, message: 'Only administrators can send legacy sheet emails.' });
+        return res.status(403).json({ ok: false, message: 'Only administrators can send this email.' });
       }
     }
 

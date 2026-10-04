@@ -46,7 +46,11 @@ This app includes a live project application and invite email path using the Exp
 BREVO_API_KEY=your-brevo-api-key
 BREVO_SENDER_EMAIL=admin@connectfy.tech
 APP_URL=https://connectfy.tech
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-or-publishable-key
 ```
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are required for the backend to verify the signed-in administrator before sending eligibility, project-invite/approval, rejection, or uTest-account-update emails. Application confirmations and tester accept/decline notifications remain available without admin authorization because those emails are triggered by the applicant or tester. Use the public anon/publishable key, not the service-role key. These values belong in the email backend's environment; they are separate from the frontend's `VITE_` build variables.
 
 3. On the VPS, keep these values server-only in the backend environment:
 
