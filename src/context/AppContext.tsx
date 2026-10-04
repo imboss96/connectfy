@@ -1037,13 +1037,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [currentUserId]);
 
   const setRole = (newRole: UserRole) => {
-    if (newRole === role) return;
     setRoleState(newRole);
-    if (newRole === 'client') {
-      setActiveTab('client_cycles');
-    } else {
-      setActiveTab('projects');
-    }
   };
 
   const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => {
