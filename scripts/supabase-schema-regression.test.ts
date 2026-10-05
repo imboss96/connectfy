@@ -16,6 +16,7 @@ const applauseStatusSource = readFileSync(path.resolve('src/components/ApplauseS
 const projectParticipantsSource = readFileSync(path.resolve('src/components/ProjectParticipantsSection.tsx'), 'utf8');
 const projectSheetSyncSource = readFileSync(path.resolve('src/lib/projectSheetSync.ts'), 'utf8');
 const projectOperationsSource = readFileSync(path.resolve('src/components/ProjectOperationsSection.tsx'), 'utf8');
+const appContextSource = readFileSync(path.resolve('src/context/AppContext.tsx'), 'utf8');
 
 assert.ok(
   !crmSource.includes('last_sign_in_at'),
@@ -61,6 +62,9 @@ assert.ok(safaricomPayoutMigration.includes('grant execute on function public.cr
 assert.ok(safaricomPayoutMigration.includes('approved_kes_amount'), 'Safaricom amount approval must be auditable.');
 assert.ok(safaricomPayoutMigration.includes('safaricom_conversation_id'), 'Safaricom request IDs must be stored for callback reconciliation.');
 assert.ok(safaricomPayoutMigration.includes('revoke insert, update, delete on public.payout_requests from anon, authenticated'), 'Browser clients must not directly create or alter payout requests.');
+assert.match(appContextSource, /\.from\('profiles'\)\s*\.update\(/, 'Authenticated profile saves must update the existing signup-created profile, not require insert permission.');
+assert.match(appContextSource, /\.eq\('id', user\.id\)\s*\.select\('id'\)\s*\.maybeSingle\(\)/, 'Profile saves must be scoped to the current user and report missing profile rows.');
+assert.doesNotMatch(appContextSource, /\.from\('profiles'\)\s*\.upsert\(/, 'Profile saving must not use an upsert that requires an insert RLS policy.');
 assert.ok(projectParticipantsSource.includes("refresh(false)"), 'Opening the project participant view must load the saved database snapshot without syncing the sheet.');
 assert.ok(projectParticipantsSource.includes("supabase.rpc('sync_project_eligibility_responses'"), 'Project participant sheet refreshes must persist through the snapshot RPC.');
 assert.ok(projectSheetSyncSource.includes('source_timestamp: read(cells, columns.timestamp)'), 'Eligibility sheet timestamps must be persisted with the response rows.');

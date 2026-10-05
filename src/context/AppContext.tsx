@@ -595,17 +595,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       };
 
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: profileData.email || testerSnapshot.email || clientSnapshot.email || user.email || '',
-        name: profileData.name || testerSnapshot.name || clientSnapshot.name || '',
-        company: profileData.company || clientSnapshot.company || '',
-        avatar_url: profileData.avatar || testerSnapshot.avatar || clientSnapshot.avatar || null,
-        country: profileData.country || testerSnapshot.country || '',
-        city: profileData.city || testerSnapshot.city || '',
-        role: profileData.role || role || 'tester',
-        profile_data: fullProfileData
-      }, { onConflict: 'id' });
+      const { data: savedProfile, error: profileSaveError } = await supabase
+        .from('profiles')
+        .update({
+          email: profileData.email || testerSnapshot.email || clientSnapshot.email || user.email || '',
+          name: profileData.name || testerSnapshot.name || clientSnapshot.name || '',
+          company: profileData.company || clientSnapshot.company || '',
+          avatar_url: profileData.avatar || testerSnapshot.avatar || clientSnapshot.avatar || null,
+          country: profileData.country || testerSnapshot.country || '',
+          city: profileData.city || testerSnapshot.city || '',
+          profile_data: fullProfileData
+        })
+        .eq('id', user.id)
+        .select('id')
+        .maybeSingle();
+
+      if (profileSaveError) throw profileSaveError;
+      if (!savedProfile) {
+        throw new Error('Your Supabase profile is missing. Please sign out and sign in again so the profile can be created.');
+      }
     } catch (error) {
       console.error('Unable to save profile to Supabase:', error);
     }
