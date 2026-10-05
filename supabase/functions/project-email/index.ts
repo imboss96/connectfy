@@ -7,6 +7,11 @@ import {
   buildLegacySheetEmailText,
   LEGACY_SHEET_EMAIL_SUBJECT
 } from '../../../src/lib/legacySheetEmail.js';
+import {
+  buildProjectApprovalEmailHtml,
+  buildProjectApprovalEmailSubject,
+  buildProjectApprovalEmailText
+} from '../../../src/lib/projectApprovalEmail.js';
 
 const allowedOrigins = [
   'https://connectfy.tech',
@@ -82,6 +87,7 @@ const buildHtml = (payload: Record<string, any>) => {
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
   }
+  if (payload.type === 'invite') return buildProjectApprovalEmailHtml({ ...payload, projectLink });
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
   const projectCategory = payload.projectCategory || 'QA / testing';
@@ -160,6 +166,7 @@ const buildText = (payload: Record<string, any>) => {
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailText(payload.toName, projectLink, payload.supportEmail);
   }
+  if (payload.type === 'invite') return buildProjectApprovalEmailText({ ...payload, projectLink });
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
   const projectCategory = payload.projectCategory || 'QA / testing';
@@ -278,7 +285,7 @@ serve(async (req) => {
       sender: { name: 'Connectfy', email: senderEmail },
       to: [{ email: toEmail, name: toName }],
       subject: payload.type === 'invite'
-        ? `Project Invite: ${payload.projectTitle || 'New Opportunity'}`
+        ? buildProjectApprovalEmailSubject(payload.projectTitle)
         : payload.type === 'accepted'
           ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
           : payload.type === 'rejected'

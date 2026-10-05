@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   ArrowUpRight,
@@ -12,22 +12,25 @@ import {
   Wallet
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { PayoutRequest, TesterPaymentSettings, WalletTransaction } from '../types';
+import { PayoutQuote, PayoutRequest, TesterPaymentSettings, WalletTransaction } from '../types';
+import { fetchMpesaPayoutQuote } from '../lib/mpesaPayoutService';
 
 interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type PaymentMethod = 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise';
+type PaymentMethod = PayoutRequest['method'];
 
 type LedgerFilter = 'all' | 'credits' | 'withdrawals';
 
-const PAYMENT_METHODS: PaymentMethod[] = ['PayPal', 'Payoneer', 'Wise', 'Direct Bank Wire'];
+const PAYMENT_METHODS: PaymentMethod[] = ['Safaricom M-Pesa', 'PayPal', 'Payoneer', 'Wise', 'Direct Bank Wire'];
 
 const getSavedDestination = (method: PaymentMethod, settings?: TesterPaymentSettings) => {
   if (!settings) return '';
   switch (method) {
+    case 'Safaricom M-Pesa': return '';
+    case 'Safaricom M-Pesa': return '';
     case 'PayPal': return settings.paypalEmail;
     case 'Payoneer': return settings.payoneerId;
     case 'Wise': return settings.wiseEmail;
@@ -39,6 +42,13 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethod; className?: string }>
   const commonProps = { className, viewBox: '0 0 32 32', fill: 'none' } as const;
 
   switch (method) {
+    case 'Safaricom M-Pesa':
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#087F3E" />
+          <path d="M8 10h4l4 12h-4L8 10Zm7 0h4l4 12h-4l-4-12Zm7 0h3l-3 9h-3l3-9Z" fill="white" />
+        </svg>
+      );
     case 'PayPal':
       return (
         <svg {...commonProps}>
@@ -82,11 +92,51 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
   const [showPayoutForm, setShowPayoutForm] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState<string>('');
   const [payoutMethod, setPayoutMethod] = useState<PaymentMethod>(() => testerProfile.paymentSettings?.preferredMethod || 'PayPal');
-  const [destinationAccount, setDestinationAccount] = useState(() => getSavedDestination(payoutMethod, testerProfile.paymentSettings));
+  const [destinationAccount, setDestinationAccount] = useState(() =>
+    payoutMethod === 'Safaricom M-Pesa'
+      ? testerProfile.phone || ''
+      : getSavedDestination(payoutMethod, testerProfile.paymentSettings)
+  );
   const [isProcessing, setIsProcessing] = useState(false);
   const [completedPayout, setCompletedPayout] = useState<PayoutRequest | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
+  const [mpesaQuote, setMpesaQuote] = useState<PayoutQuote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || payoutMethod !== 'Safaricom M-Pesa' || !Number.isFinite(Number(payoutAmount)) || Number(payoutAmount) <= 0) {
+      setMpesaQuote(null);
+      setQuoteError('');
+      setIsLoadingQuote(false);
+      return;
+    }
+
+    let isCurrent = true;
+    const timeoutId = window.setTimeout(() => {
+      setIsLoadingQuote(true);
+      setQuoteError('');
+      void fetchMpesaPayoutQuote(Number(payoutAmount))
+        .then((quote) => {
+          if (isCurrent) setMpesaQuote(quote);
+        })
+        .catch((error) => {
+          if (isCurrent) {
+            setMpesaQuote(null);
+            setQuoteError(error instanceof Error ? error.message : 'Unable to quote USD to KES.');
+          }
+        })
+        .finally(() => {
+          if (isCurrent) setIsLoadingQuote(false);
+        });
+    }, 350);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isOpen, payoutAmount, payoutMethod]);
 
   const pendingReviewCount =
     bugReports.filter((report) => report.testerId === testerProfile.id && (report.status === 'submitted' || report.status === 'under_review')).length +
@@ -122,6 +172,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
     }
     if (!destinationAccount.trim()) {
       setErrorMessage('Please enter your recipient account / email.');
+      return;
+    }
+    if (payoutMethod === 'Safaricom M-Pesa' && !mpesaQuote) {
+      setErrorMessage(quoteError || 'Wait for a current USD to KES quote before submitting.');
       return;
     }
 
@@ -187,12 +241,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
           {/* Completed Payout Success Notice */}
           {completedPayout && (
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-center gap-3">
-                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-700" />
+                <Clock className="h-5 w-5 shrink-0 text-amber-700" />
                 <div>
-                  <h3 className="text-sm font-bold text-emerald-950">Withdrawal completed</h3>
-                  <p className="text-xs text-emerald-800">${completedPayout.amount.toFixed(2)} via {completedPayout.method} · Ref {completedPayout.transactionRef}</p>
+                  <h3 className="text-sm font-bold text-amber-950">Payout request submitted</h3>
+                  <p className="text-xs text-amber-800">${completedPayout.amount.toFixed(2)} via {completedPayout.method} is awaiting admin review · Ref {completedPayout.transactionRef}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setCompletedPayout(null)} className="text-xs font-semibold text-emerald-800 underline underline-offset-2">Dismiss</button>
@@ -260,14 +314,16 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                   <label className="mb-2 block text-xs font-semibold text-slate-700">
                     Withdrawal method
                   </label>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     {PAYMENT_METHODS.map((method) => (
                       <button
                         type="button"
                         key={method}
                         onClick={() => {
                           setPayoutMethod(method);
-                          setDestinationAccount(getSavedDestination(method, testerProfile.paymentSettings));
+                          setDestinationAccount(method === 'Safaricom M-Pesa'
+                            ? testerProfile.phone || ''
+                            : getSavedDestination(method, testerProfile.paymentSettings));
                         }}
                         aria-pressed={payoutMethod === method}
                         className={`flex min-h-16 items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition ${
@@ -277,7 +333,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                         }`}
                       >
                         <PaymentMethodLogo method={method} className="h-6 w-6 shrink-0" />
-                        <span className="text-xs font-semibold">{method === 'Direct Bank Wire' ? 'Bank wire' : method}</span>
+                        <span className="text-xs font-semibold">{method === 'Direct Bank Wire' ? 'Bank wire' : method === 'Safaricom M-Pesa' ? 'M-Pesa' : method}</span>
                       </button>
                     ))}
                   </div>
@@ -314,19 +370,35 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
 
                   <div>
                     <label htmlFor="wallet-destination-account" className="mb-1.5 block text-xs font-semibold text-slate-700">
-                      {payoutMethod === 'Direct Bank Wire' ? 'Bank account / IBAN' : `${payoutMethod} recipient`}
+                      {payoutMethod === 'Safaricom M-Pesa' ? 'Safaricom M-Pesa phone' : payoutMethod === 'Direct Bank Wire' ? 'Bank account / IBAN' : `${payoutMethod} recipient`}
                     </label>
                     <input
                       id="wallet-destination-account"
                       type="text"
                       value={destinationAccount}
                       onChange={(e) => setDestinationAccount(e.target.value)}
-                      placeholder={payoutMethod === 'Direct Bank Wire' ? 'Enter account number or IBAN' : 'Enter email or account ID'}
+                      placeholder={payoutMethod === 'Safaricom M-Pesa' ? '0712345678 or +254712345678' : payoutMethod === 'Direct Bank Wire' ? 'Enter account number or IBAN' : 'Enter email or account ID'}
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
                     />
-                    <p className="mt-1.5 text-[11px] text-slate-500">Defaults to the payment detail saved in Profile & Fleet.</p>
+                    <p className="mt-1.5 text-[11px] text-slate-500">{payoutMethod === 'Safaricom M-Pesa' ? 'Only Kenyan Safaricom mobile numbers are supported.' : 'Defaults to the payment detail saved in Profile & Fleet.'}</p>
                   </div>
                 </div>
+
+                {payoutMethod === 'Safaricom M-Pesa' && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+                    {isLoadingQuote ? (
+                      <p>Loading live USD/KES quote…</p>
+                    ) : mpesaQuote ? (
+                      <>
+                        <p className="font-semibold">${mpesaQuote.usdAmount.toFixed(2)} ≈ KES {mpesaQuote.kesAmount.toLocaleString()}</p>
+                        <p className="mt-1">Rate: 1 USD = {mpesaQuote.exchangeRate.toFixed(4)} KES · Quote source: {mpesaQuote.source}</p>
+                        <p className="mt-1">The final KES amount is subject to admin review before Safaricom submission.</p>
+                      </>
+                    ) : (
+                      <p className="text-rose-700">{quoteError || 'Enter a USD amount to see the current indicative KES quote.'}</p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-[11px] text-slate-500">Minimum withdrawal is $10.00.</p>
@@ -343,7 +415,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                     ) : (
                       <>
                         <Send className="h-3.5 w-3.5" />
-                        <span>Submit withdrawal</span>
+                        <span>Submit payout request</span>
                       </>
                     )}
                   </button>
@@ -394,6 +466,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                 const isCredit = tx.type === 'credit_bounty';
                 const statusStyle = tx.status === 'completed'
                   ? 'bg-emerald-50 text-emerald-800'
+                  : tx.status === 'failed'
+                    ? 'bg-rose-50 text-rose-800'
                   : tx.status === 'processing'
                     ? 'bg-amber-50 text-amber-800'
                     : 'bg-slate-100 text-slate-700';
@@ -443,7 +517,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <p className="text-[11px] text-slate-500">Manage saved payout details in Profile & Fleet.</p>
+          <p className="text-[11px] text-slate-500">Payouts require admin review before transfer.</p>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span>Minimum withdrawal $10</span>
             <span aria-hidden="true">·</span>

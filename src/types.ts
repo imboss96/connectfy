@@ -226,7 +226,7 @@ export interface WalletTransaction {
   amount: number;
   description: string;
   relatedProjectId?: string;
-  status: 'completed' | 'processing' | 'pending';
+  status: 'completed' | 'processing' | 'pending' | 'failed';
   date: string;
   method?: string;
   referenceId: string;
@@ -236,12 +236,28 @@ export interface PayoutRequest {
   id: string;
   testerId: string;
   amount: number;
-  method: 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise';
+  method: 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise' | 'Safaricom M-Pesa';
   destinationAccount: string;
   status: PayoutStatus;
   requestedAt: string;
   completedAt?: string;
   transactionRef: string;
+  currency?: string;
+  exchangeRate?: number;
+  exchangeRateSource?: string;
+  exchangeRateAt?: string;
+  kesAmount?: number;
+  approvedKesAmount?: number;
+  failureReason?: string;
+}
+
+export interface PayoutQuote {
+  usdAmount: number;
+  kesAmount: number;
+  exchangeRate: number;
+  source: string;
+  quotedAt: string;
+  expiresAt: string;
 }
 
 export interface DeviceFleetItem {

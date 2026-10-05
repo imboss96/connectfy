@@ -10,6 +10,7 @@ import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { CRMSection } from './components/CRMSection';
 import { ProjectOperationsSection } from './components/ProjectOperationsSection';
+import { PayoutOperationsSection } from './components/PayoutOperationsSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -115,6 +116,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <CRMSection />
           ) : activeTab === 'project_operations' ? (
             <ProjectOperationsSection />
+          ) : activeTab === 'payout_operations' ? (
+            <PayoutOperationsSection />
           ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
@@ -235,6 +238,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <Briefcase className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Project Ops</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('payout_operations')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'payout_operations'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <DollarSign className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Payouts</span>
               </button>
 
               {/* Listings */}

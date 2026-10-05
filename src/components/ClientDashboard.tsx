@@ -859,7 +859,7 @@ export const ClientDashboard: React.FC = () => {
                           <CheckCircle2 className="w-3.5 h-3.5" /> Approved / Invited
                         </span>
                         <p className="text-[11px] text-slate-500 mt-1">
-                          Invite Status: {app.inviteStatus || 'Sent'}
+                          Invite Status: {app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending'}
                         </p>
                         <button
                           type="button"

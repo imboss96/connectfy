@@ -10,6 +10,8 @@ const applauseStatusDeleteGuardMigration = readFileSync(path.resolve('supabase/m
 const applauseStatusTruncateMigration = readFileSync(path.resolve('supabase/migrations/202610040003_applause_status_sync_truncate.sql'), 'utf8');
 const projectOperationsMigration = readFileSync(path.resolve('supabase/migrations/202610040004_project_scoped_operations_payroll.sql'), 'utf8');
 const eligibilitySnapshotMigration = readFileSync(path.resolve('supabase/migrations/202610040005_project_eligibility_snapshot_sync.sql'), 'utf8');
+const approvalEmailOutboxMigration = readFileSync(path.resolve('supabase/migrations/202610050002_project_approval_email_outbox.sql'), 'utf8');
+const safaricomPayoutMigration = readFileSync(path.resolve('supabase/migrations/202610050003_safaricom_b2c_payouts.sql'), 'utf8');
 const applauseStatusSource = readFileSync(path.resolve('src/components/ApplauseStatusSection.tsx'), 'utf8');
 const projectParticipantsSource = readFileSync(path.resolve('src/components/ProjectParticipantsSection.tsx'), 'utf8');
 const projectSheetSyncSource = readFileSync(path.resolve('src/lib/projectSheetSync.ts'), 'utf8');
@@ -48,6 +50,17 @@ assert.ok(eligibilitySnapshotMigration.includes('public.sync_project_eligibility
 assert.ok(eligibilitySnapshotMigration.includes('if not coalesce(public.is_admin(), false)'), 'Only admins may replace project eligibility snapshots.');
 assert.match(eligibilitySnapshotMigration, /delete from public\.legacy_sheet_responses\s+where project_id = p_project_id/i, 'Eligibility snapshot replacement must be scoped to the selected project.');
 assert.ok(eligibilitySnapshotMigration.includes('grant execute on function public.sync_project_eligibility_responses(uuid, jsonb) to authenticated'), 'Authenticated admins must be able to invoke the eligibility snapshot sync.');
+assert.ok(approvalEmailOutboxMigration.includes('create table public.project_email_outbox'), 'Project approval emails must be durably queued in the database.');
+assert.ok(approvalEmailOutboxMigration.includes('after insert or update of status on public.applications'), 'The database must queue email in the transaction that approves an application.');
+assert.ok(approvalEmailOutboxMigration.includes('public.guard_project_application_approval'), 'Only an admin or project owner may approve an application.');
+assert.ok(approvalEmailOutboxMigration.includes('for update skip locked'), 'Concurrent workers must claim distinct outbox items.');
+assert.ok(approvalEmailOutboxMigration.includes('attempt_count >= 8'), 'The outbox must stop retrying after its maximum attempts.');
+assert.ok(approvalEmailOutboxMigration.includes('grant execute on function public.claim_project_email_outbox() to service_role'), 'Only the server-side worker role may claim email outbox jobs.');
+assert.ok(safaricomPayoutMigration.includes('create_payout_request'), 'Payout requests must be created through the server-only balance-checking RPC.');
+assert.ok(safaricomPayoutMigration.includes('grant execute on function public.create_payout_request'), 'Only the service role may create payout requests.');
+assert.ok(safaricomPayoutMigration.includes('approved_kes_amount'), 'Safaricom amount approval must be auditable.');
+assert.ok(safaricomPayoutMigration.includes('safaricom_conversation_id'), 'Safaricom request IDs must be stored for callback reconciliation.');
+assert.ok(safaricomPayoutMigration.includes('revoke insert, update, delete on public.payout_requests from anon, authenticated'), 'Browser clients must not directly create or alter payout requests.');
 assert.ok(projectParticipantsSource.includes("refresh(false)"), 'Opening the project participant view must load the saved database snapshot without syncing the sheet.');
 assert.ok(projectParticipantsSource.includes("supabase.rpc('sync_project_eligibility_responses'"), 'Project participant sheet refreshes must persist through the snapshot RPC.');
 assert.ok(projectSheetSyncSource.includes('source_timestamp: read(cells, columns.timestamp)'), 'Eligibility sheet timestamps must be persisted with the response rows.');

@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { formatProjectEmailType, requiresAdminSession } from '../src/lib/emailService';
 import {
+  buildProjectApprovalEmailHtml,
+  buildProjectApprovalEmailSubject,
+  buildProjectApprovalEmailText
+} from '../src/lib/projectApprovalEmail.js';
+import {
   buildLegacySheetEmailHtml,
   buildLegacySheetEmailText,
   LEGACY_SHEET_EMAIL_INSTRUCTIONS,
@@ -25,6 +30,30 @@ assert.equal(requiresAdminSession('application'), false);
 assert.equal(requiresAdminSession('accepted'), false);
 assert.equal(requiresAdminSession('declined'), false);
 
+const approvalEmailPayload = {
+  toName: '<Taylor>',
+  projectTitle: 'Project Sunset',
+  projectCompany: 'Connectfy',
+  projectCategory: 'QA testing',
+  projectDescription: 'Test the new mobile application.',
+  projectDeadline: 'Nov 30, 2026',
+  actionUrl: 'https://connectfy.tech/?project=project-1',
+  supportEmail: 'support@connectfy.tech'
+};
+const approvalEmailHtml = buildProjectApprovalEmailHtml(approvalEmailPayload);
+const approvalEmailText = buildProjectApprovalEmailText(approvalEmailPayload);
+assert.equal(buildProjectApprovalEmailSubject(approvalEmailPayload.projectTitle), 'Congratulations! Approved for Project Sunset');
+assert.match(approvalEmailHtml, /Congratulations! Your application has been approved/);
+assert.match(approvalEmailHtml, /Hi &lt;Taylor&gt;/);
+assert.match(approvalEmailHtml, /&lt;Taylor&gt;/);
+assert.match(approvalEmailHtml, /background:#080808/);
+assert.match(approvalEmailHtml, /background:#00a6bd/);
+assert.match(approvalEmailHtml, /Accept your project invitation/);
+assert.match(approvalEmailText, /Your application has been approved/);
+assert.match(approvalEmailText, /Deadline: Nov 30, 2026/);
+assert.match(approvalEmailText, /https:\/\/connectfy\.tech\/\?project=project-1/);
+assert.doesNotMatch(buildProjectApprovalEmailHtml({ ...approvalEmailPayload, actionUrl: 'javascript:alert(1)' }), /href="javascript:/);
+
 const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const edgeSource = fs.readFileSync(new URL('../supabase/functions/project-email/index.ts', import.meta.url), 'utf8');
 const emailLogMigration = fs.readFileSync(new URL('../supabase/migrations/202610030001_legacy_sheet_email_log.sql', import.meta.url), 'utf8');
@@ -34,6 +63,9 @@ const projectParticipantsSource = fs.readFileSync(new URL('../src/components/Pro
 const onboardingSource = fs.readFileSync(new URL('../src/components/LegacyOnboardingSection.tsx', import.meta.url), 'utf8');
 const legacyResponseMigration = fs.readFileSync(new URL('../supabase/migrations/202610030002_legacy_sheet_responses.sql', import.meta.url), 'utf8');
 const emailServiceSource = fs.readFileSync(new URL('../src/lib/emailService.ts', import.meta.url), 'utf8');
+const appContextSource = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
+const payoutBackendSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const payoutUiSource = fs.readFileSync(new URL('../src/components/PayoutOperationsSection.tsx', import.meta.url), 'utf8');
 
 assert.match(serverSource, /valid uTest account created within the last 7 days/i);
 assert.match(edgeSource, /valid uTest account created within the last 7 days/i);
@@ -51,6 +83,18 @@ assert.match(emailServiceSource, /response\.status === 401 && requiresAdmin/);
 assert.match(emailServiceSource, /supabase\.auth\.refreshSession\(\)/);
 assert.match(serverSource, /buildLegacySheetEmailHtml/);
 assert.match(edgeSource, /buildLegacySheetEmailHtml/);
+assert.match(serverSource, /buildProjectApprovalEmailHtml/);
+assert.match(edgeSource, /buildProjectApprovalEmailHtml/);
+assert.match(serverSource, /claim_project_email_outbox/);
+assert.match(serverSource, /complete_project_email_outbox/);
+assert.match(serverSource, /Project approval email outbox worker enabled/);
+assert.match(appContextSource, /Approved; invitation queued for email delivery/);
+assert.match(appContextSource, /if \(!isSupabaseConfigured && project && app\.testerEmail\)/);
+assert.match(payoutBackendSource, /\/api\/mpesa\/b2c\/result/);
+assert.match(payoutBackendSource, /\/api\/admin\/payout-requests\/:id\/approve/);
+assert.match(payoutBackendSource, /MPESA_CALLBACK_TOKEN/);
+assert.match(payoutBackendSource, /Safaricom B2C outcome is ambiguous/);
+assert.match(payoutUiSource, /Approve & send via M-Pesa/);
 assert.match(serverSource, /emailType: requestType/);
 assert.match(edgeSource, /emailType: payload\.type/);
 assert.equal(LEGACY_SHEET_EMAIL_SUBJECT, 'Action required: Create a new uTest account and reapply');

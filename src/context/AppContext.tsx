@@ -15,8 +15,9 @@ import {
   InviteHistoryEntry
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { createPayoutRequestInSupabase, createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
 import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
+import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -77,7 +78,7 @@ interface AppContextType {
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
   applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
-  approveApplication: (appId: string) => void;
+  approveApplication: (appId: string) => Promise<void>;
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => void;
   rejectApplication: (appId: string) => void;
@@ -93,7 +94,7 @@ interface AppContextType {
   approveTaskSubmission: (submissionId: string, customBounty?: number, feedback?: string, rating?: number) => void;
   rejectTaskSubmission: (submissionId: string, feedback: string) => void;
   requestTaskRevision: (submissionId: string, feedback: string) => void;
-  requestPayout: (amount: number, method: 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise', destination: string) => Promise<PayoutRequest>;
+  requestPayout: (amount: number, method: PayoutRequest['method'], destination: string) => Promise<PayoutRequest>;
   createProject: (newProject: Omit<Project, 'id' | 'createdAt' | 'budgetDisbursed' | 'slotsFilled'>) => void;
   updateProject: (projectId: string, updates: Partial<Project>) => void;
   deleteProject: (projectId: string) => void;
@@ -105,7 +106,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'project_operations'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'project_operations', 'payout_operations'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -980,7 +981,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             type: 'payout_withdrawal',
             amount: Number(row.amount || 0),
             description: `Withdrawal to ${row.method}`,
-            status: row.status === 'completed' || row.status === 'processing' ? row.status : 'pending',
+            status: row.status === 'completed' || row.status === 'processing' || row.status === 'failed' ? row.status : 'pending',
             date: row.requested_at,
             method: row.method,
             referenceId: row.transaction_ref
@@ -1394,16 +1395,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return true;
   };
 
-  // 2. Client approves application -> Sends test cycle invitation
-  const approveApplication = (appId: string) => {
+  // 2. Approval persists first; the database trigger queues the invitation email transactionally.
+  const approveApplication = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
     const inviteSentAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
     const nextHistory = [
       ...(app.inviteHistory || []),
-      { sentAt: inviteSentAt, type: 'invite' as const, note: 'Approved and invite sent' }
+      { sentAt: inviteSentAt, type: 'invite' as const, note: 'Approved; invitation queued for email delivery' }
     ];
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await updateApplicationInSupabase(app.id, {
+          status: 'approved',
+          invite_status: 'invited',
+          invite_history: nextHistory,
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Unable to approve application and queue its email in Supabase:', error);
+        if (typeof window !== 'undefined') {
+          window.alert('The application could not be approved. No invitation email was queued; please try again or contact support.');
+        }
+        return;
+      }
+    }
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
@@ -1411,7 +1429,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...a,
           status: 'approved',
           inviteStatus: 'invited',
-          lastInviteSentAt: inviteSentAt,
           inviteHistory: nextHistory
         };
       }
@@ -1428,27 +1445,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }));
     }
 
-    if (isSupabaseConfigured && supabase) {
-      void updateApplicationInSupabase(app.id, {
-        status: 'approved',
-        invite_status: 'invited',
-        last_invite_sent_at: new Date().toISOString(),
-        invite_history: nextHistory,
-        updated_at: new Date().toISOString()
-      }).catch(error => console.error('Unable to update application in Supabase:', error));
-    }
-
     // Notify tester
     addNotification({
       userId: app.testerId,
       targetRole: 'tester',
-      title: 'Application Approved: Test Invite Received',
-      message: `Congratulations! You've been approved and invited to test "${project?.title}". Accept the invite to begin testing!`,
+      title: 'Application Approved: Invitation Queued',
+      message: `Congratulations! Your application for "${project?.title}" was approved. Your project invitation is being sent to your email.`,
       type: 'invite',
       relatedProjectId: app.projectId
     });
 
-    if (project && app.testerEmail) {
+    if (!isSupabaseConfigured && project && app.testerEmail) {
       void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id);
     }
   };
@@ -2216,30 +2223,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // 6. Secure Payout processing
   const requestPayout = async (
     amount: number,
-    method: 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise',
+    method: PayoutRequest['method'],
     destination: string
   ): Promise<PayoutRequest> => {
     if (amount > testerProfile.availableBalance) {
       throw new Error('Requested amount exceeds available balance.');
     }
-
-    const ref = 'PAY-' + Date.now().toString().slice(-6) + '-' + Math.floor(100 + Math.random() * 900);
-    const requestedAt = new Date().toISOString();
-    const payoutReq: PayoutRequest = {
-      id: createApplicationId(),
-      testerId: testerProfile.id,
-      amount,
-      method,
-      destinationAccount: destination,
-      status: 'completed',
-      requestedAt: requestedAt.replace('T', ' ').substring(0, 16),
-      completedAt: requestedAt.replace('T', ' ').substring(0, 16),
-      transactionRef: ref
-    };
-
-    if (isSupabaseConfigured && isUuid(payoutReq.testerId)) {
-      await createPayoutRequestInSupabase(payoutReq);
+    if (amount < 10 || !Number.isFinite(amount)) {
+      throw new Error('Payout amount must be at least $10.00.');
     }
+
+    const payoutReq = await submitPayoutRequest({ amount, method, destinationAccount: destination });
+    const requestedAt = payoutReq.requestedAt;
 
     setTesterProfile(prev => ({
       ...prev,
@@ -2251,11 +2246,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       testerId: testerProfile.id,
       type: 'payout_withdrawal',
       amount,
-      description: `Payout Transfer to ${method} (${destination})`,
-      status: 'completed',
-      date: payoutReq.requestedAt,
+      description: `Payout request to ${method} (${destination})`,
+      status: payoutReq.status === 'completed' ? 'completed' : 'pending',
+      date: requestedAt,
       method,
-      referenceId: ref
+      referenceId: payoutReq.transactionRef
     };
 
     setWalletTransactions(prev => [newTx, ...prev]);
@@ -2263,21 +2258,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: testerProfile.id,
       targetRole: 'tester',
-      title: `Payout Processed: $${amount.toFixed(2)}`,
-      message: `Your payment of $${amount.toFixed(2)} via ${method} has been authorized and dispatched to ${destination}. Reference: ${ref}`,
+      title: `Payout request submitted: $${amount.toFixed(2)}`,
+      message: `Your ${method} payout request for $${amount.toFixed(2)} is awaiting administrator review. Reference: ${payoutReq.transactionRef}`,
       type: 'payout',
       amount
     });
-
-    try {
-      confetti({
-        particleCount: 100,
-        spread: 80,
-        origin: { y: 0.7 }
-      });
-    } catch {
-      // safe
-    }
 
     return payoutReq;
   };

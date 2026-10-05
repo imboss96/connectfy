@@ -10,6 +10,7 @@ import {
   Sliders,
   Users,
   Wallet,
+  Banknote,
   X,
   LogOut
 } from 'lucide-react';
@@ -94,6 +95,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck },
           { label: 'CRM & Members', tab: 'crm', icon: Users },
           { label: 'Project Operations', tab: 'project_operations', icon: Briefcase },
+          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote },
           { label: 'Project Listings', tab: 'projects', icon: Briefcase },
           { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck },
           { label: 'Settings', tab: 'profile_settings', icon: Sliders }

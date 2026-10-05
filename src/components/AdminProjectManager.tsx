@@ -390,7 +390,7 @@ export const AdminProjectManager: React.FC = () => {
             filteredApplications.map((app) => {
               const project = projects.find((p) => p.id === app.projectId);
               const inviteHistory = app.inviteHistory || [];
-              const statusLabel = app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.inviteStatus === 'invited' || app.status === 'approved' ? 'Invite sent' : 'Pending review';
+              const statusLabel = app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending review';
 
               return (
                 <div key={app.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

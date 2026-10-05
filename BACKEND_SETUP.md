@@ -39,6 +39,8 @@ For Google OAuth, enable Google under **Authentication > Providers** in Supabase
 
 This app includes a live project application and invite email path using the Express backend in `server.js`. The frontend calls the backend with the project metadata and candidate email, and the backend sends the message using the Brevo API. Supabase remains responsible for authentication and database access.
 
+When an admin or project owner selects **Approve & Send Invite**, the database records the approval and queues an email in `project_email_outbox` in the same transaction. The email backend polls the outbox, sends the approval email through Brevo, and records the provider response. Failed sends are retried with increasing delays, up to eight attempts; exhausted jobs remain available for investigation in the outbox table. The browser does not send a second approval email, avoiding the former split between the approval update and email request.
+
 1. Create a Brevo account and generate an SMTP API key.
 2. Add the following values to your server environment (not your browser Vite config):
 
@@ -48,9 +50,12 @@ BREVO_SENDER_EMAIL=admin@connectfy.tech
 APP_URL=https://connectfy.tech
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-or-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 ```
 
-`SUPABASE_URL` and `SUPABASE_ANON_KEY` are required for the backend to verify the signed-in administrator before sending eligibility, project-invite/approval, rejection, or uTest-account-update emails. Application confirmations and tester accept/decline notifications remain available without admin authorization because those emails are triggered by the applicant or tester. Use the public anon/publishable key, not the service-role key. These values belong in the email backend's environment; they are separate from the frontend's `VITE_` build variables.
+Apply `supabase/migrations/202610050002_project_approval_email_outbox.sql` after the earlier migrations. The worker requires `SUPABASE_SERVICE_ROLE_KEY` so it can atomically claim queued jobs and update delivery status; keep this key only in the email backend environment. Never add it to browser variables or expose it through a `VITE_` setting. The migration prevents non-admins and non-owners from approving applications and denies browser roles access to the outbox.
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are also required for the backend to verify the signed-in administrator before sending manually requested eligibility, invite, rejection, or uTest-account-update emails. Use the public anon/publishable key for `SUPABASE_ANON_KEY`; these values belong in the email backend environment and are separate from the frontend's `VITE_` build variables.
 
 3. On the VPS, keep these values server-only in the backend environment:
 
@@ -66,6 +71,17 @@ VITE_EMAIL_BACKEND_URL=https://api.connectfy.tech/api/project-email
 ```
 
 The VPS should expose the backend through Nginx or another HTTPS reverse proxy. Do not expose `BREVO_API_KEY` through a `VITE_` variable.
+
+Keep this backend process supervised and running continuously; its `/health` response reports whether the approval-email outbox worker is enabled. If it is unavailable, approvals still queue transactionally in Supabase and will be picked up after the worker restarts. The outbox provides at-least-once delivery: a process failure after Brevo accepts a message but before the database records success can result in a duplicate on retry.
+
+To inspect queued or failed approval messages in the Supabase SQL editor:
+
+```sql
+select id, application_id, project_id, status, attempt_count, next_attempt_at, last_error, created_at
+from public.project_email_outbox
+where status in ('pending', 'failed')
+order by created_at desc;
+```
 
 4. The function payload is:
 
@@ -116,6 +132,30 @@ npm run seed:projects
 The seed script reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and optional `SUPABASE_SEED_CLIENT_ID` from `.env.local` or `local.env`. It also accepts the older `SUPABASE_SECRET_KEY` name. Keep those files local; both filenames are ignored by Git.
 
 The command imports the current project catalog, stores the complete project object in `project_data`, and upserts the projects safely. Once seeded, the app loads active projects from Supabase instead of using the browser's hardcoded project catalog.
+
+## Safaricom M-Pesa B2C tester payouts
+
+Connectfy uses Daraja **Business-to-Customer (B2C)** to send approved tester payouts to Kenyan Safaricom numbers. It does not use B2C to collect customer payments. M-Pesa requests remain pending until an administrator reviews the recipient and converted KES amount and confirms the transfer.
+
+Apply for Safaricom Daraja access as a business and enable the B2C product for the organization shortcode. Use Safaricom's sandbox credentials and test data first; request production access, production credentials, and the required B2C transaction limits before enabling production. Set the following values only in the email/payment backend's server environment:
+
+```env
+MPESA_ENV=sandbox
+MPESA_CONSUMER_KEY=your-daraja-consumer-key
+MPESA_CONSUMER_SECRET=your-daraja-consumer-secret
+MPESA_INITIATOR_NAME=your-b2c-initiator-name
+MPESA_SECURITY_CREDENTIAL=your-encrypted-initiator-credential
+MPESA_SHORTCODE=your-organization-shortcode
+MPESA_B2C_COMMAND_ID=BusinessPayment
+MPESA_CALLBACK_BASE_URL=https://api.connectfy.tech
+MPESA_CALLBACK_TOKEN=long-random-secret-value
+```
+
+`MPESA_SECURITY_CREDENTIAL` is the Safaricom-certificate-encrypted initiator password supplied/configured for the Daraja B2C integration; it is not the plain-text initiator password. Keep all Daraja values, `SUPABASE_SERVICE_ROLE_KEY`, and the callback token out of browser/Vite variables and Git. The public callback base URL must resolve to this backend over HTTPS. Safaricom callback URLs include the configured high-entropy token; keep it private and rotate it if exposed.
+
+Apply `supabase/migrations/202610050003_safaricom_b2c_payouts.sql` after the prior project migrations. It adds the USD-to-KES quote snapshot and Safaricom reconciliation fields and moves payout creation behind a server-only database function. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend too. Obtain the FX rate from ExchangeRate-API's public USD feed; the quote rate timestamp/source are stored with the payout request, displayed to the reviewer, and the administrator confirms the whole KES amount before dispatch.
+
+The backend endpoints quote USD/KES and create authenticated payout requests; the admin-only payout-review screen dispatches M-Pesa requests or confirms a manual payment for existing methods. Safaricom result/timeout callbacks update payout status. A callback failure returns the funds to the available balance on the tester's next data refresh. A network timeout after a request was submitted is deliberately left in `processing`; reconcile it with Safaricom before taking any retry action to avoid sending twice. The backend's health endpoint reports outbox-worker configuration, but does not disclose Daraja credentials.
 
 ## 5. Run
 
