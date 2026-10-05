@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   Filter,
@@ -22,6 +22,7 @@ import {
   FileCheck,
   Plus,
   ExternalLink,
+  Link2,
   Image as ImageIcon,
   Edit3
 } from 'lucide-react';
@@ -104,6 +105,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const [experienceNote, setExperienceNote] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [shareFeedback, setShareFeedback] = useState<{ projectId: string; url: string; error: boolean } | null>(null);
   const [isUploadingUtestScreenshot, setIsUploadingUtestScreenshot] = useState(false);
   const [showAddDeviceForm, setShowAddDeviceForm] = useState(false);
   const [deviceDraft, setDeviceDraft] = useState({
@@ -182,6 +184,27 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     );
   };
 
+  const createProjectApplicationUrl = (projectId: string) => {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('project', projectId);
+    url.searchParams.set('apply', '1');
+    url.hash = '';
+    return url.toString();
+  };
+
+  const copyProjectApplicationUrl = async (projectId: string) => {
+    const url = createProjectApplicationUrl(projectId);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this browser.');
+      await navigator.clipboard.writeText(url);
+      setShareFeedback({ projectId, url, error: false });
+    } catch (error) {
+      console.warn('Unable to copy project application link:', error);
+      setShareFeedback({ projectId, url, error: true });
+    }
+  };
+
   const handleOpenApplyModal = (project: Project) => {
     if (!isProjectOpenForApplications(project)) {
       setApplyError('This project is no longer accepting applications.');
@@ -227,6 +250,26 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     setApplyError('');
     setApplySuccess(false);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get('project');
+    if (!projectId) return;
+
+    const project = projects.find((item) => item.id === projectId);
+    if (!project || !isProjectVisibleToTesters(project)) return;
+
+    const shouldApply = params.get('apply') === '1';
+    if (shouldApply && role === 'tester' && isProjectOpenForApplications(project)) {
+      handleOpenApplyModal(project);
+    } else {
+      setViewingProject(project);
+    }
+
+    params.delete('apply');
+    const query = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }, [projects, role]);
 
   const handleToggleDevice = (d: string) => {
     if (selectedDevices.includes(d)) {
@@ -556,6 +599,25 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         </div>
       </div>
 
+      {shareFeedback && (
+        <div role={shareFeedback.error ? 'alert' : 'status'} className={`rounded-xl border p-3 text-xs ${shareFeedback.error ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+          <p className="font-semibold">
+            {shareFeedback.error
+              ? 'Could not copy automatically. Copy the project application link below.'
+              : 'Application link copied. Anyone who opens it can sign in or create an account, then apply.'}
+          </p>
+          {shareFeedback.error && (
+            <input
+              aria-label="Project application link"
+              readOnly
+              value={shareFeedback.url}
+              onFocus={(event) => event.currentTarget.select()}
+              className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-[11px] text-slate-800"
+            />
+          )}
+        </div>
+      )}
+
       {featuredProject && (
         <div className="rounded-[28px] border border-[#9ddce9] bg-[radial-gradient(circle_at_top_left,_rgba(64,206,255,0.18),_rgba(255,255,255,0.96)_38%)] p-5 shadow-[0_30px_60px_rgba(15,47,64,0.08)] sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -584,6 +646,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+              <button
+                type="button"
+                onClick={() => void copyProjectApplicationUrl(featuredProject.id)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#00A3E0]/20 bg-white px-4 py-2.5 text-xs font-bold text-[#006f9a] transition hover:border-[#00A3E0]/40 hover:bg-[#f1fbff]"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Share apply link
+              </button>
               <button
                 onClick={() => setViewingProject(featuredProject)}
                 className="rounded-xl border border-[#00A3E0]/20 bg-white px-4 py-2.5 text-xs font-bold text-[#006f9a] transition hover:border-[#00A3E0]/40 hover:bg-[#f1fbff]"
@@ -742,12 +812,22 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
               {/* Bottom Actions based on Freelance Scope */}
               <div className="pt-3 border-t border-[#1E2E4E] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                <button
-                  onClick={() => setViewingProject(project)}
-                  className="text-xs text-[#00A3E0] hover:text-[#38BDF8] transition font-medium text-center sm:text-left py-1"
-                >
-                  View Scope & Guide
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-start">
+                  <button
+                    onClick={() => setViewingProject(project)}
+                    className="text-xs text-[#00A3E0] hover:text-[#38BDF8] transition font-medium py-1"
+                  >
+                    View Scope & Guide
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyProjectApplicationUrl(project.id)}
+                    className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-slate-300 transition hover:text-white"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Share apply link
+                  </button>
+                </div>
 
                 {/* Status-adaptive action button */}
                 {isAccepted ? (
@@ -969,8 +1049,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 Total Project Budget: ${viewingProject.totalBudget.toLocaleString()}
               </span>
               {role === 'admin' ? (
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="text-[11px] font-semibold text-slate-600">Admin task controls</span>
+                  <button
+                    type="button"
+                    onClick={() => void copyProjectApplicationUrl(viewingProject.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Share apply link
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -984,16 +1072,27 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => {
-                    const proj = viewingProject;
-                    setViewingProject(null);
-                    handleOpenApplyModal(proj);
-                  }}
-                  className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30"
-                >
-                  Apply for Opportunity
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyProjectApplicationUrl(viewingProject.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Share apply link
+                  </button>
+                  <button
+                    onClick={() => {
+                      const proj = viewingProject;
+                      setViewingProject(null);
+                      handleOpenApplyModal(proj);
+                    }}
+                    disabled={!isProjectOpenForApplications(viewingProject)}
+                    className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                  >
+                    {isProjectOpenForApplications(viewingProject) ? 'Apply for Opportunity' : getProjectAvailabilityLabel(viewingProject.status, viewingProject.startsAt)}
+                  </button>
+                </div>
               )}
             </div>
           </div>

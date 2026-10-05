@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Briefcase, CheckCircle2, ExternalLink, Mail, MapPin, PlusCircle, RefreshCw, Search, Send, ShieldCheck, Users, X, XCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
+import { AdminUserDetailsDialog } from './AdminUserDetailsDialog';
 import { fetchSheetCsv, parseProjectApplauseSheet, parseProjectEligibilitySheet } from '../lib/projectSheetSync';
 import { EmailTemplateMismatchError, sendProjectEmail } from '../lib/emailService';
 import {
@@ -211,6 +212,7 @@ export const CRMSection: React.FC<{
   const [dismissingAdminId, setDismissingAdminId] = useState<string | null>(null);
   const [adminDismissStatus, setAdminDismissStatus] = useState<string | null>(null);
   const [adminDismissError, setAdminDismissError] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<PlatformMember | null>(null);
 
   const loadMembers = async () => {
     if (!supabase) {
@@ -918,6 +920,7 @@ export const CRMSection: React.FC<{
   );
 
   return (
+    <>
     <div className="space-y-6 animate-fade-in text-slate-700">
       {activeView !== 'sheet' && <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#00A3E0]/8 via-[#007AFF]/4 to-transparent pointer-events-none rounded-full blur-2xl" />
@@ -1480,6 +1483,14 @@ export const CRMSection: React.FC<{
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMember(member)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#007AFF] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#005fce]"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Full user record
+                      </button>
                       {member.company ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700">
                           <Briefcase className="w-3.5 h-3.5" />
@@ -1526,5 +1537,13 @@ export const CRMSection: React.FC<{
         )}
       </div>
     </div>
+      {selectedMember && (
+        <AdminUserDetailsDialog
+          member={selectedMember}
+          onClose={() => setSelectedMember(null)}
+          onSaved={loadMembers}
+        />
+      )}
+    </>
   );
 };

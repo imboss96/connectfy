@@ -501,8 +501,6 @@ const AppExperience: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
-  const [isProjectRedirectPending, setIsProjectRedirectPending] = useState(false);
-  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
   const appUrl = (import.meta.env.VITE_APP_URL || window.location.origin || 'http://localhost:5173').replace(/\/$/, '');
 
   const isRecoveryUrl = () => {
@@ -569,7 +567,7 @@ const AppExperience: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('project') && params.get('reapply') === '1') {
+    if (params.get('project') && (params.get('reapply') === '1' || params.get('apply') === '1')) {
       setActiveTab('projects');
     }
   }, [setActiveTab]);
@@ -626,8 +624,12 @@ const AppExperience: React.FC = () => {
   };
 
   const handleLandingApply = (projectId?: string) => {
-    setIsProjectRedirectPending(Boolean(projectId));
-    setPendingProjectId(projectId || null);
+    if (projectId) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('project', projectId);
+      params.set('apply', '1');
+      window.history.replaceState({}, document.title, `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    }
     setAuthMode('signup');
     setScreen('login');
   };
@@ -638,9 +640,6 @@ const AppExperience: React.FC = () => {
     if (error) throw error;
     resetLocalUserState();
     setActiveTab('projects');
-    if (isProjectRedirectPending && pendingProjectId) setActiveWorkspaceProjectId(pendingProjectId);
-    setIsProjectRedirectPending(false);
-    setPendingProjectId(null);
     setScreen('app');
   };
 
@@ -673,28 +672,30 @@ const AppExperience: React.FC = () => {
   const handleSignUp = async (name: string, email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Account registration is not configured. Add your Supabase URL and anon key to .env.local.');
     resetLocalUserState();
+    const returnUrl = new URL(appUrl);
+    const currentParams = new URLSearchParams(window.location.search);
+    const projectId = currentParams.get('project');
+    if (projectId) {
+      returnUrl.searchParams.set('project', projectId);
+      if (currentParams.get('apply') === '1') returnUrl.searchParams.set('apply', '1');
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: name },
-        emailRedirectTo: appUrl
+        emailRedirectTo: returnUrl.toString()
       }
     });
     if (error) throw error;
     if (!data.session) throw new Error('Account created. Check your email to confirm your account, then sign in.');
     setActiveTab('projects');
-    if (isProjectRedirectPending && pendingProjectId) setActiveWorkspaceProjectId(pendingProjectId);
-    setIsProjectRedirectPending(false);
-    setPendingProjectId(null);
     setScreen('app');
   };
 
   const handleLogout = () => {
     if (supabase) void supabase.auth.signOut();
     resetLocalUserState();
-    setIsProjectRedirectPending(false);
-    setPendingProjectId(null);
     setActiveWorkspaceProjectId(null);
     setScreen('landing');
     setActiveTab('projects');
@@ -717,8 +718,8 @@ const AppExperience: React.FC = () => {
   };
 
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
-  if (screen === 'landing') return <LandingPage onGetStarted={handleLandingApply} onLogin={() => { setAuthMode('login'); setIsProjectRedirectPending(false); setPendingProjectId(null); setScreen('login'); }} />;
-  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => { setIsProjectRedirectPending(false); setScreen('landing'); }} />;
+  if (screen === 'landing') return <LandingPage onGetStarted={handleLandingApply} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
+  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => { setScreen('landing'); }} />;
   if (screen === 'reset') return <ResetPasswordPage onSubmit={handleResetPasswordSubmit} onBackToLogin={() => { setScreen('login'); setAuthMode('login'); }} />;
 
   return (

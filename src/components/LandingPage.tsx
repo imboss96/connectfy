@@ -78,6 +78,8 @@ const faqs = [
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const hasProjectApplicationLink = new URLSearchParams(window.location.search).get('apply') === '1'
+    && Boolean(new URLSearchParams(window.location.search).get('project'));
 
   const jumpTo = (id: string) => {
     setMenuOpen(false);
@@ -118,6 +120,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
       </header>
 
       <main>
+        {hasProjectApplicationLink && (
+          <section className="mx-auto mt-5 flex max-w-6xl flex-col items-start justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-sm font-bold text-blue-950">Ready to apply for this project?</p>
+              <p className="mt-1 text-xs leading-relaxed text-blue-800">Sign in or create a Connectfy account. We’ll take you straight to the project application.</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" onClick={onLogin} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-900 hover:bg-blue-100">Log in</button>
+              <button type="button" onClick={() => onGetStarted()} className="rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-bold text-white hover:bg-[#005fce]">Create account</button>
+            </div>
+          </section>
+        )}
         <section id="overview" className="landing-hero">
           <div className="landing-hero-art" aria-hidden="true">
             <img
