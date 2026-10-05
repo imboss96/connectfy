@@ -18,6 +18,28 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { createPayoutRequestInSupabase, createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
 import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 
+export interface InviteProfileDetails {
+  uTestId: string;
+  legalName: string;
+  dateOfBirth: string;
+  uTestEmail: string;
+  phone: string;
+}
+
+const isInviteProfileComplete = (profile: TesterProfile) => {
+  const dateOfBirth = profile.dateOfBirth ? new Date(`${profile.dateOfBirth}T00:00:00`) : null;
+  return Boolean(
+    profile.uTestId?.trim()
+    && profile.legalName?.trim()
+    && dateOfBirth
+    && !Number.isNaN(dateOfBirth.getTime())
+    && dateOfBirth < new Date()
+    && profile.uTestEmail?.trim()
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.uTestEmail)
+    && profile.phone?.trim()
+  );
+};
+
 interface AppContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
@@ -31,6 +53,8 @@ interface AppContextType {
   clientProfile: ClientProfile;
   activeWorkspaceProjectId: string | null;
   setActiveWorkspaceProjectId: (id: string | null) => void;
+  pendingInviteAcceptanceId: string | null;
+  dismissInviteAcceptance: () => void;
   activeAdminProjectId: string | null;
   setActiveAdminProjectId: (id: string | null) => void;
   
@@ -57,7 +81,9 @@ interface AppContextType {
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => void;
   rejectApplication: (appId: string) => void;
-  acceptInvite: (appId: string) => void;
+  inviteTesterToProject: (projectId: string, testerId: string, testerName: string, testerEmail: string) => Promise<void>;
+  acceptInvite: (appId: string) => Promise<boolean>;
+  completeInviteAcceptance: (appId: string, details: InviteProfileDetails) => Promise<void>;
   declineInvite: (appId: string) => void;
   submitBugReport: (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<BugReport>;
   approveBugReport: (bugId: string, customBounty?: number, feedback?: string, rating?: number) => void;
@@ -377,6 +403,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return isActiveTab(saved) ? saved : 'projects';
   });
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState<string | null>(null);
+  const [pendingInviteAcceptanceId, setPendingInviteAcceptanceId] = useState<string | null>(null);
   const [activeAdminProjectId, setActiveAdminProjectId] = useState<string | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
@@ -1220,6 +1247,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: normalizedType === 'application' ? 'status_update' : normalizedType === 'invite' ? 'invite' : 'status_update',
       relatedProjectId: projectId
     });
+    return emailSent;
   };
 
   const fetchApplicationDraft = async (projectId: string) => {
@@ -1517,6 +1545,84 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const inviteTesterToProject = async (projectId: string, testerId: string, testerName: string, testerEmail: string) => {
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) throw new Error('Select a valid project before sending an invitation.');
+    if (!testerId || !testerEmail) throw new Error('Select a registered tester with an email address.');
+
+    const existing = applications.find((item) => item.projectId === projectId && item.testerId === testerId);
+    if (existing?.inviteStatus === 'accepted') {
+      throw new Error('This tester has already accepted the project invitation.');
+    }
+
+    const invitedAt = new Date().toISOString();
+    const history = [
+      ...(existing?.inviteHistory || []),
+      { sentAt: invitedAt, type: existing ? 'resend' as const : 'invite' as const, note: existing ? 'Project invitation resent' : 'Direct project invitation sent' }
+    ];
+    const app: ProjectApplication = {
+      ...(existing || {}),
+      id: existing?.id || createApplicationId(),
+      projectId,
+      testerId,
+      testerName,
+      testerEmail,
+      testerRating: existing?.testerRating || 0,
+      testerTier: existing?.testerTier || 'Unrated',
+      appliedDate: existing?.appliedDate || invitedAt.replace('T', ' ').substring(0, 16),
+      selectedDevices: existing?.selectedDevices || [],
+      experienceNote: existing?.experienceNote || '',
+      status: 'approved',
+      inviteStatus: 'invited',
+      lastInviteSentAt: invitedAt.replace('T', ' ').substring(0, 16),
+      inviteHistory: history
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      if (existing) {
+        await updateApplicationInSupabase(app.id, {
+          status: 'approved',
+          invite_status: 'invited',
+          last_invite_sent_at: invitedAt,
+          invite_history: history,
+          updated_at: invitedAt
+        });
+      } else {
+        await upsertApplicationInSupabase({
+          id: app.id,
+          project_id: projectId,
+          tester_id: testerId,
+          status: 'approved',
+          invite_status: 'invited',
+          selected_devices: [],
+          experience_note: '',
+          applied_at: invitedAt,
+          last_invite_sent_at: invitedAt,
+          invite_history: history
+        });
+      }
+    }
+
+    setApplications((previous) => [app, ...previous.filter((item) => item.id !== app.id)]);
+    if (!existing || existing.status === 'pending' || existing.status === 'rejected') {
+      setProjects((previous) => previous.map((item) => item.id === projectId
+        ? { ...item, slotsFilled: Math.min(item.slotsTotal, item.slotsFilled + 1) }
+        : item));
+    }
+    addNotification({
+      userId: testerId,
+      targetRole: 'tester',
+      title: 'Project Invitation',
+      message: `You have been invited to "${project.title}". Accept the invite to enter the project workspace.`,
+      type: 'invite',
+      relatedProjectId: projectId
+    });
+    const emailSent = await triggerProjectEmail('invite', projectId, testerId, testerName, testerEmail, app.id);
+    if (!emailSent) {
+      throw new Error('The invitation was saved, but the email could not be sent. You can resend it from the application pipeline.');
+    }
+  };
+
   // Client rejects application
   const rejectApplication = (appId: string) => {
     const app = applications.find(a => a.id === appId);
@@ -1544,33 +1650,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // 3. Tester accepts invite & starts task
-  const acceptInvite = (appId: string) => {
-    const app = applications.find(a => a.id === appId);
-    if (!app) return;
-    const project = projects.find(p => p.id === app.projectId);
-    const acceptedAt = new Date().toISOString();
-
-    setApplications(prev => prev.map(a => {
-      if (a.id === appId) {
-        return {
-          ...a,
-          inviteStatus: 'accepted',
-          acceptedInviteAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
-        };
-      }
-      return a;
-    }));
+  const saveInviteProfileDetails = async (details: InviteProfileDetails) => {
+    const updatedProfile = { ...testerProfile, ...details };
 
     if (isSupabaseConfigured && supabase) {
-      void updateApplicationInSupabase(app.id, {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user || user.id !== testerProfile.id) {
+        throw new Error('Sign in to the account that received this project invitation.');
+      }
+
+      const { data: storedProfile, error: loadError } = await supabase
+        .from('profiles')
+        .select('profile_data')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (loadError) throw loadError;
+      if (!storedProfile) throw new Error('Your profile could not be loaded. Please try again.');
+
+      const storedData = storedProfile.profile_data && typeof storedProfile.profile_data === 'object'
+        ? storedProfile.profile_data as Record<string, any>
+        : {};
+      const { data: savedProfile, error: saveError } = await supabase
+        .from('profiles')
+        .update({
+          name: updatedProfile.name,
+          email: updatedProfile.email,
+          profile_data: {
+            ...storedData,
+            testerProfile: {
+              ...(storedData.testerProfile || {}),
+              ...updatedProfile
+            }
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+        .select('id')
+        .maybeSingle();
+      if (saveError) throw saveError;
+      if (!savedProfile) throw new Error('Your profile could not be saved. Please try again.');
+    }
+
+    setTesterProfile(updatedProfile);
+  };
+
+  const persistInviteAcceptance = async (app: ProjectApplication) => {
+    const project = projects.find((item) => item.id === app.projectId);
+    const acceptedAt = new Date().toISOString();
+
+    if (isSupabaseConfigured && supabase) {
+      await updateApplicationInSupabase(app.id, {
         invite_status: 'accepted',
         accepted_invite_at: acceptedAt,
         updated_at: acceptedAt
-      }).catch(error => console.error('Unable to persist accepted invite:', error));
+      });
     }
 
-    // Notify client
+    setApplications((previous) => previous.map((item) => item.id === app.id
+      ? {
+        ...item,
+        inviteStatus: 'accepted',
+        acceptedInviteAt: acceptedAt.replace('T', ' ').substring(0, 16)
+      }
+      : item));
+    setPendingInviteAcceptanceId(null);
+
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
@@ -1584,10 +1729,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       void triggerProjectEmail('accepted', app.projectId, app.testerId, app.testerName, app.testerEmail);
     }
 
-    // Auto open workspace
     setActiveWorkspaceProjectId(app.projectId);
     setActiveTab('tasks');
   };
+
+  // 3. Tester accepts invite & starts task
+  const acceptInvite = async (appId: string) => {
+    const app = applications.find(a => a.id === appId);
+    if (!app) return false;
+    if (app.testerId !== testerProfile.id) {
+      window.alert('Sign in to the tester account that received this invitation.');
+      return false;
+    }
+    if (app.inviteStatus === 'accepted') {
+      setActiveWorkspaceProjectId(app.projectId);
+      setActiveTab('tasks');
+      return true;
+    }
+    if (app.inviteStatus !== 'invited') return false;
+    if (!isInviteProfileComplete(testerProfile)) {
+      setPendingInviteAcceptanceId(appId);
+      return false;
+    }
+
+    try {
+      await persistInviteAcceptance(app);
+      return true;
+    } catch (error) {
+      console.error('Unable to persist accepted invite:', error);
+      window.alert(error instanceof Error ? error.message : 'Unable to accept this project invitation. Please try again.');
+      return false;
+    }
+  };
+
+  const completeInviteAcceptance = async (appId: string, details: InviteProfileDetails) => {
+    const app = applications.find((item) => item.id === appId);
+    if (!app || app.testerId !== testerProfile.id || app.inviteStatus !== 'invited' || pendingInviteAcceptanceId !== appId) {
+      throw new Error('This invitation is no longer available for your account.');
+    }
+    const dateOfBirth = new Date(`${details.dateOfBirth}T00:00:00`);
+    if (!details.uTestId.trim() || !details.legalName.trim() || !details.dateOfBirth
+      || Number.isNaN(dateOfBirth.getTime()) || dateOfBirth >= new Date()
+      || !details.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.uTestEmail.trim())) {
+      throw new Error('Complete each field with a valid email address and date of birth to accept the invitation.');
+    }
+
+    await saveInviteProfileDetails({
+      ...details,
+      uTestId: details.uTestId.trim(),
+      legalName: details.legalName.trim(),
+      uTestEmail: details.uTestEmail.trim(),
+      phone: details.phone.trim()
+    });
+    await persistInviteAcceptance(app);
+  };
+
+  const dismissInviteAcceptance = () => setPendingInviteAcceptanceId(null);
 
   const declineInvite = (appId: string) => {
     const app = applications.find(a => a.id === appId);
@@ -2376,6 +2573,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         clientProfile,
         activeWorkspaceProjectId,
         setActiveWorkspaceProjectId,
+        pendingInviteAcceptanceId,
+        dismissInviteAcceptance,
         activeAdminProjectId,
         setActiveAdminProjectId,
         activeTab,
@@ -2396,7 +2595,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resendInvite,
         requestUtestAccountUpdate,
         rejectApplication,
+        inviteTesterToProject,
         acceptInvite,
+        completeInviteAcceptance,
         declineInvite,
         submitBugReport,
         approveBugReport,

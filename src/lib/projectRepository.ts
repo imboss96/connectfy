@@ -217,6 +217,29 @@ export async function fetchApplicationsFromSupabase() {
   return data || [];
 }
 
+export interface RegisteredTester {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function fetchRegisteredTestersFromSupabase(): Promise<RegisteredTester[]> {
+  if (!supabase) throw new Error('Connectfy user directory is not configured.');
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email')
+    .eq('role', 'tester')
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map((profile) => ({
+    id: profile.id,
+    name: profile.name || profile.email?.split('@')[0] || 'Tester',
+    email: profile.email || ''
+  })).filter((profile) => profile.email);
+}
+
 export async function fetchSubmissionsFromSupabase() {
   if (!supabase) return [];
 

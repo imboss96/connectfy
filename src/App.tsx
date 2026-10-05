@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider, InviteProfileDetails, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { ProjectBoard } from './components/ProjectBoard';
 import { TesterDashboard } from './components/TesterDashboard';
@@ -42,6 +42,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
     setActiveTab,
     activeWorkspaceProjectId,
     setActiveWorkspaceProjectId,
+    pendingInviteAcceptanceId,
+    dismissInviteAcceptance,
     testerProfile,
     clientProfile
   } = useApp();
@@ -337,6 +339,12 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
         isOpen={isWalletOpen}
         onClose={() => setIsWalletOpen(false)}
       />
+      {pendingInviteAcceptanceId && (
+        <InviteAcceptanceDialog
+          applicationId={pendingInviteAcceptanceId}
+          onDismiss={dismissInviteAcceptance}
+        />
+      )}
 
       {/* Footer (hidden or compact on mobile) */}
       <footer className="theme-footer hidden md:block border-t border-[#1E2E4E] bg-[#0B132B]/80 py-6 text-center text-xs text-slate-500 mt-12 md:ml-64 md:w-[calc(100%-16rem)]">
@@ -356,6 +364,114 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
   );
 };
 
+const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () => void }> = ({ applicationId, onDismiss }) => {
+  const { applications, projects, testerProfile, completeInviteAcceptance, setActiveTab } = useApp();
+  const application = applications.find((item) => item.id === applicationId);
+  const project = application && projects.find((item) => item.id === application.projectId);
+  const [details, setDetails] = useState<InviteProfileDetails>({
+    uTestId: testerProfile.uTestId || '',
+    legalName: testerProfile.legalName || '',
+    dateOfBirth: testerProfile.dateOfBirth || '',
+    uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
+    phone: testerProfile.phone || ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    setDetails({
+      uTestId: testerProfile.uTestId || '',
+      legalName: testerProfile.legalName || '',
+      dateOfBirth: testerProfile.dateOfBirth || '',
+      uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
+      phone: testerProfile.phone || ''
+    });
+  }, [applicationId, testerProfile]);
+
+  if (!application || !project) return null;
+
+  const dismiss = () => {
+    onDismiss();
+    setActiveTab('tasks');
+    const params = new URLSearchParams(window.location.search);
+    params.delete('application');
+    params.delete('accept');
+    const query = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      await completeInviteAcceptance(applicationId, details);
+      const params = new URLSearchParams(window.location.search);
+      params.delete('application');
+      params.delete('accept');
+      const query = params.toString();
+      window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to save your details and accept the invitation.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateField = (field: keyof InviteProfileDetails) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => setDetails((previous) => ({ ...previous, [field]: event.target.value }));
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4">
+      <div className="my-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-7">
+        <div className="mb-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#007AFF]">Project invitation</p>
+          <h2 className="mt-1 text-xl font-black text-slate-900">Complete your tester details</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            To accept <strong>{project.title}</strong>, confirm the information below. Your profile details are prefilled where available.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>uTest ID</span>
+              <input required value={details.uTestId} onChange={updateField('uTestId')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>Full name as shown on your ID</span>
+              <input required value={details.legalName} onChange={updateField('legalName')} autoComplete="name" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>Date of birth</span>
+              <input required type="date" max={new Date().toISOString().slice(0, 10)} value={details.dateOfBirth} onChange={updateField('dateOfBirth')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>Email address</span>
+              <input required type="email" autoComplete="email" value={details.uTestEmail} onChange={updateField('uTestEmail')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700 sm:col-span-2">
+              <span>Phone number where we can reach you</span>
+              <input required type="tel" autoComplete="tel" value={details.phone} onChange={updateField('phone')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+          </div>
+
+          {errorMessage && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</p>}
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+            <button type="button" onClick={dismiss} disabled={isSaving} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              Not now
+            </button>
+            <button type="submit" disabled={isSaving} className="rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0066EE] disabled:opacity-50">
+              {isSaving ? 'Saving…' : 'Save details & accept invite'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <AppProvider>
@@ -365,7 +481,7 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const { setRole, applications, acceptInvite, testerProfile, setActiveTab, setActiveWorkspaceProjectId } = useApp();
+  const { setRole, applications, acceptInvite, testerProfile, setActiveTab, setActiveWorkspaceProjectId, pendingInviteAcceptanceId } = useApp();
   const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -405,20 +521,25 @@ const AppExperience: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const applicationId = params.get('application');
     const shouldAccept = params.get('accept') === '1';
-    if (!applicationId || !shouldAccept || !testerProfile.id) return;
+    if (!applicationId || !shouldAccept) return;
+    if (!isAuthLoading && screen === 'landing') {
+      setAuthMode('login');
+      setScreen('login');
+      return;
+    }
+    if (screen !== 'app' || !testerProfile.id || pendingInviteAcceptanceId === applicationId) return;
 
     const application = applications.find((item) => item.id === applicationId);
     if (!application || application.testerId !== testerProfile.id) return;
 
-    if (application.inviteStatus !== 'accepted') {
-      acceptInvite(application.id);
-    }
-
-    params.delete('application');
-    params.delete('accept');
-    const query = params.toString();
-    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
-  }, [applications, acceptInvite, testerProfile.id]);
+    void acceptInvite(application.id).then((accepted) => {
+      if (!accepted) return;
+      params.delete('application');
+      params.delete('accept');
+      const query = params.toString();
+      window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    });
+  }, [applications, acceptInvite, testerProfile.id, screen, isAuthLoading, pendingInviteAcceptanceId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

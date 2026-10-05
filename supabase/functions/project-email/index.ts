@@ -140,7 +140,7 @@ const buildHtml = (payload: Record<string, any>) => {
           </div>
           ${applicationDetails}
           ${isLegacySheetReapply ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong>What to do next</strong><p style="margin:10px 0 0;font-size:13px;line-height:1.7;color:#334155;">Please create a new uTest account, then return to Connectfy and apply for the project again using your new uTest ID and email address.</p><p style="margin:12px 0 0;font-size:13px;"><a href="https://www.utest.com/signup" style="color:#0b5cff;font-weight:700;">Create a uTest account</a></p></div>` : ''}
-          ${isLegacySheetReapply ? '' : `<p style="font-size:14px;color:#334155;line-height:1.7;"><strong>${type === 'utest_update_required' ? 'Next steps:' : 'What happens next:'}</strong> ${type === 'utest_update_required' ? 'Create a new uTest account, then use the button below to return to the project and submit a new application with your new account details.' : 'Our team will review your application. If selected, you will receive an invitation with the project instructions. Please keep your uTest account and email accessible.'}</p>`}
+          ${isLegacySheetReapply ? '' : `<p style="font-size:14px;color:#334155;line-height:1.7;"><strong>${type === 'utest_update_required' ? 'Next steps:' : 'What happens next:'}</strong> ${type === 'utest_update_required' ? 'Create a new uTest account, then use the button below to return to the project and submit a new application with your new account details.' : type === 'invite' ? 'Use the button below to sign in and accept the invitation. If any tester details are missing from your profile, you will be asked to complete them before your project workspace opens.' : 'Our team will review your application. If selected, you will receive an invitation with the project instructions. Please keep your uTest account and email accessible.'}</p>`}
           <div style="text-align: center; margin: 24px 0;">
             <a href="${projectLink}" style="display: inline-block; background: #0b5cff; color: white; text-decoration: none; padding: 14px 22px; border-radius: 10px; font-weight: 700; font-size: 14px;">${actionLabel}</a>
           </div>
@@ -192,8 +192,11 @@ const buildText = (payload: Record<string, any>) => {
     description,
     deadline,
     applicationSummary,
+    payload.type === 'invite' ? 'Use the link below to sign in and accept the invitation. Any missing uTest ID, legal name, date of birth, email, or phone details can be completed on the secure Connectfy form before your workspace opens.' : '',
     '',
-    payload.type === 'utest_update_required'
+    payload.type === 'invite'
+      ? `Accept Invite: ${projectLink}`
+      : payload.type === 'utest_update_required'
       ? `Return to the project and reapply: ${projectLink}`
       : isLegacySheetReapply
         ? `Open Connectfy: ${projectLink}`

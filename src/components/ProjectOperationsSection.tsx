@@ -39,6 +39,17 @@ type PayrollScheduleRow = {
   updated_at: string;
 };
 
+type ExchangeRate = {
+  kesPerUsd: number;
+  updatedAt: string;
+};
+
+type ExchangeRateResponse = {
+  result?: string;
+  time_last_update_utc?: string;
+  rates?: { KES?: number };
+};
+
 type OperationsTab = 'overview' | 'participants' | 'completion' | 'onboarding' | 'emails' | 'payroll' | 'integrations';
 
 const OPERATIONS_TABS: { id: OperationsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -83,6 +94,18 @@ const errorMessage = (error: unknown) => {
   return 'Unable to complete the project operation.';
 };
 
+const formatUsd = (amount: number) => new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+}).format(amount);
+
+const formatKes = (amount: number) => `KSh ${new Intl.NumberFormat('en-KE', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+}).format(amount)}`;
+
 export const ProjectOperationsSection: React.FC = () => {
   const { projects, activeAdminProjectId, setActiveAdminProjectId, setActiveTab } = useApp();
   const [activeSection, setActiveSection] = useState<OperationsTab>('overview');
@@ -98,6 +121,9 @@ export const ProjectOperationsSection: React.FC = () => {
   const [payrollRows, setPayrollRows] = useState<PayrollScheduleRow[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollError, setPayrollError] = useState<string | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(false);
+  const [exchangeRateError, setExchangeRateError] = useState<string | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === activeAdminProjectId) || null,
@@ -105,6 +131,36 @@ export const ProjectOperationsSection: React.FC = () => {
   );
   const applauseCsvUrl = toCsvUrl(settings?.applause_sheet_url || '');
   const eligibilityCsvUrl = toCsvUrl(settings?.eligibility_sheet_url || '');
+
+  const loadExchangeRate = useCallback(async (signal?: AbortSignal) => {
+    setExchangeRateLoading(true);
+    setExchangeRateError(null);
+    try {
+      const response = await fetch('https://open.er-api.com/v6/latest/USD', { signal });
+      if (!response.ok) throw new Error(`Exchange-rate service returned HTTP ${response.status}.`);
+      const result = await response.json() as ExchangeRateResponse;
+      const rate = result.rates?.KES;
+      if (result.result !== 'success' || !Number.isFinite(rate) || !rate || rate <= 0) {
+        throw new Error('Exchange-rate service did not return a valid USD to KES rate.');
+      }
+      setExchangeRate({
+        kesPerUsd: rate,
+        updatedAt: result.time_last_update_utc || ''
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('Unable to load current USD/KES exchange rate:', error);
+      setExchangeRateError(errorMessage(error));
+    } finally {
+      if (!signal?.aborted) setExchangeRateLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadExchangeRate(controller.signal);
+    return () => controller.abort();
+  }, [loadExchangeRate]);
 
   const loadSettings = useCallback(async (projectId: string) => {
     if (!supabase) return;
@@ -315,7 +371,7 @@ export const ProjectOperationsSection: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-900">Payout setup</h2>
             <p className="mt-2 text-sm text-slate-600">
               {settings?.payroll_amount && settings.payroll_scheduled_date
-                ? `${settings.payroll_amount.toFixed(2)} per completed participant, scheduled for ${settings.payroll_scheduled_date}.`
+                ? `${formatUsd(Number(settings.payroll_amount))}${exchangeRate ? ` (approximately ${formatKes(Number(settings.payroll_amount) * exchangeRate.kesPerUsd)})` : ''} per completed participant, scheduled for ${settings.payroll_scheduled_date}.`
                 : 'Set this project’s fixed completion amount and payment date in Integrations.'}
             </p>
             <button type="button" onClick={() => setActiveSection('integrations')} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#007AFF]">
@@ -342,6 +398,11 @@ export const ProjectOperationsSection: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-700">
                 Fixed payment per completed participant (USD)
                 <input type="number" min="0" step="0.01" value={payrollAmountInput} onChange={(event) => setPayrollAmountInput(event.target.value)} placeholder="0.00" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none focus:border-[#007AFF]" />
+                <span className="mt-1 block font-normal text-slate-500">
+                  {Number(payrollAmountInput) > 0 && exchangeRate
+                    ? `Approximately ${formatKes(Number(payrollAmountInput) * exchangeRate.kesPerUsd)} at the current rate.`
+                    : 'The USD amount remains the scheduled payroll value.'}
+                </span>
               </label>
               <label className="block text-xs font-semibold text-slate-700">
                 Scheduled payment date
@@ -389,11 +450,27 @@ export const ProjectOperationsSection: React.FC = () => {
               <p className="text-xs text-slate-500">Scheduled payments</p><p className="mt-1 text-2xl font-bold text-slate-900">{scheduledRows.length}</p>
             </article>
             <article className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs text-slate-500">Scheduled total</p><p className="mt-1 text-2xl font-bold text-emerald-700">${scheduledTotal.toFixed(2)}</p>
+              <p className="text-xs text-slate-500">Scheduled total</p>
+              <p className="mt-1 text-xl font-bold text-emerald-700">{formatUsd(scheduledTotal)}</p>
+              {exchangeRate && <p className="mt-1 text-sm font-semibold text-slate-700">{formatKes(scheduledTotal * exchangeRate.kesPerUsd)}</p>}
             </article>
             <article className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs text-slate-500">Per completed participant</p><p className="mt-1 text-2xl font-bold text-slate-900">{settings?.payroll_amount ? `$${Number(settings.payroll_amount).toFixed(2)}` : 'Not set'}</p>
+              <p className="text-xs text-slate-500">Per completed participant</p>
+              <p className="mt-1 text-xl font-bold text-slate-900">{settings?.payroll_amount ? formatUsd(Number(settings.payroll_amount)) : 'Not set'}</p>
+              {settings?.payroll_amount && exchangeRate && <p className="mt-1 text-sm font-semibold text-slate-700">{formatKes(Number(settings.payroll_amount) * exchangeRate.kesPerUsd)}</p>}
             </article>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+            <div>
+              {exchangeRate
+                ? <><strong>Latest-rate conversion estimate:</strong> 1 USD = {formatKes(exchangeRate.kesPerUsd)}{exchangeRate.updatedAt ? ` · Rate updated ${exchangeRate.updatedAt}` : ''} · ExchangeRate-API refreshes its rate daily.</>
+                : <strong>KSh conversions are unavailable until the current USD/KES rate loads.</strong>}
+              {exchangeRateError && <p role="alert" className="mt-1 text-rose-700">Unable to refresh rate: {exchangeRateError}</p>}
+            </div>
+            <button type="button" onClick={() => void loadExchangeRate()} disabled={exchangeRateLoading} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-sky-200 bg-white px-3 py-2 font-semibold text-sky-800 disabled:opacity-50">
+              <RefreshCw className={`h-3.5 w-3.5 ${exchangeRateLoading ? 'animate-spin' : ''}`} />
+              {exchangeRateLoading ? 'Updating rate…' : 'Refresh rate'}
+            </button>
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 p-4">
@@ -403,7 +480,7 @@ export const ProjectOperationsSection: React.FC = () => {
             {payrollError && <p role="alert" className="m-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{payrollError}</p>}
             {payrollLoading && payrollRows.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">Loading payroll schedule...</p>
               : payrollRows.length === 0 ? <p className="p-8 text-center text-sm text-slate-500">No payroll entries yet. Configure payout settings, then sync the project completion sheet.</p>
-                : <div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Tester ID</th><th className="px-4 py-3">Recipient</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Scheduled date</th><th className="px-4 py-3">Schedule status</th></tr></thead><tbody className="divide-y divide-slate-100">{payrollRows.map((row) => <tr key={row.source_key}><td className="px-4 py-3">{row.tester_id || '—'}</td><td className="px-4 py-3">{row.tester_email}</td><td className="px-4 py-3 font-semibold">${Number(row.amount).toFixed(2)}</td><td className="px-4 py-3">{row.scheduled_date}</td><td className="px-4 py-3 capitalize">{row.status}</td></tr>)}</tbody></table></div>}
+                : <div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Tester ID</th><th className="px-4 py-3">Recipient</th><th className="px-4 py-3">Amount (USD / KSh)</th><th className="px-4 py-3">Scheduled date</th><th className="px-4 py-3">Schedule status</th></tr></thead><tbody className="divide-y divide-slate-100">{payrollRows.map((row) => <tr key={row.source_key}><td className="px-4 py-3">{row.tester_id || '—'}</td><td className="px-4 py-3">{row.tester_email}</td><td className="px-4 py-3 font-semibold"><span className="block">{formatUsd(Number(row.amount))}</span>{exchangeRate && <span className="mt-1 block text-slate-600">{formatKes(Number(row.amount) * exchangeRate.kesPerUsd)}</span>}</td><td className="px-4 py-3">{row.scheduled_date}</td><td className="px-4 py-3 capitalize">{row.status}</td></tr>)}</tbody></table></div>}
           </div>
         </section>
       )}
