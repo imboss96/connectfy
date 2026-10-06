@@ -114,7 +114,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
       if (importError) throw importError;
       setLastSynced(new Date());
       setSyncMessage(
-        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts; external sheet users are excluded. Consent-pending reminders can be sent manually to selected matched testers.`
+        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts. Consent-pending reminders can be sent to selected matched testers and external uTest testers.`
       );
       onSynced?.();
     } catch (syncFailure) {
@@ -324,7 +324,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-700">
               <p className="font-semibold">Consent name pending: {pendingConsentRows.length} visible</p>
-              <p className="mt-1 text-slate-500">Select testers to send a payout reminder email with a WhatsApp support link.</p>
+              <p className="mt-1 text-slate-500">Select matched or external testers with an email and uTest ID to send a payout reminder with a WhatsApp support link. External testers are greeted by uTest ID.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

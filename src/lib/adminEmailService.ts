@@ -28,7 +28,7 @@ export type ApprovalEmailLogPage = {
 export type ConsentReminderEmailLog = {
   id: string;
   project_id: string;
-  profile_id: string;
+  profile_id: string | null;
   queued_by: string | null;
   recipient_email: string;
   recipient_name: string;

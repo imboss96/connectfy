@@ -41,6 +41,7 @@ const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'sheet_consent_pending') {
     const name = escapeHtml(payload.toName || 'there');
+    const greeting = payload.externalRecipient ? `Hello uTest tester ${name},` : `Hello ${name},`;
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
@@ -48,7 +49,7 @@ const buildHtml = (payload) => {
     const whatsappLink = /^https:\/\/wa\.me\/254794502268\?text=/i.test(String(payload.whatsappLink || ''))
       ? escapeHtml(payload.whatsappLink)
       : 'https://wa.me/254794502268';
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${name},</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>If you have issues completing the project, our Kenyan support team can help you on WhatsApp.</p><p style="margin:24px 0;"><a href="${whatsappLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#128c7e;color:#fff;text-decoration:none;font-weight:700;">Chat with Kenyan support on WhatsApp</a></p><p style="font-size:12px;color:#64748b;">The WhatsApp message will be prefilled with your uTest ID. Review it before sending.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>If you have issues completing the project, our Kenyan support team can help you on WhatsApp.</p><p style="margin:24px 0;"><a href="${whatsappLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#128c7e;color:#fff;text-decoration:none;font-weight:700;">Chat with Kenyan support on WhatsApp</a></p><p style="font-size:12px;color:#64748b;">The WhatsApp message will be prefilled with your uTest ID. Review it before sending.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
@@ -152,7 +153,7 @@ const buildText = (payload) => {
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
     return [
-      `Hello ${payload.toName || 'there'},`,
+      `${payload.externalRecipient ? 'Hello uTest tester' : 'Hello'} ${payload.toName || 'there'},`,
       '',
       `You are one step away from claiming your payout of ${payout}.`,
       `Please complete the remaining consent step for ${payload.projectTitle || 'your project'}.`,
@@ -642,7 +643,7 @@ const processOneApplauseApprovalEmail = async () => {
   if (!job) return false;
 
   try {
-    if (!job.id || !job.project_id || !job.profile_id || !job.recipient_email || !job.recipient_name) {
+    if (!job.id || !job.project_id || !job.recipient_email || !job.recipient_name) {
       throw new Error('Applause completion approval email has an invalid outbox payload.');
     }
     const projectLink = new URL(process.env.APP_URL || 'https://connectfy.tech');
@@ -713,6 +714,7 @@ const processOneApplauseConsentReminderEmail = async () => {
       type: 'sheet_consent_pending',
       toEmail: job.recipient_email,
       toName: job.recipient_name,
+      externalRecipient: Boolean(job.external_recipient),
       projectTitle: job.project_title,
       projectAmount: Number(job.project_amount || 0),
       projectLockDate: job.project_lock_date,
@@ -1039,7 +1041,7 @@ app.get('/api/admin/applause-consent-reminder-emails', async (req, res) => {
 
     const rows = await callSupabaseRest(
       `project_applause_consent_reminder_email_outbox?project_id=eq.${encodeURIComponent(projectId)}`
-      + '&select=id,project_id,profile_id,queued_by,source_key,recipient_email,recipient_name,project_title,status,attempt_count,provider_message_id,last_error,created_at,updated_at,sent_at'
+      + '&select=id,project_id,profile_id,external_recipient,queued_by,source_key,recipient_email,recipient_name,project_title,status,attempt_count,provider_message_id,last_error,created_at,updated_at,sent_at'
       + '&order=created_at.desc&limit=1000'
     );
     return res.json({ ok: true, emails: Array.isArray(rows) ? rows : [] });
