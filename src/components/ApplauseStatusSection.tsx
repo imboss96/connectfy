@@ -120,8 +120,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
     } catch (syncFailure) {
       if (syncFailure instanceof DOMException && syncFailure.name === 'AbortError') return;
       syncError = describeError(syncFailure);
-      console.error('Unable to sync Applause project statuses:', {
-        message: syncError,
+      console.error(`Unable to sync Applause project statuses: ${syncError}`, {
         code: syncFailure && typeof syncFailure === 'object' && 'code' in syncFailure ? syncFailure.code : undefined,
         details: syncFailure && typeof syncFailure === 'object' && 'details' in syncFailure ? syncFailure.details : undefined,
         hint: syncFailure && typeof syncFailure === 'object' && 'hint' in syncFailure ? syncFailure.hint : undefined,

@@ -8,54 +8,21 @@ interface ConnectfyLogoProps {
 
 export const ConnectfyLogo: React.FC<ConnectfyLogoProps> = ({
   className = '',
-  showSubtitle = true,
   size = 'md'
 }) => {
-  const iconSize = size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
-  const fontSize = size === 'sm' ? 'text-base' : size === 'lg' ? 'text-2xl' : 'text-lg';
+  const dimensions = size === 'sm'
+    ? 'h-[54px] w-[98px]'
+    : size === 'lg'
+      ? 'h-[92px] w-[166px]'
+      : 'h-[70px] w-[126px]';
 
   return (
-    <div className={`flex items-center space-x-2.5 select-none ${className}`}>
-      {/* Connectfy cyan and navy brand mark */}
-      <div
-        className={`${iconSize} connectfy-mark rounded-xl bg-[#0b0e12] p-0.5 shadow-md shadow-[#00A3E0]/20 flex items-center justify-center shrink-0`}
-      >
-        <div className="w-full h-full bg-[#0B132B] rounded-[10px] flex items-center justify-center relative overflow-hidden">
-          {/* Subtle cyan glow */}
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#00A3E0]/30 rounded-full blur-xs" />
-          
-          {/* Stylized lowercase 'u' with tester checkmark terminal */}
-          <svg
-            viewBox="0 0 24 24"
-            className="w-5 h-5"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            {/* Lowercase 'u' curve */}
-            <path
-              d="M6 7V13C6 16.3137 8.68629 19 12 19C15.3137 19 18 16.3137 18 13V7"
-              stroke="#00A3E0"
-              strokeWidth="2.75"
-              strokeLinecap="round"
-            />
-            {/* Terminal QA checkmark accent */}
-            <path
-              d="M18 10L18 17"
-              stroke="#38BDF8"
-              strokeWidth="2.75"
-              strokeLinecap="round"
-            />
-            <circle cx="18" cy="6" r="1.5" fill="#38BDF8" />
-          </svg>
-        </div>
-      </div>
-
-      {/* Connectfy wordmark */}
-      <div className="leading-none">
-        <div className={`font-black tracking-tight flex items-baseline gap-0.5 ${fontSize}`}>
-          <span className="connectfy-wordmark text-white font-black">Connectfy</span>
-        </div>
-      </div>
-    </div>
+    <span className={`inline-flex items-center justify-center overflow-hidden rounded-lg bg-white ${className}`}>
+      <img
+        src="/connectfy-brand.svg"
+        alt="Connectfy"
+        className={`${dimensions} object-contain`}
+      />
+    </span>
   );
 };

@@ -52,15 +52,18 @@ const buildHtml = (payload) => {
   }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
-    const projectTitle = escapeHtml(payload.projectTitle || 'your project');
-    const projectCompany = escapeHtml(payload.projectCompany || 'Connectfy');
-    const approvedAmount = Number(payload.approvedAmount || 0);
-    const amountNotice = Number.isFinite(approvedAmount) && approvedAmount > 0
-      ? `<p style="margin:14px 0 0;font-size:15px;color:#047857;"><strong>$${approvedAmount.toFixed(2)} USD</strong> has been added to your Connectfy wallet.</p>`
+    const title = escapeHtml(payload.projectTitle || 'your project');
+    const company = escapeHtml(payload.projectCompany || 'Connectfy');
+    const amount = Number(payload.approvedAmount || 0);
+    const amountLine = Number.isFinite(amount) && amount > 0
+      ? `<p style="margin:0 0 12px;"><strong>Approved amount:</strong> $${amount.toFixed(2)} USD</p>`
       : '';
-    const description = `${escapeHtml(payload.projectDescription || 'Your project completion has been verified.')}${amountNotice}`;
-    const deadline = payload.projectDeadline ? `<p style="margin:0 0 18px;font-size:13px;color:#475569;"><strong>Project deadline:</strong> ${escapeHtml(payload.projectDeadline)}</p>` : '';
-    return `<div style="margin:0;padding:20px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:14px;overflow:hidden;"><div style="padding:24px;"><p style="margin:0 0 16px;font-size:14px;">Hello ${name},</p><h1 style="margin:0 0 12px;font-size:21px;color:#10213b;">Your project completion is approved</h1><p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155;">We’ve confirmed your <strong>${projectTitle}</strong> completion from the uTest project records. Thank you for completing this project with ${projectCompany}.</p><div style="margin:18px 0;padding:14px 16px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;font-size:13px;line-height:1.6;">${description}</div>${deadline}<p style="margin:0 0 20px;font-size:13px;line-height:1.7;color:#475569;">If you have questions about your project status, please contact our support team.</p><div style="text-align:center;margin:0 0 20px;"><a href="${escapeHtml(projectLink)}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">Open Connectfy</a></div><p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">Best,<br>Connectfy Team</p><p style="margin:14px 0 0;font-size:12px;color:#64748b;">Need help? Contact support@connectfy.tech. Connectfy will never ask for your password or payment details.</p></div></div></div>`;
+    const sentDate = escapeHtml(payload.expectedPaymentDate || 'To be confirmed');
+    const deadline = payload.projectDeadline
+      ? `<p style="margin:0 0 16px;"><strong>Deadline:</strong> ${escapeHtml(payload.projectDeadline)}</p>`
+      : '';
+    const logoUrl = escapeHtml(new URL('/connectfy-brand.svg', process.env.APP_URL || 'https://connectfy.tech').toString());
+    return `<div style="margin:0;padding:24px 12px;background:#f1f3f5;font-family:Arial,Helvetica,sans-serif;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;"><div style="padding:10px 18px;background:#080808;"><img src="${logoUrl}" width="112" height="62" alt="Connectfy" style="display:block;width:112px;height:62px;object-fit:contain;background:#fff;border-radius:3px;"></div><div style="height:8px;background:#00a6bd;font-size:0;line-height:0;">&nbsp;</div><div style="padding:20px 18px 24px;font-size:13px;line-height:1.55;"><p style="margin:0 0 16px;">Hi ${name},</p><p style="margin:0 0 16px;">Your project completion has been approved. Thank you for completing <strong>${title}</strong> with ${company}.</p><p style="margin:0 0 12px;font-weight:700;">${title}</p><p style="margin:0 0 16px;color:#334155;">${escapeHtml(payload.projectDescription || 'Your project completion has been confirmed.')}</p>${deadline}<div style="margin:16px 0;padding:14px 16px;background:#f8fafc;border-left:3px solid #00a6bd;color:#172b4d;">${amountLine}<p style="margin:0 0 12px;"><strong>Expected payment date:</strong> ${sentDate}</p><p style="margin:0;">Your payment will be sent to the payment profile linked to your Connectfy account. Please make sure your payment details are up to date.</p></div><p style="margin:0 0 16px;">You can sign in to Connectfy to review your project and payment details.</p><p style="margin:0 0 16px;"><a href="${escapeHtml(projectLink)}" style="color:#007f95;font-weight:700;">Open your Connectfy account</a></p><p style="margin:0 0 14px;">Thanks,<br>The Connectfy Team</p><p style="margin:0;color:#64748b;font-size:11px;">Need help? Contact support@connectfy.tech.</p></div><div style="height:8px;background:#00a6bd;font-size:0;line-height:0;">&nbsp;</div></div></div>`;
   }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
@@ -167,7 +170,9 @@ const buildText = (payload) => {
       `Hello ${payload.toName || 'there'},`,
       '',
       `Your ${payload.projectTitle || 'project'} completion has been approved. We confirmed it from the uTest project records for ${payload.projectCompany || 'Connectfy'}.`,
-      Number(payload.approvedAmount) > 0 ? `$${Number(payload.approvedAmount).toFixed(2)} USD has been added to your Connectfy wallet.` : '',
+      Number(payload.approvedAmount) > 0 ? `Approved amount: $${Number(payload.approvedAmount).toFixed(2)} USD.` : '',
+      `Expected payment date: ${payload.expectedPaymentDate || 'To be confirmed'}.`,
+      'Payment will be sent to the payment profile linked to your Connectfy account. Please make sure your payment details are up to date.',
       payload.projectDescription || '',
       payload.projectDeadline ? `Project deadline: ${payload.projectDeadline}` : '',
       '',
@@ -649,6 +654,7 @@ const processOneApplauseApprovalEmail = async () => {
       projectTitle: job.project_title,
       projectCompany: job.project_company,
       approvedAmount: Number(job.approved_amount || 0),
+      expectedPaymentDate: job.expected_payment_date || '',
       projectDescription: job.project_description,
       projectDeadline: job.project_deadline,
       actionUrl: projectLink.toString(),

@@ -64,7 +64,7 @@ begin
     project.title,
     project.company,
     project.short_description,
-    coalesce(project.deadline, '')
+    coalesce(project.deadline::text, '')
   from public.projects as project
   where project.id = new.project_id
   on conflict (project_id, profile_id) do nothing;
