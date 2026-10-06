@@ -108,7 +108,9 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
       );
       if (importError) throw importError;
       setLastSynced(new Date());
-      setSyncMessage(`Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records to the database.`);
+      setSyncMessage(
+        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts; external sheet users are excluded. Approval emails are sent only once per project and member.`
+      );
       onSynced?.();
     } catch (syncFailure) {
       if (syncFailure instanceof DOMException && syncFailure.name === 'AbortError') return;

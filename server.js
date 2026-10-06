@@ -20,6 +20,13 @@ const app = express();
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
 const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply']);
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+})[character]);
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -32,10 +39,42 @@ const allowedOrigins = [
 
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'sheet_project_approved') {
+    const name = escapeHtml(payload.toName || 'there');
+    const projectTitle = escapeHtml(payload.projectTitle || 'your project');
+    const projectCompany = escapeHtml(payload.projectCompany || 'Connectfy');
+    const description = escapeHtml(payload.projectDescription || 'Your project completion has been verified.');
+    const deadline = payload.projectDeadline ? `<p style="margin:0 0 18px;font-size:13px;color:#475569;"><strong>Project deadline:</strong> ${escapeHtml(payload.projectDeadline)}</p>` : '';
+    return `<div style="margin:0;padding:20px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:14px;overflow:hidden;"><div style="padding:24px;"><p style="margin:0 0 16px;font-size:14px;">Hello ${name},</p><h1 style="margin:0 0 12px;font-size:21px;color:#10213b;">Your project completion is approved</h1><p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155;">We’ve confirmed your <strong>${projectTitle}</strong> completion from the uTest project records. Thank you for completing this project with ${projectCompany}.</p><div style="margin:18px 0;padding:14px 16px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;font-size:13px;line-height:1.6;">${description}</div>${deadline}<p style="margin:0 0 20px;font-size:13px;line-height:1.7;color:#475569;">If you have questions about your project status, please contact our support team.</p><div style="text-align:center;margin:0 0 20px;"><a href="${escapeHtml(projectLink)}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">Open Connectfy</a></div><p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">Best,<br>Connectfy Team</p><p style="margin:14px 0 0;font-size:12px;color:#64748b;">Need help? Contact support@connectfy.tech. Connectfy will never ask for your password or payment details.</p></div></div></div>`;
+  }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
   }
   if (payload.type === 'invite') return buildProjectApprovalEmailHtml({ ...payload, projectLink });
+  if (payload.type === 'application') {
+    const fields = [
+      ['Application reference', payload.applicationReference],
+      ['Applicant', payload.applicantFullName],
+      ['Country', payload.applicantCountry],
+      ['Device', payload.applicantDevice || payload.applicantSmartphone],
+      ['uTest ID', payload.uTestId],
+      ['uTest email', payload.uTestEmail],
+      ['Submitted', payload.submittedAt]
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
+    const details = fields.map(([label, value]) =>
+      `<tr><td style="padding:9px 0;color:#64748b;border-bottom:1px solid #e8eef5;">${escapeHtml(label)}</td><td style="padding:9px 0;color:#172b4d;font-weight:600;text-align:right;border-bottom:1px solid #e8eef5;">${escapeHtml(value)}</td></tr>`
+    ).join('');
+    const projectTitle = escapeHtml(payload.projectTitle || 'Project opportunity');
+    const projectCompany = escapeHtml(payload.projectCompany || 'Connectfy');
+    const projectDescription = String(payload.projectDescription || '').replace(/\s+/g, ' ').trim().slice(0, 260);
+    const projectDeadline = String(payload.projectDeadline || '').trim();
+    const safeName = escapeHtml(payload.toName || 'Tester');
+    const safeLink = /^https?:\/\//i.test(projectLink) ? escapeHtml(projectLink) : 'https://connectfy.tech';
+    return `<div style="margin:0;padding:28px 16px;background:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#172b4d;"><div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 28px;background:#0b1b35;color:#fff;font-size:18px;font-weight:700;letter-spacing:.2px;">Connectfy</div><div style="padding:28px;"><p style="margin:0 0 12px;font-size:15px;">Hello ${safeName},</p><h1 style="margin:0 0 12px;font-size:23px;line-height:1.3;color:#10213b;">Application received</h1><p style="margin:0 0 22px;font-size:14px;line-height:1.7;color:#475569;">Thank you for applying to <strong>${projectTitle}</strong>${projectCompany ? ` with ${projectCompany}` : ''}. Your application has been submitted successfully and is now under review.</p>${projectDescription ? `<div style="margin:0 0 20px;"><h2 style="margin:0 0 7px;font-size:15px;color:#10213b;">About this project</h2><p style="margin:0;font-size:13px;line-height:1.7;color:#475569;">${escapeHtml(projectDescription)}</p></div>` : ''}${projectDeadline ? `<p style="margin:0 0 18px;font-size:13px;color:#475569;"><strong>Application deadline:</strong> ${escapeHtml(projectDeadline)}</p>` : ''}${details ? `<div style="margin:22px 0;padding:16px 18px;border:1px solid #e5ebf3;border-radius:10px;background:#f8fafc;"><h2 style="margin:0 0 8px;font-size:14px;color:#10213b;">Application details</h2><table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">${details}</table></div>` : ''}<p style="margin:0 0 22px;font-size:13px;line-height:1.7;color:#475569;">Our team will review your application and contact you if you are selected. You can view the project and check for updates in your Connectfy account.</p><div style="text-align:center;margin:26px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:#0b5cff;color:#fff;text-decoration:none;font-size:14px;font-weight:700;">View project</a></div><p style="margin:0;font-size:12px;line-height:1.7;color:#64748b;">Questions? Contact <a href="mailto:${escapeHtml(payload.supportEmail || 'support@connectfy.tech')}" style="color:#0b5cff;text-decoration:none;">${escapeHtml(payload.supportEmail || 'support@connectfy.tech')}</a>.</p><p style="margin:20px 0 0;font-size:13px;color:#475569;">Best regards,<br><strong>The Connectfy Team</strong></p></div></div></div>`;
+  }
+  if (payload.type === 'submission_approved') {
+    return `<div style="margin:0;padding:24px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:12px;padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'Tester')},</p><h2>Your project submission has been approved</h2><p>Your work, “${escapeHtml(payload.submissionTitle)}”, for <strong>${escapeHtml(payload.projectTitle)}</strong> has been approved.</p><p style="font-size:18px;font-weight:700;color:#047857;">$${Number(payload.approvedAmount || 0).toFixed(2)} has been credited to your Connectfy wallet.</p><p>You can sign in to view your wallet and submission details.</p><p>Best,<br>Connectfy Team</p></div></div>`;
+  }
   const projectTitle = payload.projectTitle || 'Connectfy project';
   const projectCompany = payload.projectCompany || 'Connectfy';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
@@ -45,11 +84,9 @@ const buildHtml = (payload) => {
     : [];
   const consentLink = resources[0]?.url || '';
   const isLegacySheetReapply = payload.type === 'legacy_sheet_reapply';
-  const applicationDetails = payload.type === 'application'
-    ? `<div style="background:#f8fbff;border:1px solid #dbeafe;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#0b5cff;">Application summary</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#334155;">Application reference: ${payload.applicationReference || 'Pending'}<br>Country: ${payload.applicantCountry || 'Not provided'}<br>Device: ${payload.applicantDevice || 'Not provided'}<br>uTest ID: ${payload.uTestId || 'Not provided'}<br>uTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}<br>Submitted: ${payload.submittedAt || 'Just now'}</p></div><div style="background:#eff6ff;border-left:4px solid #0b5cff;border-radius:8px;padding:14px 16px;margin:20px 0;font-size:13px;line-height:1.7;color:#1e3a8a;"><strong>Payment processing:</strong> Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided in your application.</div>`
-    : payload.type === 'utest_update_required'
-      ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">Thank you for your interest in this project. We cannot move forward with your current application because the project requires a valid uTest account created within the last 7 days. Please create a new uTest account at <a href="https://www.utest.com/signup" style="color:#0b5cff;font-weight:700;">uTest account registration</a>, then return to Connectfy and reapply using the new account's uTest ID and email. Your application has been reopened for reapplication while the project is accepting applicants. Watch the setup guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff; font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
-      : '';
+  const applicationDetails = payload.type === 'utest_update_required'
+    ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:16px 18px;margin:20px 0;"><strong style="color:#9a4d00;">Action required</strong><p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#7c2d12;">Thank you for your interest in this project. We cannot move forward with your current application because the project requires a valid uTest account created within the last 7 days. Please create a new uTest account at <a href="https://www.utest.com/signup" style="color:#0b5cff;font-weight:700;">uTest account registration</a>, then return to Connectfy and reapply using the new account's uTest ID and email. Your application has been reopened for reapplication while the project is accepting applicants. Watch the setup guide here: <a href="https://www.youtube.com/watch?v=F_XmEVQZaHc" style="color:#0b5cff;font-weight:700;">https://www.youtube.com/watch?v=F_XmEVQZaHc</a></p></div>`
+    : '';
   const type = payload.type === 'invite' ? 'invite' : payload.type || 'application';
   const actionLabel = type === 'invite' ? 'Accept Invite' : type === 'utest_update_required' ? 'Return to Project & Reapply' : isLegacySheetReapply ? 'Open Connectfy' : 'Open Project';
   const greetingText = type === 'invite'
@@ -93,21 +130,77 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'sheet_project_approved') {
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      `Your ${payload.projectTitle || 'project'} completion has been approved. We confirmed it from the uTest project records for ${payload.projectCompany || 'Connectfy'}.`,
+      payload.projectDescription || '',
+      payload.projectDeadline ? `Project deadline: ${payload.projectDeadline}` : '',
+      '',
+      `Open Connectfy: ${projectLink}`,
+      'Questions? Contact support@connectfy.tech.',
+      '',
+      'Best,',
+      'Connectfy Team'
+    ].filter(Boolean).join('\n');
+  }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailText(payload.toName, projectLink, payload.supportEmail);
   }
   if (payload.type === 'invite') return buildProjectApprovalEmailText({ ...payload, projectLink });
+  if (payload.type === 'application') {
+    const fields = [
+      ['Application reference', payload.applicationReference],
+      ['Applicant', payload.applicantFullName],
+      ['Country', payload.applicantCountry],
+      ['Device', payload.applicantDevice || payload.applicantSmartphone],
+      ['uTest ID', payload.uTestId],
+      ['uTest email', payload.uTestEmail],
+      ['Submitted', payload.submittedAt]
+    ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
+    const projectDescription = String(payload.projectDescription || '').replace(/\s+/g, ' ').trim().slice(0, 260);
+    return [
+      `Hello ${payload.toName || 'Tester'},`,
+      '',
+      'APPLICATION RECEIVED',
+      '',
+      `Thank you for applying to ${payload.projectTitle || 'the project'}${payload.projectCompany ? ` with ${payload.projectCompany}` : ''}. Your application has been submitted successfully and is now under review.`,
+      ...(projectDescription ? ['', 'ABOUT THIS PROJECT', projectDescription] : []),
+      ...(payload.projectDeadline ? ['', `Application deadline: ${payload.projectDeadline}`] : []),
+      ...(fields.length ? ['', 'APPLICATION DETAILS', ...fields.map(([label, value]) => `${label}: ${value}`)] : []),
+      '',
+      'Our team will review your application and contact you if you are selected. You can view the project and check for updates in your Connectfy account.',
+      '',
+      `View project: ${projectLink}`,
+      `Questions? Contact ${payload.supportEmail || 'support@connectfy.tech'}.`,
+      '',
+      'Best regards,',
+      'The Connectfy Team'
+    ].join('\n');
+  }
+  if (payload.type === 'submission_approved') {
+    return [
+      `Hello ${payload.toName || 'Tester'},`,
+      '',
+      `Your project submission "${payload.submissionTitle}" for "${payload.projectTitle}" has been approved.`,
+      `$${Number(payload.approvedAmount || 0).toFixed(2)} has been credited to your Connectfy wallet.`,
+      '',
+      'Sign in to Connectfy to view your wallet and submission details.',
+      '',
+      'Best,',
+      'Connectfy Team'
+    ].join('\n');
+  }
   const projectCompany = payload.projectCompany || 'Connectfy';
   const deadline = payload.projectDeadline ? `Deadline: ${payload.projectDeadline}` : 'Deadline: To be confirmed';
   const description = String(payload.projectDescription || 'No summary provided yet.').replace(/\s+/g, ' ').trim().slice(0, 260);
   const resources = Array.isArray(payload.projectResources) ? payload.projectResources.slice(0, 4) : [];
   const consentLink = resources[0]?.url || '';
   const isLegacySheetReapply = payload.type === 'legacy_sheet_reapply';
-  const applicationSummary = payload.type === 'application'
-    ? `Application summary:\nCountry: ${payload.applicantCountry || 'Not provided'}\nDevice: ${payload.applicantDevice || 'Not provided'}\nuTest ID: ${payload.uTestId || 'Not provided'}\nuTest email: ${payload.uTestEmail || payload.toEmail || 'Not provided'}\nSubmitted: ${payload.submittedAt || 'Just now'}\n\nPayment processing: Connectfy does not collect participant payments directly. Approved payments are processed through uTest using the uTest ID and email provided.\n\nWhat happens next: Our team will review your application. If selected, you will receive an invitation with the project instructions.`
-    : payload.type === 'utest_update_required'
-      ? `Action required:\nThank you for your interest in this project. We cannot move forward with your current application because the project requires a valid uTest account created within the last 7 days. Please create a new uTest account, then return to Connectfy and reapply using the new account's uTest ID and email. Your application has been reopened for reapplication while the project is accepting applicants.`
-      : '';
+  const applicationSummary = payload.type === 'utest_update_required'
+    ? `Action required:\nThank you for your interest in this project. We cannot move forward with your current application because the project requires a valid uTest account created within the last 7 days. Please create a new uTest account, then return to Connectfy and reapply using the new account's uTest ID and email. Your application has been reopened for reapplication while the project is accepting applicants.`
+    : '';
 
   return [
     `Hello ${payload.toName || 'Tester'},`,
@@ -146,6 +239,12 @@ const buildText = (payload) => {
 
 const projectEmailSubject = (payload, type) => type === 'invite'
   ? buildProjectApprovalEmailSubject(payload.projectTitle)
+  : type === 'application'
+    ? `Application received: ${payload.projectTitle || 'Connectfy project'}`
+  : type === 'submission_approved'
+    ? `Project submission approved: ${payload.projectTitle || 'Connectfy project'}`
+  : type === 'sheet_project_approved'
+    ? `Project completion approved: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'accepted'
     ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
     : type === 'rejected'
@@ -162,8 +261,8 @@ const sendEmailThroughBrevo = async (payload, type) => {
   const brevoApiKey = process.env.BREVO_API_KEY;
   if (!brevoApiKey) throw new Error('Missing BREVO_API_KEY');
 
-  const toEmail = String(payload.toEmail || '').trim();
-  const toName = String(payload.toName || '').trim();
+  let toEmail = String(payload.toEmail || '').trim();
+  let toName = String(payload.toName || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) throw new Error('Invalid recipient email');
   if (!toName) throw new Error('Recipient name is required');
 
@@ -206,6 +305,7 @@ const supabaseServiceUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABAS
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const outboxWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && process.env.BREVO_API_KEY);
 let outboxWorkerBusy = false;
+let paypalPayoutPollBusy = false;
 let cachedKesRate = null;
 
 const callSupabaseRest = async (path, options = {}) => {
@@ -312,6 +412,69 @@ const getMpesaAccessToken = async (baseUrl) => {
   const body = JSON.parse(text);
   if (!body.access_token) throw new Error('Safaricom token response did not include an access token.');
   return body.access_token;
+};
+
+const getPayPalConfiguration = () => {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('PayPal payouts are not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET on the backend.');
+  }
+  const environment = (process.env.PAYPAL_ENV || 'sandbox').toLowerCase();
+  if (environment !== 'sandbox' && environment !== 'live') {
+    throw new Error('PAYPAL_ENV must be either sandbox or live.');
+  }
+  return {
+    clientId,
+    clientSecret,
+    apiBaseUrl: environment === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'
+  };
+};
+
+const getPayPalAccessToken = async (configuration) => {
+  const credentials = Buffer.from(`${configuration.clientId}:${configuration.clientSecret}`).toString('base64');
+  const response = await fetch(`${configuration.apiBaseUrl}/v1/oauth2/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `******`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: 'grant_type=client_credentials',
+    signal: AbortSignal.timeout(15000)
+  });
+  const responseText = await response.text();
+  let body;
+  try {
+    body = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error('PayPal returned an invalid access-token response.');
+  }
+  if (!response.ok || !body.access_token) {
+    throw new Error(`PayPal authentication failed (${response.status}): ${body.error_description || responseText}`);
+  }
+  return body.access_token;
+};
+
+const callPayPalApi = async (configuration, accessToken, path, options = {}) => {
+  const response = await fetch(`${configuration.apiBaseUrl}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `******`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    signal: options.signal || AbortSignal.timeout(20000)
+  });
+  const responseText = await response.text();
+  let body = {};
+  if (responseText) {
+    try {
+      body = JSON.parse(responseText);
+    } catch {
+      throw new Error(`PayPal returned an invalid response (${response.status}).`);
+    }
+  }
+  return { response, body, responseText };
 };
 
 const updatePayoutCallback = async (body, timedOut) => {
@@ -433,17 +596,147 @@ const processOneProjectEmail = async () => {
   return true;
 };
 
+const processOneApplauseApprovalEmail = async () => {
+  const claimed = await callOutboxRpc('claim_project_applause_approval_email', {});
+  const job = Array.isArray(claimed) ? claimed[0] : null;
+  if (!job) return false;
+
+  try {
+    if (!job.id || !job.project_id || !job.profile_id || !job.recipient_email || !job.recipient_name) {
+      throw new Error('Applause completion approval email has an invalid outbox payload.');
+    }
+    const projectLink = new URL(process.env.APP_URL || 'https://connectfy.tech');
+    projectLink.searchParams.set('project', job.project_id);
+    const result = await sendEmailThroughBrevo({
+      type: 'sheet_project_approved',
+      toEmail: job.recipient_email,
+      toName: job.recipient_name,
+      projectTitle: job.project_title,
+      projectCompany: job.project_company,
+      projectDescription: job.project_description,
+      projectDeadline: job.project_deadline,
+      actionUrl: projectLink.toString(),
+      projectLink: projectLink.toString(),
+      supportEmail: 'support@connectfy.tech'
+    }, 'sheet_project_approved');
+    await callOutboxRpc('complete_project_applause_approval_email', {
+      p_outbox_id: job.id,
+      p_succeeded: true,
+      p_provider_message_id: result.messageId,
+      p_error: null
+    });
+    console.info('Applause project completion approval email delivered.', {
+      outboxId: job.id,
+      projectId: job.project_id,
+      profileId: job.profile_id,
+      subject: result.subject
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown Applause approval email delivery error';
+    try {
+      await callOutboxRpc('complete_project_applause_approval_email', {
+        p_outbox_id: job.id,
+        p_succeeded: false,
+        p_provider_message_id: null,
+        p_error: message
+      });
+    } catch (completionError) {
+      console.error('Unable to record Applause approval email delivery failure:', completionError);
+      throw completionError;
+    }
+    console.error('Applause approval email delivery failed; retry policy applied.', {
+      outboxId: job.id,
+      projectId: job.project_id,
+      profileId: job.profile_id,
+      attemptCount: job.attempt_count,
+      error: message
+    });
+  }
+  return true;
+};
+
 const pollProjectEmailOutbox = async () => {
   if (!outboxWorkerEnabled || outboxWorkerBusy) return;
   outboxWorkerBusy = true;
   try {
-    while (await processOneProjectEmail()) {
-      // Drain available jobs without blocking concurrent polls.
+    while (true) {
+      const processedProjectEmail = await processOneProjectEmail();
+      const processedApplauseEmail = await processOneApplauseApprovalEmail();
+      if (!processedProjectEmail && !processedApplauseEmail) break;
     }
   } catch (error) {
     console.error('Project email outbox poll failed:', error);
   } finally {
     outboxWorkerBusy = false;
+  }
+};
+
+const pollPayPalPayouts = async () => {
+  if (!process.env.PAYPAL_CLIENT_ID
+    || !process.env.PAYPAL_CLIENT_SECRET
+    || !process.env.SUPABASE_URL
+    || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  if (paypalPayoutPollBusy) return;
+  paypalPayoutPollBusy = true;
+  try {
+    const payouts = await callSupabaseRest(
+      'payout_requests?method=eq.PayPal&status=eq.processing&paypal_payout_batch_id=not.is.null&select=id,paypal_payout_batch_id'
+    );
+    if (!Array.isArray(payouts) || payouts.length === 0) return;
+
+    const configuration = getPayPalConfiguration();
+    const accessToken = await getPayPalAccessToken(configuration);
+    for (const payout of payouts) {
+      try {
+        const { response, body } = await callPayPalApi(
+          configuration,
+          accessToken,
+          `/v1/payments/payouts/${encodeURIComponent(payout.paypal_payout_batch_id)}?fields=items&page=1&page_size=100`
+        );
+        if (!response.ok) {
+          console.error('Unable to reconcile PayPal payout batch; payout remains processing.', {
+            payoutId: payout.id,
+            batchId: payout.paypal_payout_batch_id,
+            status: response.status,
+            response: body
+          });
+          continue;
+        }
+
+        const batchStatus = body?.batch_header?.batch_status;
+        const item = body?.items?.[0];
+        const itemStatus = item?.transaction_status;
+        let finalStatus = null;
+        if (itemStatus === 'SUCCESS') finalStatus = 'completed';
+        else if (['FAILED', 'RETURNED', 'BLOCKED', 'REFUNDED'].includes(itemStatus)
+          || ['DENIED', 'CANCELED'].includes(batchStatus)) finalStatus = 'failed';
+
+        if (!finalStatus) continue;
+        await callSupabaseRest(`payout_requests?id=eq.${encodeURIComponent(payout.id)}&status=eq.processing`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            status: finalStatus,
+            completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
+            failure_reason: finalStatus === 'failed'
+              ? `PayPal payout ${itemStatus || batchStatus || 'failed'}.`
+              : null,
+            paypal_result: body,
+            updated_at: new Date().toISOString()
+          })
+        });
+      } catch (error) {
+        console.error('Unable to reconcile PayPal payout; payout remains processing.', {
+          payoutId: payout.id,
+          batchId: payout.paypal_payout_batch_id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  } catch (error) {
+    console.error('PayPal payout reconciliation poll failed:', error);
+  } finally {
+    paypalPayoutPollBusy = false;
   }
 };
 
@@ -471,7 +764,10 @@ app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'connectfy-email-backend',
-    approvalEmailOutbox: outboxWorkerEnabled ? 'enabled' : 'disabled'
+    approvalEmailOutbox: outboxWorkerEnabled ? 'enabled' : 'disabled',
+    paypalPayouts: process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET
+      ? (process.env.PAYPAL_ENV || 'sandbox').toLowerCase()
+      : 'disabled'
   });
 });
 
@@ -508,9 +804,12 @@ app.post('/api/payout-requests', async (req, res) => {
     if (!Number.isFinite(amount) || amount < 10 || amount > 100000) {
       return res.status(400).json({ ok: false, message: 'Payout amount must be between USD 10 and USD 100,000.' });
     }
-    const supportedMethods = ['PayPal', 'Payoneer', 'Direct Bank Wire', 'Wise', 'Safaricom M-Pesa'];
+    const supportedMethods = ['PayPal', 'Safaricom M-Pesa'];
     if (!supportedMethods.includes(method)) return res.status(400).json({ ok: false, message: 'Unsupported payout method.' });
     if (!destinationAccount) return res.status(400).json({ ok: false, message: 'Enter your payout destination.' });
+    if (method === 'PayPal' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destinationAccount)) {
+      return res.status(400).json({ ok: false, message: 'Enter a valid PayPal recipient email address.' });
+    }
 
     let rate = null;
     let phone = destinationAccount;
@@ -576,19 +875,112 @@ app.post('/api/admin/payout-requests/:id/approve', async (req, res) => {
       return res.status(409).json({ ok: false, message: 'This payout is no longer pending review.' });
     }
     payout = rows[0];
-    if (payout.method !== 'Safaricom M-Pesa') {
-      await callSupabaseRest(`payout_requests?id=eq.${encodeURIComponent(payout.id)}&status=eq.pending`, {
+    if (payout.method === 'PayPal') {
+      const configuration = getPayPalConfiguration();
+      const accessToken = await getPayPalAccessToken(configuration);
+      const senderBatchId = `CF${crypto.createHash('sha256').update(payout.id).digest('hex').slice(0, 28)}`;
+      const claimed = await callSupabaseRest(
+        `payout_requests?id=eq.${encodeURIComponent(payout.id)}&status=eq.pending&select=id`,
+        {
+          method: 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify({
+            status: 'processing',
+            approved_by: admin.id,
+            approved_at: new Date().toISOString(),
+            failure_reason: null,
+            updated_at: new Date().toISOString()
+          })
+        }
+      );
+      if (!Array.isArray(claimed) || claimed.length !== 1) {
+        return res.status(409).json({ ok: false, message: 'This payout has already been approved by another admin.' });
+      }
+      dispatchClaimed = true;
+
+      const { response, body, responseText } = await callPayPalApi(
+        configuration,
+        accessToken,
+        '/v1/payments/payouts',
+        {
+          method: 'POST',
+          headers: { 'PayPal-Request-Id': senderBatchId },
+          body: JSON.stringify({
+            sender_batch_header: {
+              sender_batch_id: senderBatchId,
+              email_subject: 'Your Connectfy payout is on its way',
+              email_message: 'Connectfy has sent your approved tester payout.'
+            },
+            items: [{
+              recipient_type: 'EMAIL',
+              amount: { value: Number(payout.amount).toFixed(2), currency: 'USD' },
+              receiver: payout.destination_account,
+              note: `Connectfy tester payout ${payout.transaction_ref}`.slice(0, 400),
+              sender_item_id: String(payout.transaction_ref || payout.id).slice(0, 30)
+            }]
+          })
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status >= 500) {
+          console.error('PayPal payout submission response is ambiguous; payout remains processing.', {
+            payoutId: payout.id,
+            senderBatchId,
+            status: response.status,
+            response: body
+          });
+          return res.status(502).json({
+            ok: false,
+            status: 'processing',
+            message: 'PayPal did not return a definitive result. The payout remains processing; verify it in PayPal before retrying.'
+          });
+        }
+        await callSupabaseRest(`payout_requests?id=eq.${encodeURIComponent(payout.id)}&status=eq.processing`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            status: 'failed',
+            failure_reason: `PayPal rejected the payout (${response.status}): ${responseText}`.slice(0, 1000),
+            paypal_result: body,
+            updated_at: new Date().toISOString()
+          })
+        });
+        dispatchClaimed = false;
+        return res.status(502).json({
+          ok: false,
+          status: 'failed',
+          message: `PayPal rejected the payout: ${body?.message || body?.name || responseText}`
+        });
+      }
+
+      const batchId = body?.batch_header?.payout_batch_id;
+      if (!batchId) {
+        console.error('PayPal accepted a payout without returning a batch ID; payout remains processing.', {
+          payoutId: payout.id,
+          senderBatchId,
+          response: body
+        });
+        return res.status(502).json({
+          ok: false,
+          status: 'processing',
+          message: 'PayPal accepted the request but returned no reconciliation ID. The payout remains processing; do not resend it.'
+        });
+      }
+      await callSupabaseRest(`payout_requests?id=eq.${encodeURIComponent(payout.id)}&status=eq.processing`, {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
         body: JSON.stringify({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          approved_by: admin.id,
-          approved_at: new Date().toISOString(),
+          paypal_payout_batch_id: batchId,
+          paypal_result: body,
           updated_at: new Date().toISOString()
         })
       });
-      return res.json({ ok: true, status: 'completed' });
+      return res.status(202).json({ ok: true, status: 'processing', paypalBatchId: batchId });
+    }
+
+    if (payout.method !== 'Safaricom M-Pesa') {
+      return res.status(400).json({ ok: false, message: 'Unsupported payout method.' });
     }
 
     const approvedKesAmount = Number(req.body?.approvedKesAmount);
@@ -679,11 +1071,12 @@ app.post('/api/admin/payout-requests/:id/approve', async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to approve payout.';
     if (dispatchClaimed && payout) {
-      console.error('Safaricom B2C outcome is ambiguous; payout remains processing for manual reconciliation.', {
+      console.error(`${payout.method} payout outcome is ambiguous; payout remains processing for reconciliation.`, {
         payoutId: payout.id,
         error: message
       });
-      return res.status(502).json({ ok: false, message: 'Safaricom did not return a definitive response. The payout remains processing; verify it in Safaricom before retrying.' });
+      const provider = payout.method === 'PayPal' ? 'PayPal' : 'Safaricom';
+      return res.status(502).json({ ok: false, message: `${provider} did not return a definitive response. The payout remains processing; verify it with the provider before retrying.` });
     }
     console.error('Payout approval failed:', error);
     return res.status(400).json({ ok: false, message });
@@ -725,18 +1118,29 @@ app.post('/api/project-email', async (req, res) => {
     const toName = String(payload.toName || '').trim();
 
     const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
-    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply'];
+    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved'];
 
     if (!supportedTypes.includes(requestType)) {
       return res.status(400).json({ ok: false, message: `Unsupported email type: ${requestType}` });
     }
 
-    if (adminEmailTypes.has(requestType)) {
+    if (requestType === 'application') {
+      const requiredApplicationFields = ['applicationReference', 'applicantCountry', 'applicantDevice', 'uTestId', 'uTestEmail', 'submittedAt'];
+      const missingApplicationFields = requiredApplicationFields.filter((field) => !String(payload[field] || '').trim());
+      if (missingApplicationFields.length > 0) {
+        return res.status(400).json({
+          ok: false,
+          message: `Application confirmation is missing required submitted details: ${missingApplicationFields.join(', ')}.`
+        });
+      }
+    }
+
+    if (adminEmailTypes.has(requestType) || requestType === 'submission_approved') {
       const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const authorization = req.headers.authorization;
       if (!authorization) {
-        return res.status(401).json({ ok: false, message: 'Sign in with an administrator account to send this email.' });
+        return res.status(401).json({ ok: false, message: 'Sign in to your account before sending this email.' });
       }
       if (!supabaseUrl || !supabaseAnonKey) {
         return res.status(500).json({ ok: false, message: 'Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration.' });
@@ -757,7 +1161,51 @@ app.post('/api/project-email', async (req, res) => {
         return res.status(403).json({ ok: false, message: 'Unable to verify your admin access.' });
       }
       const profiles = await roleResponse.json();
-      if (!Array.isArray(profiles) || profiles[0]?.role !== 'admin') {
+      if (!Array.isArray(profiles) || !profiles[0]) {
+        return res.status(403).json({ ok: false, message: 'Unable to verify your account access.' });
+      }
+
+      if (requestType === 'submission_approved') {
+        const projectId = String(payload.projectId || '');
+        const submissionId = String(payload.submissionId || '');
+        const testerId = String(payload.testerId || '');
+        if (!projectId || !submissionId || !testerId) {
+          return res.status(400).json({ ok: false, message: 'Submission, project, and tester IDs are required.' });
+        }
+
+        const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization };
+        const restBase = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+        const [projectResponse, submissionResponse, testerResponse] = await Promise.all([
+          fetch(`${restBase}/projects?id=eq.${encodeURIComponent(projectId)}&select=id,client_id,title`, { headers: restHeaders }),
+          fetch(`${restBase}/submissions?id=eq.${encodeURIComponent(submissionId)}&project_id=eq.${encodeURIComponent(projectId)}&tester_id=eq.${encodeURIComponent(testerId)}&status=eq.approved&select=id,title,bounty_earned`, { headers: restHeaders }),
+          fetch(`${restBase}/profiles?id=eq.${encodeURIComponent(testerId)}&select=id,name,email,role`, { headers: restHeaders })
+        ]);
+        if (!projectResponse.ok || !submissionResponse.ok || !testerResponse.ok) {
+          return res.status(403).json({ ok: false, message: 'Unable to verify the approved submission details.' });
+        }
+        const [projectRows, submissionRows, testerRows] = await Promise.all([
+          projectResponse.json(), submissionResponse.json(), testerResponse.json()
+        ]);
+        const project = projectRows[0];
+        const submission = submissionRows[0];
+        const tester = testerRows[0];
+        const requester = profiles[0];
+        const isProjectOwner = requester.role === 'client' && project?.client_id === user.id;
+        if (requester.role !== 'admin' && !isProjectOwner) {
+          return res.status(403).json({ ok: false, message: 'Only the project owner or an administrator can send this approval email.' });
+        }
+        if (!project || !submission || !tester || tester.role !== 'tester' || !tester.email) {
+          return res.status(404).json({ ok: false, message: 'The approved submission or tester email could not be found.' });
+        }
+
+        payload.toEmail = tester.email;
+        payload.toName = tester.name || tester.email.split('@')[0];
+        toEmail = payload.toEmail;
+        toName = payload.toName;
+        payload.projectTitle = project.title;
+        payload.submissionTitle = submission.title;
+        payload.approvedAmount = Number(submission.bounty_earned);
+      } else if (profiles[0].role !== 'admin') {
         return res.status(403).json({ ok: false, message: 'Only administrators can send this email.' });
       }
     }
@@ -787,6 +1235,9 @@ if (outboxWorkerEnabled) {
 } else {
   console.warn('Project approval email outbox worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BREVO_API_KEY.');
 }
+
+setInterval(() => void pollPayPalPayouts(), 30000);
+void pollPayPalPayouts();
 
 const startServer = (portToUse = preferredPort) => {
   const server = app.listen(portToUse, host, () => {

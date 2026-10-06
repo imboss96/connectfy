@@ -327,6 +327,32 @@ export async function updateSubmissionInSupabase(submissionId: string, updates: 
   if (error) throw error;
 }
 
+export async function approveSubmissionInSupabase(submissionId: string, updates: {
+  bountyEarned: number;
+  clientFeedback?: string;
+  clientRating?: number;
+  reviewedAt: string;
+}) {
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from('submissions')
+    .update({
+      status: 'approved',
+      bounty_earned: updates.bountyEarned,
+      client_feedback: updates.clientFeedback ?? null,
+      client_rating: updates.clientRating ?? null,
+      reviewed_at: updates.reviewedAt
+    })
+    .eq('id', submissionId)
+    .eq('status', 'under_review')
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error('This submission has already been reviewed. Refresh the page before continuing.');
+}
+
 export async function fetchPayoutRequestsFromSupabase(testerId: string) {
   if (!supabase || !testerId) return [];
 
@@ -491,7 +517,7 @@ export async function deleteApplicationDraftFromSupabase(projectId: string) {
   if (error) throw error;
 }
 
-export async function updateApplicationInSupabase(appId: string, updates: { status?: string; invite_status?: string | null; accepted_invite_at?: string | null; last_invite_sent_at?: string | null; invite_history?: any[]; updated_at?: string }) {
+export async function updateApplicationInSupabase(appId: string, updates: { status?: string; invite_status?: string | null; accepted_invite_at?: string | null; last_invite_sent_at?: string | null; invite_history?: any[]; selected_devices?: string[]; updated_at?: string }) {
   if (!supabase) return;
 
   const { error } = await supabase

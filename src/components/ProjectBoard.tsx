@@ -206,7 +206,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   };
 
   const handleOpenApplyModal = (project: Project) => {
-    if (!isProjectOpenForApplications(project)) {
+    const canReapplyForExistingSlot = getApplicationForProject(project.id)?.status === 'needs_utest_update';
+    if (!isProjectOpenForApplications(project) && !canReapplyForExistingSlot) {
       setApplyError('This project is no longer accepting applications.');
       return;
     }
@@ -218,7 +219,13 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       utestEmail: requiresNewUtestAccount ? '' : testerProfile.uTestEmail || '',
       fullName: testerProfile.legalName || '',
       dateOfBirth: testerProfile.dateOfBirth || '',
-      phoneNumber: testerProfile.phone || ''
+      ageRange: testerProfile.ageRange || '18-24',
+      country: testerProfile.country || '',
+      smartphone: testerProfile.smartphone || '',
+      phoneNumber: testerProfile.phone || '',
+      hasValidId: Boolean(testerProfile.hasValidId),
+      willingVoiceRecording: Boolean(testerProfile.willingVoiceRecording),
+      utestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || ''
     };
 
     setApplyingProject(project);
@@ -230,6 +237,19 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       const restoredDraft = {
         ...draft,
         ...savedDraft,
+        fullName: String(savedDraft.fullName || draft.fullName),
+        testerId: String(savedDraft.testerId || draft.testerId),
+        utestEmail: String(savedDraft.utestEmail || draft.utestEmail),
+        dateOfBirth: String(savedDraft.dateOfBirth || draft.dateOfBirth),
+        ageRange: String(savedDraft.ageRange || draft.ageRange),
+        country: String(savedDraft.country || draft.country),
+        smartphone: String(savedDraft.smartphone || draft.smartphone),
+        phoneNumber: String(savedDraft.phoneNumber || draft.phoneNumber),
+        hasValidId: typeof savedDraft.hasValidId === 'boolean' ? savedDraft.hasValidId : draft.hasValidId,
+        willingVoiceRecording: typeof savedDraft.willingVoiceRecording === 'boolean'
+          ? savedDraft.willingVoiceRecording
+          : draft.willingVoiceRecording,
+        utestAccountScreenshotUrl: String(savedDraft.utestAccountScreenshotUrl || draft.utestAccountScreenshotUrl),
         ...(requiresNewUtestAccount ? { testerId: '', utestEmail: '', utestAccountScreenshotUrl: '' } : {}),
         projectId: project.id
       } as ApplicationDraft;
@@ -350,6 +370,11 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       setApplyError('Please choose at least one device you will use.');
       return;
     }
+    const isExistingAccountUpdate = getApplicationForProject(applyingProject.id)?.status === 'needs_utest_update';
+    if (!isProjectOpenForApplications(applyingProject) && !isExistingAccountUpdate) {
+      setApplyError('This project has no remaining slots and is no longer accepting applications.');
+      return;
+    }
 
     const finalDraft = {
       ...applicationDraft,
@@ -375,7 +400,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       legalName: finalDraft.fullName,
       dateOfBirth: finalDraft.dateOfBirth,
       uTestId: finalDraft.testerId,
-      uTestEmail: finalDraft.utestEmail
+      uTestEmail: finalDraft.utestEmail,
+      ageRange: finalDraft.ageRange,
+      country: finalDraft.country,
+      smartphone: finalDraft.smartphone,
+      phone: finalDraft.phoneNumber,
+      hasValidId: finalDraft.hasValidId,
+      willingVoiceRecording: finalDraft.willingVoiceRecording,
+      uTestAccountScreenshotUrl: finalDraft.utestAccountScreenshotUrl
     });
 
     const ok = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
@@ -402,7 +434,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         setApplySuccess(false);
       }, 1400);
     } else {
-      setApplyError('You have already applied for this campaign.');
+      setApplyError('You may already have applied, or the project has filled its remaining slots.');
     }
   };
 
@@ -624,14 +656,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
             <span className="inline-flex items-center rounded-full border border-[#00A3E0]/30 bg-[#00A3E0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#006f9a]">
               Featured Project
             </span>
-            <span className="text-[11px] font-semibold text-[#006f9a]">Limited slots • 18/40 filled</span>
+            <span className="text-[11px] font-semibold text-[#006f9a]">
+              {Math.max(0, featuredProject.slotsTotal - featuredProject.slotsFilled)} slots remaining • {featuredProject.slotsFilled}/{featuredProject.slotsTotal} filled
+            </span>
           </div>
 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-black tracking-[-0.03em] text-slate-900 sm:text-2xl">{featuredProject.title}</h2>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700">{getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700">{getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt, featuredProject.slotsFilled, featuredProject.slotsTotal)}</span>
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 {featuredProject.shortDescription}
@@ -662,12 +696,12 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               </button>
               <button
                 onClick={() => handleOpenApplyModal(featuredProject)}
-                disabled={!isProjectOpenForApplications(featuredProject)}
+                disabled={!isProjectOpenForApplications(featuredProject) && !featuredNeedsUtestUpdate}
                 className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
               >
                 {isProjectOpenForApplications(featuredProject)
                   ? featuredNeedsUtestUpdate ? 'Create Account & Reapply' : 'Apply to Featured Project'
-                  : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt)}
+                  : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt, featuredProject.slotsFilled, featuredProject.slotsTotal)}
               </button>
             </div>
           </div>
@@ -687,9 +721,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
           const isQA = !project.projectTrack || project.projectTrack === 'qa_functional';
 
-          const slotPercentage = Math.round(
-            (project.slotsFilled / project.slotsTotal) * 100
-          );
+          const slotsRemaining = Math.max(0, project.slotsTotal - project.slotsFilled);
+          const slotPercentage = project.slotsTotal > 0
+            ? Math.min(100, Math.round((project.slotsFilled / project.slotsTotal) * 100))
+            : 100;
 
           return (
             <div
@@ -714,7 +749,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                         {project.title}
                       </h3>
                       <span className="inline-flex mt-1 rounded-full border border-[#1E2E4E] bg-[#111C33] px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-                        {getProjectAvailabilityLabel(project.status, project.startsAt)}
+                        {getProjectAvailabilityLabel(project.status, project.startsAt, project.slotsFilled, project.slotsTotal)}
                       </span>
                       <p className="mt-1">
                         <span className="inline-flex max-w-full flex-wrap items-center gap-x-1 rounded-md border border-[#9ACFC1] bg-[#DDF3EE] px-2 py-1 text-[11px] font-medium leading-relaxed text-[#185C52]">
@@ -794,11 +829,11 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mb-4">
                   <div className="flex items-center space-x-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#00A3E0]" />
-                    <span>{project.status === 'upcoming' ? getProjectAvailabilityLabel(project.status, project.startsAt) : `Closes: ${project.deadline || 'Not set'}`}</span>
+                    <span>{project.status === 'upcoming' ? getProjectAvailabilityLabel(project.status, project.startsAt, project.slotsFilled, project.slotsTotal) : `Closes: ${project.deadline || 'Not set'}`}</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <span className="font-semibold text-slate-300">
-                      {project.slotsFilled}/{project.slotsTotal} slots
+                      {slotsRemaining} slots remaining
                     </span>
                     <div className="w-16 bg-[#080D1A] rounded-full h-1.5 overflow-hidden border border-[#1E2E4E]">
                       <div
@@ -851,19 +886,13 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                   </span>
                 ) : requiresNewUtestAccount ? (
-                  isProjectOpenForApplications(project) ? (
-                    <button
-                      onClick={() => handleOpenApplyModal(project)}
-                      className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition shadow"
-                    >
-                      <span>Create Account & Reapply</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
-                      {getProjectAvailabilityLabel(project.status, project.startsAt)}
-                    </span>
-                  )
+                  <button
+                    onClick={() => handleOpenApplyModal(project)}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition shadow"
+                  >
+                    <span>Create Account & Reapply</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 ) : hasApplied && isRejected ? (
                   <span className="text-xs font-semibold text-slate-500 text-center sm:text-left py-1">
                     Not Selected
@@ -874,7 +903,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </span>
                 ) : !isProjectOpenForApplications(project) ? (
                   <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
-                    {getProjectAvailabilityLabel(project.status, project.startsAt)}
+                    {getProjectAvailabilityLabel(project.status, project.startsAt, project.slotsFilled, project.slotsTotal)}
                   </span>
                 ) : (
                   <button
@@ -906,6 +935,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <h3 className="font-bold text-slate-900 text-base">
                     {viewingProject.title}
                   </h3>
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                    {Math.max(0, viewingProject.slotsTotal - viewingProject.slotsFilled)} of {viewingProject.slotsTotal} slots remaining
+                  </p>
                 </div>
               </div>
               <button
@@ -1090,7 +1122,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     disabled={!isProjectOpenForApplications(viewingProject)}
                     className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
                   >
-                    {isProjectOpenForApplications(viewingProject) ? 'Apply for Opportunity' : getProjectAvailabilityLabel(viewingProject.status, viewingProject.startsAt)}
+                    {isProjectOpenForApplications(viewingProject) ? 'Apply for Opportunity' : getProjectAvailabilityLabel(viewingProject.status, viewingProject.startsAt, viewingProject.slotsFilled, viewingProject.slotsTotal)}
                   </button>
                 </div>
               )}

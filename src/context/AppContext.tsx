@@ -15,9 +15,10 @@ import {
   InviteHistoryEntry
 } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
+import { approveSubmissionInSupabase, createProjectInSupabase, createSubmissionInSupabase, deleteApplicationDraftFromSupabase, deleteProjectFromSupabase, fetchApplicationDraftFromSupabase, fetchApplicationsFromSupabase, fetchPayoutRequestsFromSupabase, fetchProjectsFromSupabase, fetchSubmissionsFromSupabase, updateApplicationInSupabase, updateSubmissionInSupabase, updateTesterApplicationUtestDetailsInSupabase, upsertApplicationDraftInSupabase, upsertApplicationInSupabase, upsertApplicationUtestDetailsInSupabase, updateProjectInSupabase } from '../lib/projectRepository';
 import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 import { submitPayoutRequest } from '../lib/mpesaPayoutService';
+import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -25,10 +26,17 @@ export interface InviteProfileDetails {
   dateOfBirth: string;
   uTestEmail: string;
   phone: string;
+  ageRange: string;
+  country: string;
+  smartphone: string;
+  hasValidId: boolean;
+  willingVoiceRecording: boolean;
+  uTestAccountScreenshotUrl: string;
 }
 
 const isInviteProfileComplete = (profile: TesterProfile) => {
   const dateOfBirth = profile.dateOfBirth ? new Date(`${profile.dateOfBirth}T00:00:00`) : null;
+  const ageRanges = ['18-24', '25-34', '35-44', '45+'];
   return Boolean(
     profile.uTestId?.trim()
     && profile.legalName?.trim()
@@ -38,6 +46,12 @@ const isInviteProfileComplete = (profile: TesterProfile) => {
     && profile.uTestEmail?.trim()
     && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.uTestEmail)
     && profile.phone?.trim()
+    && ageRanges.includes(profile.ageRange || '')
+    && profile.country?.trim()
+    && profile.smartphone?.trim()
+    && profile.hasValidId
+    && profile.willingVoiceRecording
+    && profile.uTestAccountScreenshotUrl?.trim()
   );
 };
 
@@ -87,11 +101,11 @@ interface AppContextType {
   completeInviteAcceptance: (appId: string, details: InviteProfileDetails) => Promise<void>;
   declineInvite: (appId: string) => void;
   submitBugReport: (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<BugReport>;
-  approveBugReport: (bugId: string, customBounty?: number, feedback?: string, rating?: number) => void;
+  approveBugReport: (bugId: string, customBounty?: number, feedback?: string, rating?: number) => Promise<{ emailSent: boolean; emailError?: string }>;
   rejectBugReport: (bugId: string, feedback: string) => void;
   requestBugRevision: (bugId: string, feedback: string) => void;
   submitTaskDeliverable: (data: Omit<TaskSubmission, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<TaskSubmission>;
-  approveTaskSubmission: (submissionId: string, customBounty?: number, feedback?: string, rating?: number) => void;
+  approveTaskSubmission: (submissionId: string, customBounty?: number, feedback?: string, rating?: number) => Promise<{ emailSent: boolean; emailError?: string }>;
   rejectTaskSubmission: (submissionId: string, feedback: string) => void;
   requestTaskRevision: (submissionId: string, feedback: string) => void;
   requestPayout: (amount: number, method: PayoutRequest['method'], destination: string) => Promise<PayoutRequest>;
@@ -106,7 +120,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'crm', 'project_operations', 'payout_operations'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'payments', 'payout_operations'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -173,6 +187,11 @@ const emptyTesterProfile: TesterProfile = {
   legalName: '',
   dateOfBirth: '',
   phone: '',
+  ageRange: '',
+  smartphone: '',
+  hasValidId: false,
+  willingVoiceRecording: false,
+  uTestAccountScreenshotUrl: '',
   avatar: createLetterAvatar('', ''),
   country: '',
   city: '',
@@ -459,7 +478,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resolveTesterEmail = async (testerId: string, fallbackEmail = ''): Promise<string> => {
-    const normalizedFallback = fallbackEmail || testerProfile.email || '';
+    const normalizedFallback = fallbackEmail;
     if (!testerId) return normalizedFallback;
 
     if (normalizedFallback && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedFallback)) {
@@ -787,8 +806,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const loadProjects = async () => {
       try {
-        const serverProjects = await fetchProjectsFromSupabase();
+        const fetchedProjects = await fetchProjectsFromSupabase();
+        const serverProjects = fetchedProjects.map(project =>
+          project.status === 'active' && project.slotsTotal <= project.slotsFilled
+            ? { ...project, status: 'closed' as const }
+            : project
+        );
         if (mounted) setProjects(serverProjects);
+        const fullProjects = serverProjects.filter((project, index) => project.status === 'closed' && fetchedProjects[index].status === 'active');
+        await Promise.all(fullProjects.map(project =>
+          updateProjectInSupabase(project.id, project).catch(error => {
+            console.error('Unable to persist automatic closure for a full project:', { projectId: project.id, error });
+          })
+        ));
       } catch (error) {
         console.error('Unable to load projects from Supabase:', error);
       }
@@ -1106,6 +1136,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const sendSubmissionApprovalEmail = async (
+    submissionId: string,
+    projectId: string,
+    testerId: string,
+    testerName: string,
+    submissionTitle: string,
+    amount: number,
+    project?: Project
+  ): Promise<{ emailSent: boolean; emailError?: string }> => {
+    if (!isSupabaseConfigured || !isUuid(submissionId) || !isUuid(projectId) || !isUuid(testerId)) {
+      return { emailSent: false, emailError: 'Approval email requires a saved Connectfy submission and tester account.' };
+    }
+
+    try {
+      const testerEmail = await resolveTesterEmail(testerId);
+      if (!testerEmail) throw new Error('The tester does not have an email address on their account.');
+
+      await sendProjectEmail({
+        type: 'submission_approved',
+        toEmail: testerEmail,
+        toName: testerName,
+        projectId,
+        submissionId,
+        testerId,
+        submissionTitle,
+        approvedAmount: amount,
+        projectTitle: project?.title || 'Connectfy project',
+        projectCompany: project?.company || 'Connectfy',
+        projectDescription: '',
+        actionUrl: typeof window !== 'undefined' ? window.location.origin : 'https://connectfy.tech'
+      });
+      return { emailSent: true };
+    } catch (error) {
+      console.error('Submission was approved, but its confirmation email could not be sent:', error);
+      return {
+        emailSent: false,
+        emailError: error instanceof Error ? error.message : 'The approval email could not be sent.'
+      };
+    }
+  };
+
   const triggerProjectEmail = async (type: ProjectEmailType, projectId: string, testerId: string, testerName: string, testerEmail: string, applicationId?: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicationReference' | 'submittedAt'>) => {
     const resolvedTesterEmail = await resolveTesterEmail(testerId, testerEmail);
 
@@ -1307,6 +1378,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (existing && existing.status !== 'needs_utest_update') return false;
 
     const project = projects.find(p => p.id === projectId);
+    if (!existing && !isProjectOpenForApplications(project)) return false;
     const newAppId = existing?.id || createApplicationId();
     const newApp: ProjectApplication = {
       id: newAppId,
@@ -1325,8 +1397,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status: 'pending',
       inviteHistory: existing?.inviteHistory || []
     };
-
-    setApplications(prev => [newApp, ...prev.filter(application => application.id !== newAppId)]);
 
     if (isSupabaseConfigured && supabase && effectiveTesterId) {
       try {
@@ -1375,6 +1445,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    setApplications(prev => [newApp, ...prev.filter(application => application.id !== newAppId)]);
+
     addNotification({
       userId: project?.clientId || 'client-default',
       targetRole: 'client',
@@ -1385,7 +1457,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     if (effectiveTesterEmail) {
-      void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail);
       void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail, newAppId, {
         ...emailPayloadDetails,
         applicationReference: newAppId
@@ -1408,6 +1479,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+    if (!project) return;
     const inviteSentAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
     const nextHistory = [
       ...(app.inviteHistory || []),
@@ -1442,16 +1514,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return a;
     }));
-
-    // Update project slot count
-    if (project) {
-      setProjects(prev => prev.map(p => {
-        if (p.id === project.id) {
-          return { ...p, slotsFilled: Math.min(p.slotsTotal, p.slotsFilled + 1) };
-        }
-        return p;
-      }));
-    }
 
     // Notify tester
     addNotification({
@@ -1569,6 +1631,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (existing?.inviteStatus === 'accepted') {
       throw new Error('This tester has already accepted the project invitation.');
     }
+    const reservesSlot = !existing;
+    if (reservesSlot && isProjectSlotsFull(project)) {
+      throw new Error('This project has no remaining slots. Increase the slot capacity before sending another invitation.');
+    }
 
     const invitedAt = new Date().toISOString();
     const history = [
@@ -1619,11 +1685,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setApplications((previous) => [app, ...previous.filter((item) => item.id !== app.id)]);
-    if (!existing || existing.status === 'pending' || existing.status === 'rejected') {
-      setProjects((previous) => previous.map((item) => item.id === projectId
-        ? { ...item, slotsFilled: Math.min(item.slotsTotal, item.slotsFilled + 1) }
-        : item));
-    }
     addNotification({
       userId: testerId,
       targetRole: 'tester',
@@ -1666,7 +1727,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const saveInviteProfileDetails = async (details: InviteProfileDetails) => {
-    const updatedProfile = { ...testerProfile, ...details };
+    const updatedProfile = {
+      ...testerProfile,
+      ...details,
+      name: details.legalName,
+      country: details.country,
+      devices: Array.from(new Set([...(testerProfile.devices || []), details.smartphone]))
+    };
 
     if (isSupabaseConfigured && supabase) {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -1691,6 +1758,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         .update({
           name: updatedProfile.name,
           email: updatedProfile.email,
+          country: updatedProfile.country,
           profile_data: {
             ...storedData,
             testerProfile: {
@@ -1708,16 +1776,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setTesterProfile(updatedProfile);
+    return updatedProfile;
   };
 
-  const persistInviteAcceptance = async (app: ProjectApplication) => {
+  const persistInviteAcceptance = async (app: ProjectApplication, details: InviteProfileDetails) => {
     const project = projects.find((item) => item.id === app.projectId);
     const acceptedAt = new Date().toISOString();
 
     if (isSupabaseConfigured && supabase) {
+      await upsertApplicationUtestDetailsInSupabase({
+        application_id: app.id,
+        tester_id: app.testerId,
+        full_name: details.legalName,
+        utest_id: details.uTestId,
+        utest_email: details.uTestEmail,
+        date_of_birth: details.dateOfBirth,
+        age_range: details.ageRange,
+        country: details.country,
+        smartphone: details.smartphone,
+        phone_number: details.phone,
+        device_confirmation: details.smartphone,
+        has_valid_id: details.hasValidId,
+        willing_voice_recording: details.willingVoiceRecording,
+        utest_account_screenshot_url: details.uTestAccountScreenshotUrl
+      });
       await updateApplicationInSupabase(app.id, {
         invite_status: 'accepted',
         accepted_invite_at: acceptedAt,
+        selected_devices: [details.smartphone],
         updated_at: acceptedAt
       });
     }
@@ -1726,6 +1812,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ? {
         ...item,
         inviteStatus: 'accepted',
+        selectedDevices: [details.smartphone],
         acceptedInviteAt: acceptedAt.replace('T', ' ').substring(0, 16)
       }
       : item));
@@ -1768,7 +1855,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
-      await persistInviteAcceptance(app);
+      const details: InviteProfileDetails = {
+        uTestId: testerProfile.uTestId || '',
+        legalName: testerProfile.legalName || '',
+        dateOfBirth: testerProfile.dateOfBirth || '',
+        uTestEmail: testerProfile.uTestEmail || '',
+        phone: testerProfile.phone || '',
+        ageRange: testerProfile.ageRange || '',
+        country: testerProfile.country || '',
+        smartphone: testerProfile.smartphone || '',
+        hasValidId: Boolean(testerProfile.hasValidId),
+        willingVoiceRecording: Boolean(testerProfile.willingVoiceRecording),
+        uTestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || ''
+      };
+      await persistInviteAcceptance(app, details);
       return true;
     } catch (error) {
       console.error('Unable to persist accepted invite:', error);
@@ -1783,20 +1883,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       throw new Error('This invitation is no longer available for your account.');
     }
     const dateOfBirth = new Date(`${details.dateOfBirth}T00:00:00`);
+    const allowedAgeRanges = ['18-24', '25-34', '35-44', '45+'];
     if (!details.uTestId.trim() || !details.legalName.trim() || !details.dateOfBirth
       || Number.isNaN(dateOfBirth.getTime()) || dateOfBirth >= new Date()
-      || !details.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.uTestEmail.trim())) {
-      throw new Error('Complete each field with a valid email address and date of birth to accept the invitation.');
+      || !details.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.uTestEmail.trim())
+      || !allowedAgeRanges.includes(details.ageRange) || !details.country.trim() || !details.smartphone.trim()
+      || !details.hasValidId || !details.willingVoiceRecording || !details.uTestAccountScreenshotUrl.trim()) {
+      throw new Error('Complete every required project application field, upload your uTest account screenshot, and confirm the ID and recording requirements before accepting the invitation.');
     }
 
-    await saveInviteProfileDetails({
+    const normalizedDetails: InviteProfileDetails = {
       ...details,
       uTestId: details.uTestId.trim(),
       legalName: details.legalName.trim(),
       uTestEmail: details.uTestEmail.trim(),
-      phone: details.phone.trim()
-    });
-    await persistInviteAcceptance(app);
+      phone: details.phone.trim(),
+      ageRange: details.ageRange.trim(),
+      country: details.country.trim(),
+      smartphone: details.smartphone.trim(),
+      uTestAccountScreenshotUrl: details.uTestAccountScreenshotUrl.trim()
+    };
+    await saveInviteProfileDetails(normalizedDetails);
+    await persistInviteAcceptance(app, normalizedDetails);
   };
 
   const dismissInviteAcceptance = () => setPendingInviteAcceptanceId(null);
@@ -1880,15 +1988,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 5. Client approves bug -> CREDITS EARNINGS INTO ONE ACCOUNT AUTOMATICALLY!
-  const approveBugReport = (bugId: string, customBounty?: number, feedback?: string, rating: number = 5) => {
+  const approveBugReport = async (bugId: string, customBounty?: number, feedback?: string, rating: number = 5): Promise<{ emailSent: boolean; emailError?: string }> => {
     const bug = bugReports.find(b => b.id === bugId);
-    if (!bug) return;
+    if (!bug) throw new Error('The bug submission could not be found.');
+    if (bug.status !== 'under_review') throw new Error('This submission has already been reviewed.');
 
     const finalBounty = customBounty !== undefined ? customBounty : bug.bountyEarned;
+    if (!Number.isFinite(finalBounty) || finalBounty <= 0) throw new Error('The approved payout must be greater than zero.');
     const project = projects.find(p => p.id === bug.projectId);
     const reviewTime = new Date().toISOString();
     const reviewFeedback = feedback || 'Approved. Great reproduction steps and clear documentation.';
-    persistSubmissionReview(bugId, { status: 'approved', bountyEarned: finalBounty, clientFeedback: reviewFeedback, clientRating: rating, reviewedAt: reviewTime });
+    if (isSupabaseConfigured && isUuid(bugId)) {
+      await approveSubmissionInSupabase(bugId, {
+        bountyEarned: finalBounty,
+        clientFeedback: reviewFeedback,
+        clientRating: rating,
+        reviewedAt: reviewTime
+      });
+    }
 
     // Update bug status
     setBugReports(prev => prev.map(b => {
@@ -1973,6 +2090,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {
       // safe fallback
     }
+
+    return sendSubmissionApprovalEmail(bug.id, bug.projectId, bug.testerId, bug.testerName, bug.title, finalBounty, project);
   };
 
   const rejectBugReport = (bugId: string, feedback: string) => {
@@ -2081,15 +2200,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newSubmission;
   };
 
-  const approveTaskSubmission = (submissionId: string, customBounty?: number, feedback?: string, rating: number = 5) => {
+  const approveTaskSubmission = async (submissionId: string, customBounty?: number, feedback?: string, rating: number = 5): Promise<{ emailSent: boolean; emailError?: string }> => {
     const sub = taskSubmissions.find(s => s.id === submissionId);
-    if (!sub) return;
+    if (!sub) throw new Error('The task submission could not be found.');
+    if (sub.status !== 'under_review') throw new Error('This submission has already been reviewed.');
 
     const finalBounty = customBounty !== undefined ? customBounty : sub.bountyEarned;
+    if (!Number.isFinite(finalBounty) || finalBounty <= 0) throw new Error('The approved payout must be greater than zero.');
     const project = projects.find(p => p.id === sub.projectId);
     const reviewTime = new Date().toISOString();
     const reviewFeedback = feedback || 'Deliverable accepted and verified. High-quality submission!';
-    persistSubmissionReview(submissionId, { status: 'approved', bountyEarned: finalBounty, clientFeedback: reviewFeedback, clientRating: rating, reviewedAt: reviewTime });
+    if (isSupabaseConfigured && isUuid(submissionId)) {
+      await approveSubmissionInSupabase(submissionId, {
+        bountyEarned: finalBounty,
+        clientFeedback: reviewFeedback,
+        clientRating: rating,
+        reviewedAt: reviewTime
+      });
+    }
 
     // 1. Update task submission status
     setTaskSubmissions(prev => prev.map(s => {
@@ -2169,6 +2297,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {
       // safe fallback
     }
+
+    return sendSubmissionApprovalEmail(sub.id, sub.projectId, sub.testerId, sub.testerName, sub.title, finalBounty, project);
   };
 
   const rejectTaskSubmission = (submissionId: string, feedback: string) => {
@@ -2320,9 +2450,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateProject = (projectId: string, updates: Partial<Project>) => {
     const currentProject = projects.find(p => p.id === projectId);
-    const mergedProject = currentProject ? { ...currentProject, ...updates } : updates;
+    const adjustedUpdates = { ...updates };
+    if (currentProject) {
+      const updatedSlotsTotal = updates.slotsTotal ?? currentProject.slotsTotal;
+      const updatedSlotsFilled = updates.slotsFilled ?? currentProject.slotsFilled;
+      const capacityIncreasedAfterFull =
+        updates.slotsTotal !== undefined &&
+        updates.slotsTotal > currentProject.slotsTotal &&
+        currentProject.slotsFilled >= currentProject.slotsTotal &&
+        updatedSlotsTotal > updatedSlotsFilled;
 
-    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+      if (updatedSlotsTotal <= updatedSlotsFilled) {
+        adjustedUpdates.status = 'closed';
+      } else if (
+        capacityIncreasedAfterFull &&
+        updates.status === undefined &&
+        currentProject.status === 'closed'
+      ) {
+        adjustedUpdates.status = 'active';
+      }
+    }
+    const mergedProject = currentProject ? { ...currentProject, ...adjustedUpdates } : adjustedUpdates;
+
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...adjustedUpdates } : p));
 
     if (isSupabaseConfigured) {
       void updateProjectInSupabase(projectId, mergedProject).catch(error => console.error('Unable to update project in Supabase:', error));

@@ -11,6 +11,8 @@ import {
   Users,
   Wallet,
   Banknote,
+  CalendarClock,
+  Send,
   X,
   LogOut
 } from 'lucide-react';
@@ -28,6 +30,7 @@ type NavItem = {
   label: string;
   tab: string;
   icon: React.ComponentType<{ className?: string }>;
+  section?: string;
 };
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onRequestAdminAccess }) => {
@@ -92,13 +95,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
       ]
     : role === 'admin'
       ? [
-          { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck },
-          { label: 'CRM & Members', tab: 'crm', icon: Users },
-          { label: 'Project Operations', tab: 'project_operations', icon: Briefcase },
-          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote },
-          { label: 'Project Listings', tab: 'projects', icon: Briefcase },
-          { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck },
-          { label: 'Settings', tab: 'profile_settings', icon: Sliders }
+          { label: 'Service Listings', tab: 'service_listings', icon: Briefcase, section: 'Services' },
+          { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck, section: 'Operations' },
+          { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
+          { label: 'CRM & Members', tab: 'crm', icon: Users, section: 'Operations' },
+          { label: 'Project Operations', tab: 'project_operations', icon: Briefcase, section: 'Operations' },
+          { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck, section: 'Operations' },
+          { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
+          { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },
+          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' }
         ]
       : [
           { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
@@ -114,10 +119,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
     : (clientProfile.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(personName || 'User')}&background=random`);
 
   const renderNavItems = () => (
-    <nav className="space-y-1" aria-label="Primary navigation">
-      <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>
-      {navItems.map(({ label, tab, icon: Icon }) => (
+    <nav className="min-h-0 space-y-1 overflow-y-auto" aria-label="Primary navigation">
+      {role !== 'admin' && <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>}
+      {navItems.map(({ label, tab, icon: Icon, section }, index) => (
         <React.Fragment key={tab}>
+          {section && navItems[index - 1]?.section !== section && (
+            <span className="block px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{section}</span>
+          )}
           <button
             onClick={() => navigateTo(tab)}
             className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition ${
@@ -153,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
             <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{personName}</p><p className="truncate text-[10px] text-slate-400">{personSubtitle}</p></div>
           </div>
         </div>
-        {renderNavItems()}
+        <div className="flex min-h-0 flex-1 flex-col">{renderNavItems()}</div>
         <div className="mt-auto border-t border-[#1E2E4E] pt-4">
           <button onClick={onLogout} className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 transition hover:bg-[#131E35] hover:text-slate-300"><LogOut className="h-4 w-4" />Log out</button>
         </div>
@@ -176,7 +184,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         </div>
       </header>
 
-      {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 space-y-4 border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-16 md:hidden">
+      {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 max-h-[calc(100dvh-3.5rem)] space-y-4 overflow-y-auto border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-16 sm:max-h-[calc(100dvh-4rem)] md:hidden">
         <div className="flex items-center gap-3 rounded-xl border border-[#1E2E4E] bg-[#111C33] p-3"><img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl object-cover" referrerPolicy="no-referrer" /><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{personName}</p><p className="truncate text-xs text-slate-400">{personSubtitle}</p></div></div>
         {renderNavItems()}
         <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border-t border-[#1E2E4E] px-3 pt-3 text-xs font-semibold text-slate-500"><LogOut className="h-4 w-4" />Log out</button>

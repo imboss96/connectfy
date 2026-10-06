@@ -23,11 +23,9 @@ import {
   Save,
   Star,
   X,
-  FileText,
   CheckCircle2,
   ArrowLeft,
   Building,
-  DollarSign,
   Sparkles,
   Layers,
   ArrowRightLeft,
@@ -44,12 +42,19 @@ interface ProfileSettingsProps {
 
 type SettingsTab = 'personal' | 'utest' | 'devices' | 'skills' | 'payment' | 'preferences' | 'client';
 
-type PaymentMethodOption = 'PayPal' | 'Payoneer' | 'Wise' | 'Direct Bank Wire';
+type PaymentMethodOption = 'PayPal' | 'Safaricom M-Pesa';
 
 const PaymentMethodLogo: React.FC<{ method: PaymentMethodOption; className?: string }> = ({ method, className = 'h-5 w-5' }) => {
   const commonProps = { className, viewBox: '0 0 32 32', fill: 'none' } as const;
 
   switch (method) {
+    case 'Safaricom M-Pesa':
+      return (
+        <svg {...commonProps}>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#087F3E" />
+          <path d="M8 10h4l4 12h-4L8 10Zm7 0h4l4 12h-4l-4-12Zm7 0h3l-3 9h-3l3-9Z" fill="white" />
+        </svg>
+      );
     case 'PayPal':
       return (
         <svg {...commonProps}>
@@ -58,30 +63,12 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethodOption; className?: str
           <path d="M12.9 11.3L13.7 8.8C14 7.9 14.7 7.3 15.8 7.3H19.1C20.8 7.3 22.1 8.4 22.1 10.2C22.1 11.8 21 12.8 19.2 12.8H17.2L16.5 11.3H12.9Z" fill="#A7D1FF"/>
         </svg>
       );
-    case 'Wise':
-      return (
-        <svg {...commonProps}>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="#1F5CFF"/>
-          <path d="M9 10.5H18.3C21.2 10.5 23.5 12.8 23.5 15.8C23.5 18.7 21.2 21 18.3 21H13.7L15.8 18.2H18.2C19.6 18.2 20.7 17.1 20.7 15.7C20.7 14.3 19.6 13.2 18.2 13.2H11.8L9 10.5Z" fill="white"/>
-          <path d="M10.8 15.9H12.9L9.8 21H7.6L10.8 15.9ZM13.3 9.5H15.9L12.8 14.7H10.2L13.3 9.5Z" fill="#DDEBFF"/>
-        </svg>
-      );
-    case 'Payoneer':
-      return (
-        <svg {...commonProps}>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="#121C2D"/>
-          <path d="M10 23.2V8.8H16.2C19.7 8.8 22 10.8 22 14.2C22 17.7 19.8 19.7 16.1 19.7H14.5V23.2H10ZM14.5 16.3H15.8C17.4 16.3 18.1 15.7 18.1 14.3C18.1 12.8 17.4 12.2 15.8 12.2H14.5V16.3Z" fill="#D7F3FF"/>
-          <path d="M18.5 8.8H22V23.2H18.5V8.8Z" fill="#7CD8FF"/>
-        </svg>
-      );
-    case 'Direct Bank Wire':
     default:
       return (
         <svg {...commonProps}>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="#0F766E"/>
-          <path d="M9 11.5C9 10.1 10.1 9 11.5 9H20.5C21.9 9 23 10.1 23 11.5V20.5C23 21.9 21.9 23 20.5 23H11.5C10.1 23 9 21.9 9 20.5V11.5Z" fill="white" fillOpacity="0.12"/>
-          <path d="M11 12.5H21M11 16H21M11 19.5H17.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-          <path d="M13.5 9V6.5M18.5 9V6.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="#0F6BFF"/>
+          <path d="M10 18.5C10 15.7 12.1 13.5 15.1 13.5H18.5C21.8 13.5 24.1 15.8 24.1 19.1C24.1 22.5 21.7 25 18.2 25H14.4C13.1 25 12 24 12 22.7L10.7 16.9C10.5 15.9 10.9 15.1 11.7 15.1H15.4C17.8 15.1 19.2 16.3 19.2 18.4C19.2 20.4 17.7 21.6 15.5 21.6H13.7L13.1 18.5H10Z" fill="white"/>
+          <path d="M12.9 11.3L13.7 8.8C14 7.9 14.7 7.3 15.8 7.3H19.1C20.8 7.3 22.1 8.4 22.1 10.2C22.1 11.8 21 12.8 19.2 12.8H17.2L16.5 11.3H12.9Z" fill="#A7D1FF"/>
         </svg>
       );
   }
@@ -152,8 +139,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(testerProfile.preferences?.interestedCategories || []);
 
   // Payment Settings state
-  const [preferredMethod, setPreferredMethod] = useState<'PayPal' | 'Payoneer' | 'Wise' | 'Direct Bank Wire'>(
-    testerProfile.paymentSettings?.preferredMethod || 'PayPal'
+  const [preferredMethod, setPreferredMethod] = useState<PaymentMethodOption>(
+    testerProfile.paymentSettings?.preferredMethod === 'Safaricom M-Pesa' ? 'Safaricom M-Pesa' : 'PayPal'
   );
   const [paypalEmail, setPaypalEmail] = useState(testerProfile.paymentSettings?.paypalEmail || '');
   const [payoneerId, setPayoneerId] = useState(testerProfile.paymentSettings?.payoneerId || '');
@@ -239,7 +226,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
     setRealMoneyTesting(testerProfile.preferences?.realMoneyTesting ?? true);
     setApkSideloadingAllowed(testerProfile.preferences?.apkSideloadingAllowed ?? false);
     setSelectedCategories(testerProfile.preferences?.interestedCategories || []);
-    setPreferredMethod(testerProfile.paymentSettings?.preferredMethod || 'PayPal');
+    setPreferredMethod(testerProfile.paymentSettings?.preferredMethod === 'Safaricom M-Pesa' ? 'Safaricom M-Pesa' : 'PayPal');
     setPaypalEmail(testerProfile.paymentSettings?.paypalEmail || '');
     setPayoneerId(testerProfile.paymentSettings?.payoneerId || '');
     setWiseEmail(testerProfile.paymentSettings?.wiseEmail || '');
@@ -332,6 +319,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
           interestedCategories: selectedCategories
         },
         paymentSettings: {
+          ...testerProfile.paymentSettings,
           preferredMethod,
           paypalEmail,
           payoneerId,
@@ -345,9 +333,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
           autoWithdraw,
           autoWithdrawThreshold,
           taxFormType: testerProfile.paymentSettings?.taxFormType || 'W-8BEN',
-          taxStatus: testerProfile.paymentSettings?.taxStatus || 'Verified',
-          taxIdMasked: testerProfile.paymentSettings?.taxIdMasked || 'PIN: A00***492K',
-          taxCountry: testerProfile.paymentSettings?.taxCountry || 'Kenya'
+          taxStatus: testerProfile.paymentSettings?.taxStatus || 'Pending Review',
+          taxIdMasked: testerProfile.paymentSettings?.taxIdMasked || '',
+          taxCountry: testerProfile.paymentSettings?.taxCountry || ''
         }
       });
     }
@@ -882,21 +870,18 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
               {(() => {
                 const emailVerified = Boolean((testerProfile.email || '').trim());
                 const phoneVerified = Boolean((testerProfile.phone || '').trim());
-                const taxStatusDone = testerProfile.paymentSettings?.taxStatus === 'Verified';
                 const hardwareReady = (testerProfile.devices?.length || 0) >= 5 || (testerProfile.deviceFleet || []).filter((d) => d.isActive).length >= 5;
                 const payoutLinked = (() => {
                   const settings = testerProfile.paymentSettings;
                   if (!settings) return false;
                   if (settings.preferredMethod === 'PayPal') return Boolean((settings.paypalEmail || '').trim());
-                  if (settings.preferredMethod === 'Payoneer') return Boolean((settings.payoneerId || '').trim());
-                  if (settings.preferredMethod === 'Wise') return Boolean((settings.wiseEmail || '').trim());
-                  return Boolean((settings.bankDetails?.bankName || '').trim()) && Boolean((settings.bankDetails?.ibanOrAccount || '').trim());
+                  if (settings.preferredMethod === 'Safaricom M-Pesa') return Boolean((testerProfile.phone || '').trim());
+                  return Boolean((settings.paypalEmail || '').trim());
                 })();
 
                 const checklist = [
                   { label: 'Email Verified', done: emailVerified },
                   { label: 'Phone Number Added', done: phoneVerified },
-                  { label: 'W-8BEN Tax Form Current', done: taxStatusDone },
                   { label: '5+ Hardware Devices', done: hardwareReady },
                   { label: 'Payout Method Linked', done: payoutLinked }
                 ];
@@ -1415,10 +1400,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Tab 4: Payment Methods & Tax Compliance (W-8BEN) */}
+      {/* Tab 4: Payment Methods */}
       {currentTab === 'payment' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
             
             {/* Preferred Payout Method Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
@@ -1427,8 +1412,12 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                   <CreditCard className="w-4 h-4 text-emerald-400" />
                   Disbursal Account & Preferred Payout Gateway
                 </h3>
-                <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                  Ready for Withdrawals
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                  (preferredMethod === 'PayPal' ? paypalEmail.trim() : phone.trim())
+                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                    : 'text-amber-300 bg-amber-500/10 border-amber-500/20'
+                }`}>
+                  {(preferredMethod === 'PayPal' ? paypalEmail.trim() : phone.trim()) ? 'Destination saved' : 'Add payout destination'}
                 </span>
               </div>
 
@@ -1437,8 +1426,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                 <label className="block text-slate-400 font-semibold mb-2 text-xs">
                   Select Primary Disbursal Method:
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  {(['PayPal', 'Payoneer', 'Wise', 'Direct Bank Wire'] as const).map((method) => (
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {(['PayPal', 'Safaricom M-Pesa'] as const).map((method) => (
                     <button
                       key={method}
                       type="button"
@@ -1472,166 +1461,33 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      Earnings will be transferred via automated PayPal MassPay API directly to this address.
+                      PayPal payouts are sent in USD after an administrator reviews your withdrawal request.
                     </span>
                   </div>
                 )}
 
-                {preferredMethod === 'Payoneer' && (
+                {preferredMethod === 'Safaricom M-Pesa' && (
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
-                      Payoneer Payee ID / Email
+                      Safaricom M-Pesa phone
                     </label>
-                    <input
-                      type="text"
-                      value={payoneerId}
-                      onChange={(e) => setPayoneerId(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
-                    />
+                    <p className="text-slate-700">{phone || 'Add your Kenyan Safaricom phone number in Personal Information.'}</p>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      M-Pesa payouts are converted from USD to KES and sent after administrator review.
+                    </span>
                   </div>
                 )}
 
-                {preferredMethod === 'Wise' && (
-                  <div>
-                    <label className="block text-slate-700 font-semibold mb-1">
-                      Wise Multi-Currency Account Email
-                    </label>
-                    <input
-                      type="email"
-                      value={wiseEmail}
-                      onChange={(e) => setWiseEmail(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden focus:border-blue-500"
-                    />
-                  </div>
-                )}
-
-                {preferredMethod === 'Direct Bank Wire' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-slate-700 font-semibold mb-1">Bank Name</label>
-                      <input
-                        type="text"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-semibold mb-1">Account Holder Name</label>
-                      <input
-                        type="text"
-                        value={accountHolder}
-                        onChange={(e) => setAccountHolder(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-semibold mb-1">IBAN / Account Number</label>
-                      <input
-                        type="text"
-                        value={ibanOrAccount}
-                        onChange={(e) => setIbanOrAccount(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-semibold mb-1">SWIFT / BIC Code</label>
-                      <input
-                        type="text"
-                        value={swiftBic}
-                        onChange={(e) => setSwiftBic(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-hidden"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Auto Withdrawal Toggle & Threshold */}
-              <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                    Automatic Bi-Weekly Earnings Disbursal
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    When enabled, approved test earnings exceeding the threshold are automatically paid out on the 15th and 30th of each month.
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-3 shrink-0">
-                  <select
-                    value={autoWithdrawThreshold}
-                    onChange={(e) => setAutoWithdrawThreshold(Number(e.target.value))}
-                    disabled={!autoWithdraw}
-                    className="bg-slate-900 border border-slate-800 rounded-xl px-2 py-1.5 text-xs text-white disabled:opacity-50"
-                  >
-                    <option value={20}>&gt; $20.00 Min</option>
-                    <option value={50}>&gt; $50.00 Min</option>
-                    <option value={100}>&gt; $100.00 Min</option>
-                    <option value={200}>&gt; $200.00 Min</option>
-                  </select>
-
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoWithdraw}
-                      onChange={(e) => setAutoWithdraw(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 relative"></div>
-                  </label>
-                </div>
-              </div>
+              <p className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-[11px] leading-5 text-slate-400">
+                Withdrawal requests are reviewed by an administrator before payment. M-Pesa requires a Kenyan Safaricom number; PayPal requires an email address linked to a PayPal account.
+              </p>
 
             </div>
 
           </div>
 
-          {/* Right Column: Tax Compliance (W-8BEN / W-9) */}
-          <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
-                <FileText className="w-4 h-4 text-blue-400" />
-                Tax Status & Compliance
-              </h3>
-
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-300">
-                    Form {testerProfile.paymentSettings?.taxFormType || 'W-8BEN'} Certified
-                  </span>
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Certificate of Foreign Status for United States Tax Withholding and Reporting is on file and active through December 2027.
-                </p>
-                <div className="text-[11px] text-slate-400 space-y-1 pt-1 border-t border-emerald-500/20">
-                  <div className="flex justify-between">
-                    <span>Tax Jurisdiction:</span>
-                    <span className="text-white font-semibold">{testerProfile.paymentSettings?.taxCountry || 'Kenya'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax ID:</span>
-                    <span className="text-white font-mono">{testerProfile.paymentSettings?.taxIdMasked || 'PIN: A00***492K'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-xs text-slate-400">
-                <p>
-                  United States Internal Revenue Service regulations require Connectfy to maintain current tax records for all freelance testers before issuing payouts.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => alert('Your tax form is already verified and up to date for 2026-2027!')}
-                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl transition text-center"
-                >
-                  Recertify or Update Tax Information
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

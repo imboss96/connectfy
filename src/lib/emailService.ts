@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -31,6 +31,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'utest_update_required';
     case 'legacy_sheet_reapply':
       return 'legacy_sheet_reapply';
+    case 'submission_approved':
+      return 'submission_approved';
     case 'application':
     default:
       return 'application';
@@ -63,6 +65,11 @@ export interface ProjectEmailPayload {
   applicationReference?: string;
   submittedAt?: string;
   supportEmail?: string;
+  submissionId?: string;
+  projectId?: string;
+  testerId?: string;
+  submissionTitle?: string;
+  approvedAmount?: number;
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {
@@ -81,10 +88,10 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
 
     const requiresAdmin = requiresAdminSession(safePayload.type);
     if (requiresAdmin) {
-      if (!supabase) throw new Error('Sign in with an administrator account to send this email.');
+      if (!supabase) throw new Error('Sign in to your account before sending this email.');
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
-      if (!data.session?.access_token) throw new Error('Sign in with an administrator account to send this email.');
+      if (!data.session?.access_token) throw new Error('Sign in to your account before sending this email.');
       headers.Authorization = `Bearer ${data.session.access_token}`;
     }
 
@@ -99,7 +106,7 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
       const { data, error } = await supabase.auth.refreshSession();
       if (error) throw error;
       if (!data.session?.access_token) {
-        throw new Error('Your admin session has expired. Please sign in again before sending emails.');
+        throw new Error('Your session has expired. Please sign in again before sending emails.');
       }
 
       headers.Authorization = `Bearer ${data.session.access_token}`;

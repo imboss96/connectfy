@@ -35,11 +35,17 @@ These values are required. The login page uses Supabase password authentication 
 
 For Google OAuth, enable Google under **Authentication > Providers** in Supabase and add the local and production callback URLs. Supabase uses the application origin as the OAuth redirect.
 
+Accepting a project invitation enforces the same required tester details as applying to a project, including the uTest account screenshot and the ID/voice-recording confirmations. These values are saved to the tester's existing `profiles.profile_data` JSON and the invitation's existing `application_utest_details` row, so no additional migration is needed when the application-detail migrations are already applied.
+
 ## 3. Configure project email delivery
 
 This app includes a live project application and invite email path using the Express backend in `server.js`. The frontend calls the backend with the project metadata and candidate email, and the backend sends the message using the Brevo API. Supabase remains responsible for authentication and database access.
 
+In the submissions review queue, approving a bug report or task deliverable saves its approved status and payout amount to Supabase before notifying the tester. The tester's wallet balance and transaction history are calculated from approved submissions, so the approved project amount is credited once and remains available after signing in again. The same email backend sends the approval notice; it verifies the signed-in administrator or project owner against the saved submission and gets the tester's recipient address from their profile. If email delivery fails after approval, the dashboard reports the email error while leaving the saved approval and wallet credit intact.
+
 When an admin or project owner selects **Approve & Send Invite**, the database records the approval and queues an email in `project_email_outbox` in the same transaction. The email backend polls the outbox, sends the approval email through Brevo, and records the provider response. Failed sends are retried with increasing delays, up to eight attempts; exhausted jobs remain available for investigation in the outbox table. The browser does not send a second approval email, avoiding the former split between the approval update and email request.
+
+Applause sheet syncs also queue a **project completion approved** email when a participant's status first changes to `Claimed Complete`. Only rows matched to a registered Connectfy tester profile are eligible; matching uses the tester's platform email or saved uTest ID, and unmatched sheet participants are never emailed. A persistent `project_applause_approval_email_outbox` row keyed by project and tester prevents duplicate messages across later syncs. The status sync now updates its saved snapshot in place so it can detect newly completed rows without treating every hourly refresh as a new approval. The same backend outbox worker sends these emails and retries delivery failures.
 
 1. Create a Brevo account and generate an SMTP API key.
 2. Add the following values to your server environment (not your browser Vite config):
@@ -54,6 +60,10 @@ SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 ```
 
 Apply `supabase/migrations/202610050002_project_approval_email_outbox.sql` after the earlier migrations. The worker requires `SUPABASE_SERVICE_ROLE_KEY` so it can atomically claim queued jobs and update delivery status; keep this key only in the email backend environment. Never add it to browser variables or expose it through a `VITE_` setting. The migration prevents non-admins and non-owners from approving applications and denies browser roles access to the outbox.
+
+Apply `supabase/migrations/202610060002_applause_approval_email_outbox.sql` to enable uTest/Applause completion approval emails. It adds the project-scoped deduplication/outbox table, updates the Applause sync RPC to preserve status transitions, and adds worker-only claim/complete RPCs. Restart the email backend after applying the migration so its worker begins processing these jobs.
+
+Apply `supabase/migrations/202610060004_platform_member_payroll.sql` after the Applause outbox migration. It links scheduled project payroll entries to a registered tester profile, cancels any pending legacy schedule that cannot be matched to a Connectfy tester by account email or saved uTest ID, and updates the sync RPC so future schedules are created only for matched platform members. Approval emails and scheduled payments both exclude external sheet-only accounts. Admins can review the approval-backed project schedules under **Payments & Schedules**; that page is a report/export view and does not execute those scheduled payments.
 
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` are also required for the backend to verify the signed-in administrator before sending manually requested eligibility, invite, rejection, or uTest-account-update emails. Use the public anon/publishable key for `SUPABASE_ANON_KEY`; these values belong in the email backend environment and are separate from the frontend's `VITE_` build variables.
 
@@ -153,9 +163,19 @@ MPESA_CALLBACK_TOKEN=long-random-secret-value
 
 `MPESA_SECURITY_CREDENTIAL` is the Safaricom-certificate-encrypted initiator password supplied/configured for the Daraja B2C integration; it is not the plain-text initiator password. Keep all Daraja values, `SUPABASE_SERVICE_ROLE_KEY`, and the callback token out of browser/Vite variables and Git. The public callback base URL must resolve to this backend over HTTPS. Safaricom callback URLs include the configured high-entropy token; keep it private and rotate it if exposed.
 
-Apply `supabase/migrations/202610050003_safaricom_b2c_payouts.sql` after the prior project migrations. It adds the USD-to-KES quote snapshot and Safaricom reconciliation fields and moves payout creation behind a server-only database function. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend too. Obtain the FX rate from ExchangeRate-API's public USD feed; the quote rate timestamp/source are stored with the payout request, displayed to the reviewer, and the administrator confirms the whole KES amount before dispatch.
+Apply `supabase/migrations/202610050003_safaricom_b2c_payouts.sql` and then `supabase/migrations/202610060003_paypal_payouts.sql` after the prior project migrations. They add the USD-to-KES quote snapshot, Safaricom reconciliation fields, and PayPal payout tracking fields; move payout creation behind a server-only database function; and restrict new withdrawals to PayPal or Safaricom M-Pesa. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend too. Obtain the FX rate from ExchangeRate-API's public USD feed; the quote rate timestamp/source are stored with the payout request, displayed to the reviewer, and the administrator confirms the whole KES amount before dispatch.
 
-The backend endpoints quote USD/KES and create authenticated payout requests; the admin-only payout-review screen dispatches M-Pesa requests or confirms a manual payment for existing methods. Safaricom result/timeout callbacks update payout status. A callback failure returns the funds to the available balance on the tester's next data refresh. A network timeout after a request was submitted is deliberately left in `processing`; reconcile it with Safaricom before taking any retry action to avoid sending twice. The backend's health endpoint reports outbox-worker configuration, but does not disclose Daraja credentials.
+Configure PayPal Payouts in the PayPal Developer Dashboard and enable the Payouts permission for the REST app. Use sandbox credentials and PayPal sandbox accounts for testing before switching to a live app and live credentials. Add these server-only values to the backend environment:
+
+```env
+PAYPAL_ENV=sandbox
+PAYPAL_CLIENT_ID=your-paypal-rest-app-client-id
+PAYPAL_CLIENT_SECRET=your-paypal-rest-app-secret
+```
+
+Set `PAYPAL_ENV=live` only after the live PayPal app has Payouts access and has been tested. Never expose PayPal secrets through browser/Vite variables or commit them to Git.
+
+The backend endpoints quote USD/KES and create authenticated payout requests; the admin-only payout-review screen dispatches M-Pesa and PayPal requests. Safaricom result/timeout callbacks update M-Pesa payout status. PayPal batch status is reconciled by the backend worker and payout requests remain processing until PayPal confirms an item result. Failed provider transfers release the reserved balance on the tester's next data refresh. Network timeouts and other ambiguous responses remain in `processing`; reconcile them with the provider before taking any retry action to avoid duplicate transfers. The backend's health endpoint reports whether PayPal payouts are configured and the selected environment, but does not disclose credentials.
 
 ## 5. Run
 

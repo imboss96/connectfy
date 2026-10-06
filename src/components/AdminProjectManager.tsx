@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Plus,
   Briefcase,
   Layers,
   DollarSign,
-  Users,
   CheckCircle2,
   Clock,
   Search,
@@ -14,6 +13,7 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
   TrendingUp,
   ShieldCheck,
   Calendar,
@@ -24,13 +24,12 @@ import {
 import { useApp } from '../context/AppContext';
 import { normalizeProjectStatus } from '../lib/projectStatus';
 import { Project, ProjectTrack } from '../types';
-import { fetchRegisteredTestersFromSupabase, RegisteredTester } from '../lib/projectRepository';
 import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 
 export const AdminProjectManager: React.FC = () => {
-  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate, inviteTesterToProject, setActiveAdminProjectId, setActiveTab } = useApp();
+  const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate, setActiveAdminProjectId, setActiveTab, activeTab } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -42,98 +41,7 @@ export const AdminProjectManager: React.FC = () => {
   const [applicationSearch, setApplicationSearch] = useState('');
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invited' | 'accepted' | 'rejected' | 'needs_utest_update'>('all');
   const [applicationProjectFilter, setApplicationProjectFilter] = useState<string>('all');
-  const [registeredTesters, setRegisteredTesters] = useState<RegisteredTester[]>([]);
-  const [testerDirectoryError, setTesterDirectoryError] = useState('');
-  const [inviteSearch, setInviteSearch] = useState('');
-  const [selectedInviteTesterIds, setSelectedInviteTesterIds] = useState<string[]>([]);
-  const [inviteProjectId, setInviteProjectId] = useState('');
-  const [isSendingInvite, setIsSendingInvite] = useState(false);
-  const [inviteFeedback, setInviteFeedback] = useState('');
-  const [isLoadingTesters, setIsLoadingTesters] = useState(true);
-
-  useEffect(() => {
-    let isMounted = true;
-    void fetchRegisteredTestersFromSupabase()
-      .then((testers) => {
-        if (isMounted) {
-          setRegisteredTesters(testers);
-          setIsLoadingTesters(false);
-        }
-      })
-      .catch((error) => {
-        console.error('Unable to load registered testers for project invitations:', error);
-        if (isMounted) {
-          setTesterDirectoryError(error instanceof Error ? error.message : 'Unable to load the registered tester directory.');
-          setIsLoadingTesters(false);
-        }
-      });
-    return () => { isMounted = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!inviteProjectId && projects.length > 0) setInviteProjectId(projects[0].id);
-  }, [inviteProjectId, projects]);
-
-  const matchingInviteTesters = useMemo(() => {
-    const query = inviteSearch.trim().toLowerCase();
-    return registeredTesters.filter((tester) =>
-      !query || tester.name.toLowerCase().includes(query) || tester.email.toLowerCase().includes(query)
-    );
-  }, [inviteSearch, registeredTesters]);
-
-  const selectableInviteTesters = useMemo(() => matchingInviteTesters.filter((tester) =>
-    !applications.some((application) =>
-      application.projectId === inviteProjectId
-      && application.testerId === tester.id
-      && application.inviteStatus === 'accepted'
-    )
-  ), [applications, inviteProjectId, matchingInviteTesters]);
-
-  const toggleInviteTester = (testerId: string) => {
-    setSelectedInviteTesterIds((selected) => selected.includes(testerId)
-      ? selected.filter((id) => id !== testerId)
-      : [...selected, testerId]);
-  };
-
-  const toggleAllVisibleInviteTesters = () => {
-    const visibleIds = selectableInviteTesters.map((tester) => tester.id);
-    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedInviteTesterIds.includes(id));
-    setSelectedInviteTesterIds((selected) => allVisibleSelected
-      ? selected.filter((id) => !visibleIds.includes(id))
-      : Array.from(new Set([...selected, ...visibleIds])));
-  };
-
-  const handleSendProjectInvites = async () => {
-    const selectedTesters = registeredTesters.filter((tester) => selectedInviteTesterIds.includes(tester.id));
-    if (selectedTesters.length === 0 || !inviteProjectId) {
-      setInviteFeedback('Choose a project and tick at least one tester profile.');
-      return;
-    }
-
-    setIsSendingInvite(true);
-    setInviteFeedback('');
-    const failedInvites: RegisteredTester[] = [];
-    let sentCount = 0;
-    for (const tester of selectedTesters) {
-      try {
-        await inviteTesterToProject(inviteProjectId, tester.id, tester.name, tester.email);
-        sentCount += 1;
-      } catch (error) {
-        console.error(`Unable to invite tester ${tester.id} to project ${inviteProjectId}:`, error);
-        failedInvites.push(tester);
-      }
-    }
-
-    const successfulIds = selectedTesters
-      .filter((tester) => !failedInvites.some((failedTester) => failedTester.id === tester.id))
-      .map((tester) => tester.id);
-    setSelectedInviteTesterIds((selected) => selected.filter((id) => !successfulIds.includes(id)));
-    setInviteFeedback(failedInvites.length
-      ? `${sentCount} invite${sentCount === 1 ? '' : 's'} sent. Failed: ${failedInvites.map((tester) => tester.name).join(', ')}. You can retry the selected profiles.`
-      : `Invitations sent to ${sentCount} tester${sentCount === 1 ? '' : 's'}.`);
-    setIsSendingInvite(false);
-  };
-
+  const [expandedApplicationIds, setExpandedApplicationIds] = useState<string[]>([]);
   // Metrics
   const totalProjectsCount = projects.length;
   const activeProjectsCount = projects.filter((p) => normalizeProjectStatus(p.status) === 'active').length;
@@ -188,8 +96,21 @@ export const AdminProjectManager: React.FC = () => {
     setEditingSlotsId(null);
   };
 
+  useEffect(() => {
+    projects.forEach((project) => {
+      const submittedApplications = applications.filter((application) => application.projectId === project.id).length;
+      if (
+        project.slotsFilled !== submittedApplications ||
+        (project.status === 'active' && submittedApplications >= project.slotsTotal)
+      ) {
+        updateProject(project.id, { slotsFilled: submittedApplications });
+      }
+    });
+  }, [applications, projects, updateProject]);
+
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
+      {activeTab !== 'service_listings' && <>
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#00A3E0]/8 via-[#007AFF]/4 to-transparent pointer-events-none rounded-full blur-2xl" />
 
@@ -200,16 +121,16 @@ export const AdminProjectManager: React.FC = () => {
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Admin & Project Manager Operations</h1>
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">PM Operations</h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-[#00A3E0]/10 text-[#0F7CC9] border border-[#00A3E0]/20">TTL / PM Studio</span>
               </div>
-              <p className="text-xs text-slate-600 mt-1 max-w-xl">Add and curate freelance project listings, manage contractor slot quotas, inspect escrow budgets, and publish new QA & Data cycles.</p>
+              <p className="text-xs text-slate-600 mt-1 max-w-xl">Review applicant profiles, manage approvals, and track tester invitations.</p>
             </div>
           </div>
 
-          <button onClick={() => setIsAddModalOpen(true)} className="px-5 py-3 bg-[#007AFF] hover:bg-[#0066EE] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-[#007AFF]/20 flex items-center justify-center space-x-2 transition active:scale-95 shrink-0">
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Add New Project to Listings</span>
+          <button onClick={() => setActiveTab('service_listings')} className="px-5 py-3 bg-[#007AFF] hover:bg-[#0066EE] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-[#007AFF]/20 flex items-center justify-center space-x-2 transition active:scale-95 shrink-0">
+            <Briefcase className="w-4 h-4" />
+            <span>Manage Service Listings</span>
           </button>
         </div>
 
@@ -234,100 +155,6 @@ export const AdminProjectManager: React.FC = () => {
             <span className="text-lg font-bold text-amber-600">{applications.length} candidates</span>
           </div>
         </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-sky-50 p-2.5 text-sky-700"><Users className="h-5 w-5" /></div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">Mass invite registered testers</h2>
-            <p className="mt-1 text-[11px] text-slate-600">Choose a project, then tick one or more registered tester profiles. They can accept from their email and complete any missing profile details.</p>
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-          <label className="space-y-1.5 text-[11px] font-semibold text-slate-600">
-            <span>Project</span>
-            <select value={inviteProjectId} onChange={(event) => { setInviteProjectId(event.target.value); setSelectedInviteTesterIds([]); setInviteFeedback(''); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-800 focus:border-[#007AFF] focus:outline-none">
-            <option value="">Choose a project</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-            </select>
-          </label>
-          <label className="space-y-1.5 text-[11px] font-semibold text-slate-600">
-            <span>Search tester profiles</span>
-            <input type="search" value={inviteSearch} onChange={(event) => setInviteSearch(event.target.value)} placeholder="Search by name or email" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-[#007AFF] focus:outline-none" />
-          </label>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                checked={selectableInviteTesters.length > 0 && selectableInviteTesters.every((tester) => selectedInviteTesterIds.includes(tester.id))}
-                onChange={toggleAllVisibleInviteTesters}
-                disabled={isSendingInvite || selectableInviteTesters.length === 0}
-                className="h-4 w-4 rounded border-slate-300 text-[#007AFF] focus:ring-[#007AFF]"
-              />
-              Select all {selectableInviteTesters.length} visible profiles
-            </label>
-            <span className="text-xs text-slate-600">{selectedInviteTesterIds.length} selected</span>
-          </div>
-          <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
-            {isLoadingTesters ? (
-              <p className="px-4 py-6 text-center text-xs text-slate-500">Loading registered tester profiles…</p>
-            ) : matchingInviteTesters.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs text-slate-500">No tester profiles match your search.</p>
-            ) : matchingInviteTesters.map((tester) => {
-              const alreadyAccepted = applications.some((application) =>
-                application.projectId === inviteProjectId
-                && application.testerId === tester.id
-                && application.inviteStatus === 'accepted'
-              );
-              const alreadyInvited = applications.some((application) =>
-                application.projectId === inviteProjectId
-                && application.testerId === tester.id
-                && application.inviteStatus === 'invited'
-              );
-              return (
-                <label key={tester.id} className={`flex items-center gap-3 px-3 py-2.5 ${alreadyAccepted ? 'cursor-not-allowed bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-sky-50'}`}>
-                  <input
-                    type="checkbox"
-                    checked={selectedInviteTesterIds.includes(tester.id)}
-                    onChange={() => toggleInviteTester(tester.id)}
-                    disabled={isSendingInvite || !inviteProjectId || alreadyAccepted}
-                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#007AFF] focus:ring-[#007AFF]"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-slate-800">{tester.name}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{tester.email}</span>
-                  </span>
-                  {alreadyAccepted ? (
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Accepted</span>
-                  ) : alreadyInvited ? (
-                    <span className="shrink-0 rounded-full bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700">Invited · resend</span>
-                  ) : null}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            onClick={() => void handleSendProjectInvites()}
-            disabled={isSendingInvite || !inviteProjectId || selectedInviteTesterIds.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />{isSendingInvite ? `Sending ${selectedInviteTesterIds.length} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}…` : `Send ${selectedInviteTesterIds.length || ''} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}`}
-          </button>
-          {inviteFeedback && <p role="status" className={`text-xs ${inviteFeedback.startsWith('Invitations sent') ? 'text-emerald-700' : 'text-amber-700'}`}>{inviteFeedback}</p>}
-        </div>
-        {testerDirectoryError ? (
-          <p role="alert" className="text-xs text-rose-700">{testerDirectoryError}</p>
-        ) : !isLoadingTesters && registeredTesters.length === 0 ? (
-          <p className="text-xs text-slate-500">No registered tester accounts were found.</p>
-        ) : null}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-4 shadow-sm">
@@ -391,30 +218,41 @@ export const AdminProjectManager: React.FC = () => {
               const project = projects.find((p) => p.id === app.projectId);
               const inviteHistory = app.inviteHistory || [];
               const statusLabel = app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending review';
+              const isExpanded = expandedApplicationIds.includes(app.id);
 
               return (
-                <div key={app.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#007AFF] to-[#00A3E0] flex items-center justify-center text-sm font-black text-white">{app.testerName.slice(0, 2).toUpperCase()}</div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-bold text-slate-900">{app.testerName}</h3>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-700 border-slate-200">{app.testerTier}</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-200">Rating {app.testerRating}</span>
+                <article key={app.id} className={`overflow-hidden rounded-xl border bg-white transition ${isExpanded ? 'border-sky-200 shadow-sm' : 'border-slate-200'}`}>
+                  <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:px-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#007AFF] to-[#00A3E0] text-xs font-black text-white">{app.testerName.slice(0, 2).toUpperCase()}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <h3 className="truncate text-sm font-bold text-slate-900">{app.testerName}</h3>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{app.testerTier}</span>
+                          <span className="text-[10px] font-medium text-amber-700">★ {app.testerRating}</span>
                         </div>
-                        <p className="text-[11px] text-slate-600 mt-1">{app.testerEmail}</p>
-                        <p className="text-[11px] text-slate-600 mt-1">Project: <span className="text-slate-900 font-medium">{project?.title || app.projectId}</span></p>
+                        <p className="truncate text-[11px] text-slate-500">{app.testerEmail}</p>
+                        <p className="truncate text-[11px] text-slate-600">{project?.title || app.projectId}</p>
                       </div>
                     </div>
 
-                    <div className="flex flex-col md:flex-row md:items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${app.status === 'rejected' ? 'bg-rose-100 text-rose-700 border border-rose-200' : app.status === 'needs_utest_update' ? 'bg-orange-100 text-orange-700 border border-orange-200' : app.inviteStatus === 'accepted' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'bg-sky-100 text-sky-700 border border-sky-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{statusLabel}</span>
-                      <span className="text-[10px] text-slate-500">Applied {app.appliedDate}</span>
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${app.status === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700' : app.status === 'needs_utest_update' ? 'border-orange-200 bg-orange-50 text-orange-700' : app.inviteStatus === 'accepted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{statusLabel}</span>
+                      <span className="whitespace-nowrap text-[10px] text-slate-500">{app.appliedDate}</span>
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        onClick={() => setExpandedApplicationIds((ids) => isExpanded ? ids.filter((id) => id !== app.id) : [...ids, app.id])}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                      >
+                        {isExpanded ? 'Hide details' : 'View details'}
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-1 lg:grid-cols-[1.4fr_0.9fr] gap-3">
+                  {isExpanded && <div className="border-t border-slate-100 bg-slate-50/70 p-3 sm:p-4">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_0.9fr]">
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Experience note</p>
                       <p className="mt-2 text-xs text-slate-700 leading-5">{app.experienceNote || 'No experience summary provided.'}</p>
@@ -461,7 +299,7 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     {app.status === 'pending' && (
                       <>
                         <button type="button" onClick={() => rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
@@ -477,13 +315,27 @@ export const AdminProjectManager: React.FC = () => {
                     {app.status === 'rejected' && <span className="text-[11px] text-slate-500">Rejected from this cycle.</span>}
                     {app.status === 'needs_utest_update' && <span className="text-[11px] text-amber-700">Waiting for the tester to create a new uTest account and reapply.</span>}
                   </div>
-                </div>
+                  </div>}
+                </article>
               );
             })
           )}
         </div>
       </div>
+      </>}
 
+      {activeTab === 'service_listings' && (
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <h1 className="text-xl font-black text-slate-900">Service Listings</h1>
+              <p className="mt-1 text-xs text-slate-600">Create and manage the services and project opportunities shown in the marketplace.</p>
+            </div>
+            <button onClick={() => setIsAddModalOpen(true)} className="flex shrink-0 items-center justify-center space-x-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white shadow transition hover:bg-[#0066EE]">
+              <Plus className="h-4 w-4" />
+              <span>New Listing</span>
+            </button>
+          </div>
       <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-sm">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -511,10 +363,6 @@ export const AdminProjectManager: React.FC = () => {
             <option value="hidden">Hidden</option>
           </select>
 
-          <button onClick={() => setIsAddModalOpen(true)} className="px-3.5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl flex items-center space-x-1.5 transition shadow">
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Listing</span>
-          </button>
         </div>
       </div>
 
@@ -578,7 +426,7 @@ export const AdminProjectManager: React.FC = () => {
                           </div>
                         ) : (
                           <button onClick={() => { setEditingSlotsId(project.id); setNewSlotsInput(String(project.slotsTotal)); }} className="font-bold text-slate-900 hover:text-[#007AFF] flex items-center gap-1 group text-sm" title="Click to edit slots">
-                            <span>{project.slotsFilled}/{project.slotsTotal}</span>
+                            <span>{projectApps.length}/{project.slotsTotal}</span>
                             <Edit3 className="w-3 h-3 text-slate-500 group-hover:text-[#007AFF]" />
                           </button>
                         )}
@@ -623,6 +471,8 @@ export const AdminProjectManager: React.FC = () => {
           </div>
         )}
       </div>
+        </section>
+      )}
 
       <AddProjectModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
       <EditProjectModal project={editingProject} onClose={() => setEditingProject(null)} />

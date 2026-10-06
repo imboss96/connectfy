@@ -236,7 +236,7 @@ export interface PayoutRequest {
   id: string;
   testerId: string;
   amount: number;
-  method: 'PayPal' | 'Payoneer' | 'Direct Bank Wire' | 'Wise' | 'Safaricom M-Pesa';
+  method: 'PayPal' | 'Safaricom M-Pesa';
   destinationAccount: string;
   status: PayoutStatus;
   requestedAt: string;
@@ -289,7 +289,7 @@ export interface AcademyBadge {
 }
 
 export interface TesterPaymentSettings {
-  preferredMethod: 'PayPal' | 'Payoneer' | 'Wise' | 'Direct Bank Wire';
+  preferredMethod: 'PayPal' | 'Safaricom M-Pesa';
   paypalEmail: string;
   payoneerId: string;
   wiseEmail: string;
@@ -329,6 +329,11 @@ export interface TesterProfile {
   legalName?: string;
   dateOfBirth?: string;
   phone?: string;
+  ageRange?: string;
+  smartphone?: string;
+  hasValidId?: boolean;
+  willingVoiceRecording?: boolean;
+  uTestAccountScreenshotUrl?: string;
   avatar: string;
   country: string;
   city?: string;

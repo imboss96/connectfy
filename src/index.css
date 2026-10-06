@@ -1198,6 +1198,33 @@ body,
   border-color: #a7ccca !important;
 }
 
+.theme-shell main button.payments-export-button {
+  background-color: #087f8c !important;
+  border: 1px solid #087f8c !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.theme-shell main button.payments-export-button:not(:disabled):hover {
+  background-color: #066b76 !important;
+  border-color: #066b76 !important;
+}
+
+.theme-shell main button.payments-export-button:not(:disabled) * {
+  color: #ffffff !important;
+}
+
+.theme-shell main button.payments-export-button:disabled {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  box-shadow: none !important;
+}
+
+.theme-shell main button.payments-export-button:disabled * {
+  color: #475569 !important;
+}
+
 .landing-page {
   background: #ffffff;
   color: var(--ink-strong);

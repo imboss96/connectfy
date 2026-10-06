@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, InviteProfileDetails, useApp } from './context/AppContext';
+import { isCloudinaryConfigured, uploadToCloudinary } from './lib/cloudinary';
 import { Navbar } from './components/Navbar';
 import { ProjectBoard } from './components/ProjectBoard';
 import { TesterDashboard } from './components/TesterDashboard';
@@ -8,9 +9,11 @@ import { TestWorkspace } from './components/TestWorkspace';
 import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
+import { MassInviteSection } from './components/MassInviteSection';
 import { CRMSection } from './components/CRMSection';
 import { ProjectOperationsSection } from './components/ProjectOperationsSection';
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
+import { PaymentsSection } from './components/PaymentsSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -28,7 +31,8 @@ import {
   Briefcase,
   ArrowRight,
   ShieldCheck,
-  Plus
+  Plus,
+  CalendarClock
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -116,8 +120,14 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <CRMSection />
           ) : activeTab === 'project_operations' ? (
             <ProjectOperationsSection />
+          ) : activeTab === 'mass_invites' ? (
+            <MassInviteSection />
           ) : activeTab === 'payout_operations' ? (
             <PayoutOperationsSection />
+          ) : activeTab === 'payments' ? (
+            <PaymentsSection />
+          ) : activeTab === 'service_listings' ? (
+            <AdminProjectManager />
           ) : activeTab === 'projects' ? (
             <ProjectBoard
               onOpenWorkspace={(projId) => setActiveWorkspaceProjectId(projId)}
@@ -148,7 +158,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
       {/* Dedicated Mobile Bottom Navigation Bar (md:hidden) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B132B]/95 backdrop-blur-lg border-t border-[#1E2E4E] px-2 py-1 shadow-2xl">
-        <div className="flex items-center justify-around">
+        <div className={role === 'admin'
+          ? 'flex items-center justify-start gap-1 overflow-x-auto [&>button]:min-w-[4.5rem] [&>button]:shrink-0'
+          : 'flex items-center justify-around'}>
           {role === 'tester' ? (
             <>
               {/* Projects Tab */}
@@ -229,6 +241,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               </button>
 
               <button
+                onClick={() => handleMobileNav('mass_invites')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'mass_invites'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Invites</span>
+              </button>
+
+              <button
                 onClick={() => handleMobileNav('project_operations')}
                 className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
                   activeTab === 'project_operations'
@@ -238,6 +262,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <Briefcase className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Project Ops</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('payments')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'payments'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <CalendarClock className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Payments</span>
               </button>
 
               <button
@@ -254,9 +290,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
               {/* Listings */}
               <button
-                onClick={() => handleMobileNav('projects')}
+                onClick={() => handleMobileNav('service_listings')}
                 className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'projects'
+                  activeTab === 'service_listings'
                     ? 'text-[#00A3E0] font-bold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
@@ -388,9 +424,16 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
     legalName: testerProfile.legalName || '',
     dateOfBirth: testerProfile.dateOfBirth || '',
     uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
-    phone: testerProfile.phone || ''
+    phone: testerProfile.phone || '',
+    ageRange: testerProfile.ageRange || '18-24',
+    country: testerProfile.country || '',
+    smartphone: testerProfile.smartphone || '',
+    hasValidId: Boolean(testerProfile.hasValidId),
+    willingVoiceRecording: Boolean(testerProfile.willingVoiceRecording),
+    uTestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || ''
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingScreenshot, setIsUploadingScreenshot] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
@@ -399,7 +442,13 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
       legalName: testerProfile.legalName || '',
       dateOfBirth: testerProfile.dateOfBirth || '',
       uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
-      phone: testerProfile.phone || ''
+      phone: testerProfile.phone || '',
+      ageRange: testerProfile.ageRange || '18-24',
+      country: testerProfile.country || '',
+      smartphone: testerProfile.smartphone || '',
+      hasValidId: Boolean(testerProfile.hasValidId),
+      willingVoiceRecording: Boolean(testerProfile.willingVoiceRecording),
+      uTestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || ''
     });
   }, [applicationId, testerProfile]);
 
@@ -436,9 +485,36 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
   const updateField = (field: keyof InviteProfileDetails) =>
     (event: React.ChangeEvent<HTMLInputElement>) => setDetails((previous) => ({ ...previous, [field]: event.target.value }));
 
+  const handleScreenshotUpload = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setErrorMessage('Choose an image file showing your uTest account.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setErrorMessage('The screenshot must be 8 MB or smaller.');
+      return;
+    }
+    if (!isCloudinaryConfigured) {
+      setErrorMessage('Screenshot upload is unavailable right now. Please contact support.');
+      return;
+    }
+
+    setIsUploadingScreenshot(true);
+    setErrorMessage('');
+    try {
+      const uploaded = await uploadToCloudinary(file);
+      setDetails((previous) => ({ ...previous, uTestAccountScreenshotUrl: uploaded.secure_url }));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to upload the uTest account screenshot.');
+    } finally {
+      setIsUploadingScreenshot(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4">
-      <div className="my-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-7">
+      <div className="my-auto max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-7">
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-wider text-[#007AFF]">Project invitation</p>
           <h2 className="mt-1 text-xl font-black text-slate-900">Complete your tester details</h2>
@@ -465,20 +541,73 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
               <span>Email address</span>
               <input required type="email" autoComplete="email" value={details.uTestEmail} onChange={updateField('uTestEmail')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
             </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>Age range</span>
+              <select required value={details.ageRange} onChange={(event) => setDetails((previous) => ({ ...previous, ageRange: event.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]">
+                <option value="18-24">18-24</option>
+                <option value="25-34">25-34</option>
+                <option value="35-44">35-44</option>
+                <option value="45+">45+</option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>Country</span>
+              <input required value={details.country} onChange={updateField('country')} autoComplete="country-name" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
+            <label className="space-y-1.5 text-xs font-semibold text-slate-700 sm:col-span-2">
+              <span>Smartphone / device used for this project</span>
+              <input required value={details.smartphone} onChange={updateField('smartphone')} placeholder="e.g. iPhone 15 Pro (iOS 17.5)" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
+            </label>
             <label className="space-y-1.5 text-xs font-semibold text-slate-700 sm:col-span-2">
               <span>Phone number where we can reach you</span>
               <input required type="tel" autoComplete="tel" value={details.phone} onChange={updateField('phone')} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]" />
             </label>
           </div>
 
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <label className="block space-y-1.5 text-xs font-semibold text-slate-700">
+              <span>uTest account screenshot <span className="text-rose-600">*</span></span>
+              <span className="block font-normal text-slate-500">Show your uTest profile or account ID. Crop out passwords, recovery codes, and payment details. Image files up to 8 MB.</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  void handleScreenshotUpload(event.target.files?.[0]);
+                  event.currentTarget.value = '';
+                }}
+                disabled={isUploadingScreenshot || isSaving}
+                className="block w-full text-xs text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:font-semibold file:text-slate-700 file:ring-1 file:ring-slate-300 disabled:opacity-60"
+              />
+            </label>
+            {isUploadingScreenshot && <p className="text-xs font-medium text-sky-700">Uploading screenshot…</p>}
+            {details.uTestAccountScreenshotUrl && (
+              <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-white p-2">
+                <img src={details.uTestAccountScreenshotUrl} alt="Uploaded uTest account screenshot preview" className="h-14 w-20 rounded border border-slate-200 object-cover" />
+                <span className="min-w-0 flex-1 text-xs font-semibold text-emerald-800">Screenshot uploaded</span>
+                <a href={details.uTestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-sky-700 underline">View</a>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+            <label className="flex items-start gap-2">
+              <input required type="checkbox" checked={details.hasValidId} onChange={(event) => setDetails((previous) => ({ ...previous, hasValidId: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#007AFF]" />
+              I have a valid government-issued ID available and understand that ID verification is required to participate.
+            </label>
+            <label className="flex items-start gap-2">
+              <input required type="checkbox" checked={details.willingVoiceRecording} onChange={(event) => setDetails((previous) => ({ ...previous, willingVoiceRecording: event.target.checked }))} className="mt-0.5 h-4 w-4 accent-[#007AFF]" />
+              I am willing to complete short voice recordings, including recordings in quiet and normal/noisy environments.
+            </label>
+          </div>
+
           {errorMessage && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</p>}
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-            <button type="button" onClick={dismiss} disabled={isSaving} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <button type="button" onClick={dismiss} disabled={isSaving || isUploadingScreenshot} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               Not now
             </button>
-            <button type="submit" disabled={isSaving} className="rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0066EE] disabled:opacity-50">
-              {isSaving ? 'Saving…' : 'Save details & accept invite'}
+            <button type="submit" disabled={isSaving || isUploadingScreenshot || !details.uTestAccountScreenshotUrl} className="rounded-lg bg-[#007AFF] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0066EE] disabled:opacity-50">
+              {isUploadingScreenshot ? 'Uploading screenshot…' : isSaving ? 'Saving…' : 'Save details & accept invite'}
             </button>
           </div>
         </form>

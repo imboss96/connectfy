@@ -24,16 +24,29 @@ export function normalizeProjectStatus(status?: string | null): ProjectAvailabil
   }
 }
 
-export function isProjectOpenForApplications(project?: Partial<{ status?: string | null }> | null): boolean {
-  return normalizeProjectStatus(project?.status) === 'active';
+export function isProjectSlotsFull(project?: Partial<{ slotsFilled: number; slotsTotal: number }> | null): boolean {
+  if (!project || project.slotsTotal === undefined) return false;
+  return project.slotsTotal <= 0 || (project.slotsFilled || 0) >= project.slotsTotal;
+}
+
+export function isProjectOpenForApplications(
+  project?: Partial<{ status?: string | null; slotsFilled: number; slotsTotal: number }> | null
+): boolean {
+  return normalizeProjectStatus(project?.status) === 'active' && !isProjectSlotsFull(project);
 }
 
 export function isProjectVisibleToTesters(project?: Partial<{ status?: string | null }> | null): boolean {
   return normalizeProjectStatus(project?.status) !== 'hidden';
 }
 
-export function getProjectAvailabilityLabel(status?: string | null, startsAt?: string | null): string {
+export function getProjectAvailabilityLabel(
+  status?: string | null,
+  startsAt?: string | null,
+  slotsFilled?: number,
+  slotsTotal?: number
+): string {
   const normalizedStatus = normalizeProjectStatus(status);
+  if (isProjectSlotsFull({ slotsFilled, slotsTotal })) return 'Full';
   if (normalizedStatus === 'active') return 'Open';
   if (normalizedStatus === 'upcoming') {
     if (!startsAt) return 'Coming soon';

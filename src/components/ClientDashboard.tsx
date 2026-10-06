@@ -73,6 +73,9 @@ export const ClientDashboard: React.FC = () => {
   const [customBounty, setCustomBounty] = useState<string>('');
   const [feedback, setFeedback] = useState<string>('Approved. Clear reproduction steps and accurate logs.');
   const [rating, setRating] = useState<number>(5);
+  const [approvalMessage, setApprovalMessage] = useState('');
+  const [approvalMessageKind, setApprovalMessageKind] = useState<'success' | 'warning' | 'error'>('success');
+  const [isSavingApproval, setIsSavingApproval] = useState(false);
 
   // Bug Reject / Revision modal state
   const [actionBug, setActionBug] = useState<{ bug: BugReport; type: 'revision' | 'reject' } | null>(null);
@@ -114,18 +117,32 @@ export const ClientDashboard: React.FC = () => {
   const pendingApplicants = applications.filter((a) => a.status === 'pending');
 
   const handleOpenApproveModal = (bug: BugReport) => {
+    setApprovalMessage('');
     setApprovingBug(bug);
     setCustomBounty(bug.bountyEarned.toString());
     setFeedback('Approved. Excellent documentation and clean reproduction steps.');
     setRating(5);
   };
 
-  const handleConfirmApproval = (e: React.FormEvent) => {
+  const handleConfirmApproval = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!approvingBug) return;
+    if (!approvingBug || isSavingApproval) return;
     const bounty = parseFloat(customBounty) || approvingBug.bountyEarned;
-    approveBugReport(approvingBug.id, bounty, feedback, rating);
-    setApprovingBug(null);
+    setIsSavingApproval(true);
+    setApprovalMessage('');
+    try {
+      const result = await approveBugReport(approvingBug.id, bounty, feedback, rating);
+      setApprovingBug(null);
+      setApprovalMessageKind(result.emailSent ? 'success' : 'warning');
+      setApprovalMessage(result.emailSent
+        ? 'Submission approved, wallet credited, and confirmation email sent to the tester.'
+        : `Submission approved and wallet credited, but the email could not be sent: ${result.emailError || 'Unknown email error'}`);
+    } catch (error) {
+      setApprovalMessageKind('error');
+      setApprovalMessage(error instanceof Error ? error.message : 'Unable to approve this submission.');
+    } finally {
+      setIsSavingApproval(false);
+    }
   };
 
   const handleConfirmAction = (e: React.FormEvent) => {
@@ -141,18 +158,32 @@ export const ClientDashboard: React.FC = () => {
   };
 
   const handleOpenApproveTaskModal = (task: TaskSubmission) => {
+    setApprovalMessage('');
     setApprovingTask(task);
     setTaskBounty(task.bountyEarned.toString());
     setTaskFeedback('Approved. Dataset ingested and validated successfully.');
     setTaskRating(5);
   };
 
-  const handleConfirmTaskApproval = (e: React.FormEvent) => {
+  const handleConfirmTaskApproval = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!approvingTask) return;
+    if (!approvingTask || isSavingApproval) return;
     const bounty = parseFloat(taskBounty) || approvingTask.bountyEarned;
-    approveTaskSubmission(approvingTask.id, bounty, taskFeedback, taskRating);
-    setApprovingTask(null);
+    setIsSavingApproval(true);
+    setApprovalMessage('');
+    try {
+      const result = await approveTaskSubmission(approvingTask.id, bounty, taskFeedback, taskRating);
+      setApprovingTask(null);
+      setApprovalMessageKind(result.emailSent ? 'success' : 'warning');
+      setApprovalMessage(result.emailSent
+        ? 'Submission approved, wallet credited, and confirmation email sent to the tester.'
+        : `Submission approved and wallet credited, but the email could not be sent: ${result.emailError || 'Unknown email error'}`);
+    } catch (error) {
+      setApprovalMessageKind('error');
+      setApprovalMessage(error instanceof Error ? error.message : 'Unable to approve this submission.');
+    } finally {
+      setIsSavingApproval(false);
+    }
   };
 
   const handleConfirmTaskAction = (e: React.FormEvent) => {
@@ -278,6 +309,21 @@ export const ClientDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {approvalMessage && (
+        <div
+          role={approvalMessageKind === 'error' ? 'alert' : 'status'}
+          className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+            approvalMessageKind === 'success'
+              ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-200'
+              : approvalMessageKind === 'warning'
+                ? 'border-amber-800/60 bg-amber-950/40 text-amber-200'
+                : 'border-rose-800/60 bg-rose-950/40 text-rose-200'
+          }`}
+        >
+          {approvalMessage}
+        </div>
+      )}
 
       {/* Main Navigation Tabs */}
       <div className="flex border-b border-slate-800 space-x-4 sm:space-x-6 text-xs sm:text-sm overflow-x-auto scrollbar-none pb-0.5">
@@ -990,6 +1036,7 @@ export const ClientDashboard: React.FC = () => {
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
                     value={customBounty}
                     onChange={(e) => setCustomBounty(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-white font-bold text-sm focus:outline-none focus:border-emerald-500"
@@ -1034,23 +1081,25 @@ export const ClientDashboard: React.FC = () => {
               <div className="p-3 bg-emerald-950/20 border border-emerald-800/40 rounded-xl text-emerald-300 text-[11px] flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span>
-                  Confirming will instantly deduct from your Escrow balance and credit ${parseFloat(customBounty || '0').toFixed(2)} directly into {approvingBug.testerName}'s account for payout processing.
+                  Confirming will approve the submission, credit ${parseFloat(customBounty || '0').toFixed(2)} to {approvingBug.testerName}'s wallet, and email the tester.
                 </span>
               </div>
 
               <div className="flex justify-end space-x-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setApprovingBug(null)}
+                  onClick={() => !isSavingApproval && setApprovingBug(null)}
+                  disabled={isSavingApproval}
                   className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  disabled={isSavingApproval}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow"
                 >
-                  Confirm & Credit Account
+                  {isSavingApproval ? 'Approving...' : 'Approve, Credit & Email'}
                 </button>
               </div>
             </form>
@@ -1091,6 +1140,7 @@ export const ClientDashboard: React.FC = () => {
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
                     value={taskBounty}
                     onChange={(e) => setTaskBounty(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-white font-bold text-sm focus:outline-none focus:border-purple-500"
@@ -1135,23 +1185,25 @@ export const ClientDashboard: React.FC = () => {
               <div className="p-3 bg-purple-950/20 border border-purple-800/40 rounded-xl text-purple-300 text-[11px] flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0 text-purple-400" />
                 <span>
-                  Confirming will disburse ${parseFloat(taskBounty || '0').toFixed(2)} into {approvingTask.testerName}'s wallet immediately.
+                  Confirming will approve the submission, credit ${parseFloat(taskBounty || '0').toFixed(2)} to {approvingTask.testerName}'s wallet, and email the tester.
                 </span>
               </div>
 
               <div className="flex justify-end space-x-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setApprovingTask(null)}
+                  onClick={() => !isSavingApproval && setApprovingTask(null)}
+                  disabled={isSavingApproval}
                   className="px-4 py-2 bg-slate-800 text-slate-300 font-semibold rounded-lg"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  disabled={isSavingApproval}
                   className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg shadow"
                 >
-                  Confirm & Disburse Payment
+                  {isSavingApproval ? 'Approving...' : 'Approve, Credit & Email'}
                 </button>
               </div>
             </form>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Clock, RefreshCw, Send, Wallet } from 'lucide-react';
+import { AlertCircle, Clock, RefreshCw, Send, Wallet } from 'lucide-react';
 import { approvePayoutRequest, fetchPendingPayoutRequests } from '../lib/mpesaPayoutService';
 
 type PayoutRow = {
@@ -58,7 +58,7 @@ export const PayoutOperationsSection: React.FC = () => {
       await approvePayoutRequest(payout.id, amount);
       setNotice(payout.method === 'Safaricom M-Pesa'
         ? 'Payout submitted to Safaricom. It will remain processing until Safaricom confirms the result.'
-        : 'Manual payout marked completed.');
+        : 'Payout submitted to PayPal. It will remain processing until PayPal confirms the result.');
       await refresh();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : 'Unable to approve this payout.');
@@ -74,7 +74,7 @@ export const PayoutOperationsSection: React.FC = () => {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Finance operations</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-950">Payout review</h1>
-          <p className="mt-1 text-sm text-slate-600">Review tester withdrawals and authorize M-Pesa B2C transfers.</p>
+          <p className="mt-1 text-sm text-slate-600">Review and authorize tester withdrawals through PayPal or M-Pesa.</p>
         </div>
         <button
           type="button"
@@ -88,7 +88,7 @@ export const PayoutOperationsSection: React.FC = () => {
 
       <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>Verify the recipient and KES amount before authorizing. A Safaricom request with an ambiguous response stays processing for reconciliation; do not resend it until you verify the result in Safaricom.</p>
+        <p>Verify the recipient before authorizing. M-Pesa transfers require confirming the KES amount. PayPal and Safaricom requests stay processing until the provider confirms their result; do not retry an ambiguous transfer before reconciling it with the provider.</p>
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
@@ -106,6 +106,11 @@ export const PayoutOperationsSection: React.FC = () => {
         <div className="space-y-3">
           {payouts.map((payout) => (
             <article key={payout.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              {payout.method !== 'Safaricom M-Pesa' && payout.method !== 'PayPal' && (
+                <p role="alert" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  This is a legacy payout method that is no longer supported. It cannot be submitted through Connectfy.
+                </p>
+              )}
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -150,11 +155,21 @@ export const PayoutOperationsSection: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void approve(payout)}
-                  disabled={busyId === payout.id || (payout.method === 'Safaricom M-Pesa' && (!Number.isInteger(Number(approvedAmounts[payout.id])) || Number(approvedAmounts[payout.id]) < 1))}
+                  disabled={
+                    busyId === payout.id
+                    || (payout.method !== 'Safaricom M-Pesa' && payout.method !== 'PayPal')
+                    || (payout.method === 'Safaricom M-Pesa' && (!Number.isInteger(Number(approvedAmounts[payout.id])) || Number(approvedAmounts[payout.id]) < 1))
+                  }
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {busyId === payout.id ? <Clock className="h-4 w-4 animate-pulse" /> : payout.method === 'Safaricom M-Pesa' ? <Send className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                  {busyId === payout.id ? 'Processing…' : payout.method === 'Safaricom M-Pesa' ? 'Approve & send via M-Pesa' : 'Confirm manual payment'}
+                  {busyId === payout.id ? <Clock className="h-4 w-4 animate-pulse" /> : <Send className="h-4 w-4" />}
+                  {busyId === payout.id
+                    ? 'Processing…'
+                    : payout.method === 'Safaricom M-Pesa'
+                      ? 'Approve & send via M-Pesa'
+                      : payout.method === 'PayPal'
+                        ? 'Approve & send via PayPal'
+                        : 'Unsupported method'}
                 </button>
               </div>
             </article>
