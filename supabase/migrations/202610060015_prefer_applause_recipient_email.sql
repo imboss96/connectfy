@@ -1,19 +1,5 @@
--- Allow consent-pending reminders for Applause participants who have no Connectfy account.
-alter table public.project_applause_consent_reminder_email_outbox
-  alter column profile_id drop not null;
-
-alter table public.project_applause_consent_reminder_email_outbox
-  drop constraint if exists project_applause_consent_reminder_ema_project_id_profile_id_key;
-
-alter table public.project_applause_consent_reminder_email_outbox
-  drop constraint if exists project_applause_consent_reminder_email_outbox_project_id_profile_id_key;
-
-alter table public.project_applause_consent_reminder_email_outbox
-  add column if not exists external_recipient boolean not null default false;
-
-create unique index if not exists project_applause_consent_reminder_source_uidx
-  on public.project_applause_consent_reminder_email_outbox (project_id, source_key);
-
+-- Preserve each Applause participant's own email. A uTest ID match must not
+-- redirect or collapse rows that already have a recipient email in the sheet.
 create or replace function public.queue_project_applause_consent_reminders(
   p_project_id uuid,
   p_source_keys text[]
@@ -35,19 +21,21 @@ begin
     raise exception 'Select between 1 and 5000 consent-pending rows';
   end if;
 
-  select coalesce(settings.payroll_amount, 0) into project_amount
-  from public.project_operations_settings as settings where settings.project_id = p_project_id;
+  select coalesce(settings.payroll_amount, 0)
+    into project_amount
+    from public.project_operations_settings as settings
+    where settings.project_id = p_project_id;
   if not found then raise exception 'Configure this project integration before sending consent reminders'; end if;
 
-  insert into public.project_applause_consent_reminder_email_outbox as existing_reminder (
+  insert into public.project_applause_consent_reminder_email_outbox (
     project_id, profile_id, source_key, recipient_email, recipient_name, utest_id,
     project_title, project_amount, project_lock_date, external_recipient
   )
-  select distinct on (source.project_id, source.source_key)
+  select distinct on (source.project_id, lower(trim(recipient.email)))
     source.project_id,
     matched_profile.id,
     source.source_key,
-    coalesce(nullif(trim(matched_profile.email), ''), nullif(trim(source.tester_email), ''), nullif(trim(source.google_email), '')),
+    recipient.email,
     case when matched_profile.id is null
       then coalesce(nullif(trim(source.utest_id), ''), nullif(trim(source.tester_id), ''), 'uTest tester')
       else coalesce(nullif(trim(matched_profile.name), ''), split_part(matched_profile.email, '@', 1)) end,
@@ -65,7 +53,13 @@ begin
       and nullif(trim(profile.email), '') is not null
       and (
         lower(trim(profile.email)) in (lower(trim(source.tester_email)), lower(trim(source.google_email)))
-        or lower(trim(profile.profile_data #>> '{testerProfile,uTestId}')) in (lower(trim(source.tester_id)), lower(trim(source.utest_id)))
+        or (
+          nullif(trim(source.tester_email), '') is null
+          and nullif(trim(source.google_email), '') is null
+          and lower(trim(profile.profile_data #>> '{testerProfile,uTestId}')) in (
+            lower(trim(source.tester_id)), lower(trim(source.utest_id))
+          )
+        )
       )
     order by case
       when lower(trim(profile.email)) = lower(trim(source.tester_email)) then 0
@@ -73,24 +67,22 @@ begin
       else 2 end, profile.id
     limit 1
   ) as matched_profile on true
+  cross join lateral (
+    select coalesce(
+      nullif(trim(source.tester_email), ''),
+      nullif(trim(source.google_email), ''),
+      nullif(trim(matched_profile.email), '')
+    ) as email
+  ) as recipient
   where source.project_id = p_project_id
     and source.source_key = any(p_source_keys)
     and lower(trim(coalesce(source.consent_name, ''))) = 'pending'
-    and coalesce(nullif(trim(matched_profile.email), ''), nullif(trim(source.tester_email), ''), nullif(trim(source.google_email), '')) is not null
+    and nullif(trim(recipient.email), '') is not null
     and (matched_profile.id is not null or coalesce(nullif(trim(source.utest_id), ''), nullif(trim(source.tester_id), '')) is not null)
-  order by source.project_id, source.source_key
-  on conflict (project_id, source_key) do update
-  set profile_id = excluded.profile_id,
-      recipient_email = excluded.recipient_email,
-      recipient_name = excluded.recipient_name,
-      utest_id = excluded.utest_id,
-      project_title = excluded.project_title,
-      project_amount = excluded.project_amount,
-      project_lock_date = excluded.project_lock_date,
-      external_recipient = excluded.external_recipient,
-      status = 'pending', attempt_count = 0, next_attempt_at = now(), locked_until = null,
-      last_error = null, sent_at = null, updated_at = now()
-  where existing_reminder.status in ('sent', 'failed');
+  order by source.project_id, lower(trim(recipient.email)), source.source_key
+  on conflict (project_id, (lower(trim(recipient_email))))
+    where status in ('pending', 'processing')
+  do nothing;
 
   get diagnostics queued_count = row_count;
   return queued_count;

@@ -643,7 +643,7 @@ const processOneApplauseApprovalEmail = async () => {
   if (!job) return false;
 
   try {
-    if (!job.id || !job.project_id || !job.recipient_email || !job.recipient_name) {
+    if (!job.id || !job.project_id || !job.profile_id || !job.recipient_email || !job.recipient_name) {
       throw new Error('Applause completion approval email has an invalid outbox payload.');
     }
     const projectLink = new URL(process.env.APP_URL || 'https://connectfy.tech');
@@ -704,7 +704,7 @@ const processOneApplauseConsentReminderEmail = async () => {
   if (!job) return false;
 
   try {
-    if (!job.id || !job.project_id || !job.profile_id || !job.recipient_email || !job.recipient_name) {
+    if (!job.id || !job.project_id || !job.recipient_email || !job.recipient_name) {
       throw new Error('Applause consent reminder email has an invalid outbox payload.');
     }
     const utestId = String(job.utest_id || '').trim();
