@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, Mail, RefreshCw, Search, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { LEGACY_SHEET_EMAIL_SUBJECT } from '../lib/legacySheetEmail.js';
+import { fetchConsentReminderEmailLog } from '../lib/adminEmailService';
 
-type EmailLogStatus = 'pending' | 'sent' | 'failed' | 'unverified';
+type EmailLogStatus = 'pending' | 'processing' | 'sent' | 'failed' | 'unverified';
 
 type EmailLogEntry = {
   id: string;
@@ -20,6 +20,7 @@ type EmailLogEntry = {
 
 const statusPresentation: Record<EmailLogStatus, { label: string; className: string; icon: React.ComponentType<{ className?: string }> }> = {
   pending: { label: 'Pending / unknown', className: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock3 },
+  processing: { label: 'Sending', className: 'border-blue-200 bg-blue-50 text-blue-700', icon: RefreshCw },
   sent: { label: 'Sent', className: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: CheckCircle2 },
   failed: { label: 'Failed', className: 'border-rose-200 bg-rose-50 text-rose-700', icon: XCircle },
   unverified: { label: 'Sent, confirmation unavailable', className: 'border-amber-200 bg-amber-50 text-amber-700', icon: AlertCircle }
@@ -29,6 +30,7 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
   const [entries, setEntries] = useState<EmailLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reminderLogError, setReminderLogError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const loadEntries = useCallback(async () => {
@@ -48,7 +50,30 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
       if (projectId) query = query.eq('project_id', projectId);
       const { data, error: queryError } = await query;
       if (queryError) throw queryError;
-      setEntries((data || []) as EmailLogEntry[]);
+      let consentReminderEntries: EmailLogEntry[] = [];
+      setReminderLogError(null);
+      if (projectId) {
+        try {
+          const reminders = await fetchConsentReminderEmailLog(projectId);
+          consentReminderEntries = reminders.map((row) => ({
+            id: `consent-reminder-${row.id}`,
+            recipient_email: row.recipient_email,
+            recipient_name: row.recipient_name,
+            email_type: 'applause_consent_pending_reminder',
+            subject: `Action required: complete your consent step for ${row.project_title}`,
+            status: row.status,
+            error_message: row.last_error,
+            created_by: row.queued_by,
+            created_at: row.updated_at || row.created_at,
+            sent_at: row.sent_at
+          }));
+        } catch (reminderLoadError) {
+          console.error('Unable to load consent reminder email history:', reminderLoadError);
+          setReminderLogError(reminderLoadError instanceof Error ? reminderLoadError.message : 'Unable to load consent reminder email history.');
+        }
+      }
+      setEntries([...(data || []) as EmailLogEntry[], ...consentReminderEntries]
+        .sort((left, right) => right.created_at.localeCompare(left.created_at)));
     } catch (loadError) {
       console.error('Unable to load legacy sheet email history:', loadError);
       setError(loadError instanceof Error ? loadError.message : 'Unable to load email history.');
@@ -70,7 +95,7 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
     || entry.status.toLowerCase().includes(normalizedSearch)
   ));
   const sentCount = entries.filter((entry) => entry.status === 'sent').length;
-  const pendingCount = entries.filter((entry) => entry.status === 'pending' || entry.status === 'unverified').length;
+  const pendingCount = entries.filter((entry) => entry.status === 'pending' || entry.status === 'processing' || entry.status === 'unverified').length;
   const failedCount = entries.filter((entry) => entry.status === 'failed').length;
 
   return (
@@ -82,7 +107,7 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
           </div>
           <div>
             <h1 className="text-xl font-black text-slate-900">{projectTitle ? `${projectTitle} · Email History` : 'Email History'}</h1>
-            <p className="mt-1 text-xs text-slate-600">Track eligibility emails sent to people from this project’s connected Google Sheet.</p>
+            <p className="mt-1 text-xs text-slate-600">Track sheet eligibility emails and manual consent-pending payout reminders for this project.</p>
           </div>
         </div>
         <button
@@ -111,11 +136,17 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
         </div>
       </div>
 
+      {reminderLogError && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          Legacy email history is available, but consent reminder statuses could not be loaded: {reminderLogError}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">Sent campaign records</h2>
-            <p className="mt-1 text-[11px] text-slate-500">Subject: {LEGACY_SHEET_EMAIL_SUBJECT}</p>
+            <h2 className="text-sm font-bold text-slate-900">Sent campaign and reminder records</h2>
+            <p className="mt-1 text-[11px] text-slate-500">Includes eligibility emails and manually sent consent-pending reminders.</p>
           </div>
           <label className="relative w-full sm:max-w-xs">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -157,7 +188,10 @@ export const EmailHistorySection: React.FC<{ projectId?: string; projectTitle?: 
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredEntries.map((entry) => {
-                  const presentation = statusPresentation[entry.status] || statusPresentation.pending;
+                  const basePresentation = statusPresentation[entry.status] || statusPresentation.pending;
+                  const presentation = entry.email_type === 'applause_consent_pending_reminder' && entry.status === 'pending'
+                    ? { ...basePresentation, label: 'Queued' }
+                    : basePresentation;
                   const StatusIcon = presentation.icon;
                   return (
                     <tr key={entry.id} className="align-top hover:bg-slate-50/70">

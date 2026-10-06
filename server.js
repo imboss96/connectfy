@@ -39,11 +39,26 @@ const allowedOrigins = [
 
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'sheet_consent_pending') {
+    const name = escapeHtml(payload.toName || 'there');
+    const projectTitle = escapeHtml(payload.projectTitle || 'your project');
+    const amount = Number(payload.projectAmount || 0);
+    const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
+    const lockDate = escapeHtml(payload.projectLockDate || 'To be confirmed');
+    const whatsappLink = /^https:\/\/wa\.me\/254794502268\?text=/i.test(String(payload.whatsappLink || ''))
+      ? escapeHtml(payload.whatsappLink)
+      : 'https://wa.me/254794502268';
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${name},</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>If you have issues completing the project, our Kenyan support team can help you on WhatsApp.</p><p style="margin:24px 0;"><a href="${whatsappLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#128c7e;color:#fff;text-decoration:none;font-weight:700;">Chat with Kenyan support on WhatsApp</a></p><p style="font-size:12px;color:#64748b;">The WhatsApp message will be prefilled with your uTest ID. Review it before sending.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+  }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
     const projectCompany = escapeHtml(payload.projectCompany || 'Connectfy');
-    const description = escapeHtml(payload.projectDescription || 'Your project completion has been verified.');
+    const approvedAmount = Number(payload.approvedAmount || 0);
+    const amountNotice = Number.isFinite(approvedAmount) && approvedAmount > 0
+      ? `<p style="margin:14px 0 0;font-size:15px;color:#047857;"><strong>$${approvedAmount.toFixed(2)} USD</strong> has been added to your Connectfy wallet.</p>`
+      : '';
+    const description = `${escapeHtml(payload.projectDescription || 'Your project completion has been verified.')}${amountNotice}`;
     const deadline = payload.projectDeadline ? `<p style="margin:0 0 18px;font-size:13px;color:#475569;"><strong>Project deadline:</strong> ${escapeHtml(payload.projectDeadline)}</p>` : '';
     return `<div style="margin:0;padding:20px;background:#f6f9fc;font-family:Arial,sans-serif;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:14px;overflow:hidden;"><div style="padding:24px;"><p style="margin:0 0 16px;font-size:14px;">Hello ${name},</p><h1 style="margin:0 0 12px;font-size:21px;color:#10213b;">Your project completion is approved</h1><p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155;">We’ve confirmed your <strong>${projectTitle}</strong> completion from the uTest project records. Thank you for completing this project with ${projectCompany}.</p><div style="margin:18px 0;padding:14px 16px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;font-size:13px;line-height:1.6;">${description}</div>${deadline}<p style="margin:0 0 20px;font-size:13px;line-height:1.7;color:#475569;">If you have questions about your project status, please contact our support team.</p><div style="text-align:center;margin:0 0 20px;"><a href="${escapeHtml(projectLink)}" style="display:inline-block;background:#0b5cff;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700;font-size:13px;">Open Connectfy</a></div><p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">Best,<br>Connectfy Team</p><p style="margin:14px 0 0;font-size:12px;color:#64748b;">Need help? Contact support@connectfy.tech. Connectfy will never ask for your password or payment details.</p></div></div></div>`;
   }
@@ -130,11 +145,29 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'sheet_consent_pending') {
+    const amount = Number(payload.projectAmount || 0);
+    const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      `You are one step away from claiming your payout of ${payout}.`,
+      `Please complete the remaining consent step for ${payload.projectTitle || 'your project'}.`,
+      `The project locks on ${payload.projectLockDate || 'a date to be confirmed'}; please hurry so you have time to finish your testing.`,
+      'If you have issues completing the project, contact our Kenyan support team on WhatsApp:',
+      payload.whatsappLink || 'https://wa.me/254794502268',
+      '',
+      'The message is prefilled with your uTest ID. Review it before sending.',
+      '',
+      'Connectfy Team'
+    ].join('\n');
+  }
   if (payload.type === 'sheet_project_approved') {
     return [
       `Hello ${payload.toName || 'there'},`,
       '',
       `Your ${payload.projectTitle || 'project'} completion has been approved. We confirmed it from the uTest project records for ${payload.projectCompany || 'Connectfy'}.`,
+      Number(payload.approvedAmount) > 0 ? `$${Number(payload.approvedAmount).toFixed(2)} USD has been added to your Connectfy wallet.` : '',
       payload.projectDescription || '',
       payload.projectDeadline ? `Project deadline: ${payload.projectDeadline}` : '',
       '',
@@ -245,6 +278,8 @@ const projectEmailSubject = (payload, type) => type === 'invite'
     ? `Project submission approved: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'sheet_project_approved'
     ? `Project completion approved: ${payload.projectTitle || 'Connectfy project'}`
+  : type === 'sheet_consent_pending'
+    ? `Action required: complete your consent step for ${payload.projectTitle || 'your project'}`
   : type === 'accepted'
     ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
     : type === 'rejected'
@@ -613,6 +648,7 @@ const processOneApplauseApprovalEmail = async () => {
       toName: job.recipient_name,
       projectTitle: job.project_title,
       projectCompany: job.project_company,
+      approvedAmount: Number(job.approved_amount || 0),
       projectDescription: job.project_description,
       projectDeadline: job.project_deadline,
       actionUrl: projectLink.toString(),
@@ -655,15 +691,71 @@ const processOneApplauseApprovalEmail = async () => {
   return true;
 };
 
+const processOneApplauseConsentReminderEmail = async () => {
+  const claimed = await callOutboxRpc('claim_project_applause_consent_reminder_email', {});
+  const job = Array.isArray(claimed) ? claimed[0] : null;
+  if (!job) return false;
+
+  try {
+    if (!job.id || !job.project_id || !job.profile_id || !job.recipient_email || !job.recipient_name) {
+      throw new Error('Applause consent reminder email has an invalid outbox payload.');
+    }
+    const utestId = String(job.utest_id || '').trim();
+    const message = `Hello, please help me finish my testing of ${utestId || 'my uTest account'} for ${job.project_title || 'my project'}.`;
+    const whatsappLink = `https://wa.me/254794502268?text=${encodeURIComponent(message)}`;
+    const result = await sendEmailThroughBrevo({
+      type: 'sheet_consent_pending',
+      toEmail: job.recipient_email,
+      toName: job.recipient_name,
+      projectTitle: job.project_title,
+      projectAmount: Number(job.project_amount || 0),
+      projectLockDate: job.project_lock_date,
+      utestId,
+      whatsappLink,
+      supportEmail: 'support@connectfy.tech'
+    }, 'sheet_consent_pending');
+    await callOutboxRpc('complete_project_applause_consent_reminder_email', {
+      p_outbox_id: job.id,
+      p_succeeded: true,
+      p_provider_message_id: result.messageId,
+      p_error: null
+    });
+    console.info('Applause consent pending reminder delivered.', {
+      outboxId: job.id,
+      projectId: job.project_id,
+      profileId: job.profile_id,
+      subject: result.subject
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown Applause consent reminder delivery error';
+    await callOutboxRpc('complete_project_applause_consent_reminder_email', {
+      p_outbox_id: job.id,
+      p_succeeded: false,
+      p_provider_message_id: null,
+      p_error: message
+    });
+    console.error('Applause consent reminder delivery failed; retry policy applied.', {
+      outboxId: job.id,
+      projectId: job.project_id,
+      profileId: job.profile_id,
+      attemptCount: job.attempt_count,
+      error: message
+    });
+  }
+  return true;
+};
+
 const pollProjectEmailOutbox = async () => {
   if (!outboxWorkerEnabled || outboxWorkerBusy) return;
   outboxWorkerBusy = true;
   let projectEmailQueueAvailable = true;
   let applauseEmailQueueAvailable = true;
+  let consentReminderQueueAvailable = true;
   try {
     while (true) {
       let processedProjectEmail = false;
       let processedApplauseEmail = false;
+      let processedConsentReminderEmail = false;
       if (projectEmailQueueAvailable) {
         try {
           processedProjectEmail = await processOneProjectEmail();
@@ -680,7 +772,15 @@ const pollProjectEmailOutbox = async () => {
           console.error('Applause approval email queue poll failed; other email queues will continue.', error);
         }
       }
-      if (!processedProjectEmail && !processedApplauseEmail) break;
+      if (consentReminderQueueAvailable) {
+        try {
+          processedConsentReminderEmail = await processOneApplauseConsentReminderEmail();
+        } catch (error) {
+          consentReminderQueueAvailable = false;
+          console.error('Applause consent reminder queue poll failed; other email queues will continue.', error);
+        }
+      }
+      if (!processedProjectEmail && !processedApplauseEmail && !processedConsentReminderEmail) break;
     }
   } finally {
     outboxWorkerBusy = false;
@@ -919,6 +1019,27 @@ app.get('/api/admin/applause-approval-emails', async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to load approval email history.';
     console.error('Unable to load admin Applause approval email history:', error);
+    return res.status(400).json({ ok: false, message });
+  }
+});
+
+app.get('/api/admin/applause-consent-reminder-emails', async (req, res) => {
+  try {
+    await requireAdmin(req.headers.authorization);
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) {
+      return res.status(400).json({ ok: false, message: 'A valid project is required to load consent reminder email history.' });
+    }
+
+    const rows = await callSupabaseRest(
+      `project_applause_consent_reminder_email_outbox?project_id=eq.${encodeURIComponent(projectId)}`
+      + '&select=id,project_id,profile_id,queued_by,source_key,recipient_email,recipient_name,project_title,status,attempt_count,provider_message_id,last_error,created_at,updated_at,sent_at'
+      + '&order=created_at.desc&limit=1000'
+    );
+    return res.json({ ok: true, emails: Array.isArray(rows) ? rows : [] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load consent reminder email history.';
+    console.error('Unable to load admin Applause consent reminder email history:', error);
     return res.status(400).json({ ok: false, message });
   }
 });

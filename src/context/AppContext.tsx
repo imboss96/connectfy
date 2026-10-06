@@ -989,14 +989,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const approvedRows = testerRows.filter((row: any) => row.status === 'approved');
           const pendingRows = testerRows.filter((row: any) => row.status === 'submitted' || row.status === 'under_review');
           const payoutRows = await fetchPayoutRequestsFromSupabase(userId);
+          let payrollRows: any[] = [];
+          if (supabase) {
+            const { data, error: payrollError } = await supabase
+              .from('project_payroll_schedule')
+              .select('project_id,source_key,amount,status,scheduled_date,updated_at')
+              .eq('profile_id', userId);
+            if (payrollError) throw payrollError;
+            payrollRows = data || [];
+          }
+          const earnedPayrollRows = payrollRows.filter((row) => row.status === 'scheduled' || row.status === 'paid');
+          const availablePayrollRows = payrollRows.filter((row) => row.status === 'scheduled');
           const deductedPayoutRows = payoutRows.filter((row: any) => row.status !== 'failed');
-          const lifetimeEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0);
+          const lifetimeEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0)
+            + earnedPayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+          const availableEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0)
+            + availablePayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0);
           const totalWithdrawn = deductedPayoutRows.reduce((total: number, row: any) => total + Number(row.amount || 0), 0);
           const pendingEscrow = pendingRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0);
 
           setTesterProfile((previous) => ({
             ...previous,
-            availableBalance: Math.max(0, Number((lifetimeEarnings - totalWithdrawn).toFixed(2))),
+            availableBalance: Math.max(0, Number((availableEarnings - totalWithdrawn).toFixed(2))),
             lifetimeEarnings: Number(lifetimeEarnings.toFixed(2)),
             pendingEscrow: Number(pendingEscrow.toFixed(2)),
             approvedBugsCount: approvedRows.filter((row: any) => row.kind === 'bug').length
@@ -1013,6 +1027,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             date: row.reviewed_at || row.submitted_at,
             referenceId: `SUB-${String(row.id).slice(-8).toUpperCase()}`
           }));
+          const projectPayrollTransactions: WalletTransaction[] = earnedPayrollRows.map((row) => {
+            const projectTitle = projects.find((project) => project.id === row.project_id)?.title || 'Project';
+            return {
+              id: `project-payroll-${row.project_id}-${row.source_key}`,
+              testerId: userId,
+              type: 'credit_bounty',
+              amount: Number(row.amount || 0),
+              description: `Project completion approval: ${projectTitle}`,
+              relatedProjectId: row.project_id,
+              status: 'completed',
+              date: row.updated_at || row.scheduled_date,
+              referenceId: `APPL-${String(row.project_id).slice(-8).toUpperCase()}-${row.source_key}`
+            };
+          });
           const withdrawalTransactions: WalletTransaction[] = payoutRows.map((row: any) => ({
             id: row.id,
             testerId: row.tester_id,
@@ -1024,7 +1052,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             method: row.method,
             referenceId: row.transaction_ref
           }));
-          setWalletTransactions([...creditTransactions, ...withdrawalTransactions].sort((left, right) => right.date.localeCompare(left.date)));
+          setWalletTransactions([...creditTransactions, ...projectPayrollTransactions, ...withdrawalTransactions].sort((left, right) => right.date.localeCompare(left.date)));
         }
       } catch (error) {
         console.error('Unable to load submissions from Supabase:', error);

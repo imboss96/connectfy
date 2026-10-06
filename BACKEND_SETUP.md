@@ -22,6 +22,10 @@ Run each not-yet-applied migration in `supabase/migrations/` in filename order i
 
 After applying both project-operations migrations, open **PM Operations**, choose **Manage** on a project listing, then configure that project’s status sheet, optional eligibility sheet, fixed completion payment, and payment date under **Integrations**. Save the settings and sync from **Completion & issues**; rows marked **Claimed Complete** with an email are added to that project’s payroll schedule. Participant and status views display their saved database snapshots until the next sheet sync. Each project has separate settings and records.
 
+Apply `supabase/migrations/202610060007_applause_wallet_credits.sql` after `202610060004_platform_member_payroll.sql`. It snapshots the configured project completion amount on the approval email, shows each tester their own approved project payroll in the wallet, and includes scheduled project credits in payout balance validation. A scheduled credit remains in the wallet until it is externally marked paid or cancelled.
+
+Apply `supabase/migrations/202610060008_applause_consent_pending_reminders.sql` after `202610060007_applause_wallet_credits.sql`, then apply `202610060009_consent_reminder_email_audit.sql`. In **Completion & issues**, admins can select synced rows with `CONSENT NAME` set to `Pending` and click **Email selected testers**. Only selected rows matched to registered tester profiles are queued. The reminder includes the configured project payout amount, project deadline/lock date, and a WhatsApp link to Kenyan support prefilled with the tester’s uTest ID. The running email backend processes and retries queued reminders through Brevo; clicking again intentionally resends selected rows that were already sent or failed. Manual sends and their current delivery status appear in that project’s **Emails** history.
+
 ## 2. Configure local environment
 
 Copy `.env.example` to `.env.local` and set:

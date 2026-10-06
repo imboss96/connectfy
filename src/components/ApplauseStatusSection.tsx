@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
+import { ExternalLink, FileSpreadsheet, RefreshCw, Search, Send } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchSheetCsv, parseProjectApplauseSheet } from '../lib/projectSheetSync';
 
@@ -30,19 +30,20 @@ const STATUS_TABS: { id: StatusTab; label: string }[] = [
 ];
 
 const describeError = (error: unknown) => {
-  if (error instanceof Error) return error.message;
   if (error && typeof error === 'object') {
     const details = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
     const parts = [details.message, details.details, details.hint]
       .filter((part): part is string => typeof part === 'string' && part.length > 0);
+    if (error instanceof Error && error.message && !parts.includes(error.message)) parts.unshift(error.message);
     if (details.code === 'PGRST202') {
-      parts.unshift('The project status sync RPC is not installed or not yet in the Supabase schema cache. Apply the project operations migration and reload the schema cache.');
+      parts.unshift('Supabase cannot find the requested RPC. Confirm its migration is applied to this project and reload the PostgREST schema cache.');
     } else if (details.code === '42501') {
       parts.unshift('Supabase denied the sync. Confirm the signed-in account has the admin role.');
     }
     if (parts.length) return [...new Set(parts)].join(' ');
     return JSON.stringify(error);
   }
+  if (error instanceof Error) return error.message;
   return 'Unable to sync the Applause status sheet.';
 };
 
@@ -83,6 +84,10 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [selectedConsentRows, setSelectedConsentRows] = useState<Set<string>>(() => new Set());
+  const [sendingConsentEmails, setSendingConsentEmails] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -109,7 +114,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
       if (importError) throw importError;
       setLastSynced(new Date());
       setSyncMessage(
-        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts; external sheet users are excluded. Approval emails are sent only once per project and member.`
+        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts; external sheet users are excluded. Consent-pending reminders can be sent manually to selected matched testers.`
       );
       onSynced?.();
     } catch (syncFailure) {
@@ -118,6 +123,8 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
       console.error('Unable to sync Applause project statuses:', {
         message: syncError,
         code: syncFailure && typeof syncFailure === 'object' && 'code' in syncFailure ? syncFailure.code : undefined,
+        details: syncFailure && typeof syncFailure === 'object' && 'details' in syncFailure ? syncFailure.details : undefined,
+        hint: syncFailure && typeof syncFailure === 'object' && 'hint' in syncFailure ? syncFailure.hint : undefined,
         error: syncFailure
       });
     }
@@ -149,6 +156,12 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
   }, [onSynced, projectId, sheetCsvUrl]);
 
   useEffect(() => {
+    setSelectedConsentRows(new Set());
+    setReminderMessage(null);
+    setReminderError(null);
+  }, [projectId]);
+
+  useEffect(() => {
     const controller = new AbortController();
     void refresh(controller.signal);
     const intervalId = window.setInterval(() => void refresh(controller.signal), REFRESH_INTERVAL_MS);
@@ -172,6 +185,63 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
         .includes(term)
     );
   }, [tabRows, search]);
+
+  const pendingConsentRows = filteredRows.filter((row) => row.consent_name.trim().toLowerCase() === 'pending');
+  const selectedPendingCount = selectedConsentRows.size;
+
+  const toggleConsentRow = (sourceKey: string) => {
+    setSelectedConsentRows((current) => {
+      const next = new Set(current);
+      if (next.has(sourceKey)) next.delete(sourceKey);
+      else next.add(sourceKey);
+      return next;
+    });
+  };
+
+  const toggleAllVisiblePending = () => {
+    setSelectedConsentRows((current) => {
+      const next = new Set(current);
+      const allSelected = pendingConsentRows.every((row) => next.has(row.source_key));
+      pendingConsentRows.forEach((row) => {
+        if (allSelected) next.delete(row.source_key);
+        else next.add(row.source_key);
+      });
+      return next;
+    });
+  };
+
+  const sendSelectedConsentReminders = async () => {
+    if (!supabase || selectedConsentRows.size === 0) return;
+    setSendingConsentEmails(true);
+    setReminderError(null);
+    setReminderMessage(null);
+    try {
+      const { data, error: queueError } = await supabase.rpc('queue_project_applause_consent_reminders', {
+        p_project_id: projectId,
+        p_source_keys: Array.from(selectedConsentRows)
+      });
+      if (queueError) throw queueError;
+      const queuedCount = Number(data || 0);
+      setSelectedConsentRows(new Set());
+      setReminderMessage(
+        queuedCount > 0
+          ? `Queued ${queuedCount} consent reminder email${queuedCount === 1 ? '' : 's'}. The email service will send them shortly.`
+          : 'No emails were queued. The selected rows may not match registered testers or may already be queued.'
+      );
+    } catch (queueFailure) {
+      const rpcError = queueFailure && typeof queueFailure === 'object'
+        ? queueFailure as { code?: unknown; message?: unknown }
+        : null;
+      if (rpcError?.code === 'PGRST202'
+        || (typeof rpcError?.message === 'string' && rpcError.message.includes('queue_project_applause_consent_reminders'))) {
+        setReminderError('Supabase cannot find the consent reminder queue function. Apply migration 202610060008_applause_consent_pending_reminders.sql to this Supabase project, then reload the PostgREST schema cache.');
+      } else {
+        setReminderError(describeError(queueFailure));
+      }
+    } finally {
+      setSendingConsentEmails(false);
+    }
+  };
 
   const tabCounts = useMemo(
     () => Object.fromEntries(STATUS_TABS.map(({ id }) => [id, rows.filter((row) => statusForTab(row, id)).length])) as Record<StatusTab, number>,
@@ -215,6 +285,8 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
 
       {syncMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{syncMessage}</p>}
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+      {reminderMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{reminderMessage}</p>}
+      {reminderError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{reminderError}</p>}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200 p-3">
@@ -249,6 +321,35 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
           </label>
         </div>
 
+        {pendingConsentRows.length > 0 && (
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-slate-700">
+              <p className="font-semibold">Consent name pending: {pendingConsentRows.length} visible</p>
+              <p className="mt-1 text-slate-500">Select testers to send a payout reminder email with a WhatsApp support link.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleAllVisiblePending}
+                disabled={sendingConsentEmails}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {pendingConsentRows.every((row) => selectedConsentRows.has(row.source_key)) ? 'Clear visible' : 'Select visible'}
+              </button>
+              <span className="text-xs text-slate-500">{selectedPendingCount} selected</span>
+              <button
+                type="button"
+                onClick={() => void sendSelectedConsentReminders()}
+                disabled={sendingConsentEmails || selectedPendingCount === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#007f8b] px-3 py-2 text-xs font-semibold text-white hover:bg-[#006c76] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {sendingConsentEmails ? 'Queueing...' : 'Email selected testers'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {loading && rows.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-500">Syncing Applause statuses...</div>
         ) : filteredRows.length === 0 ? (
@@ -258,6 +359,15 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
             <table className="min-w-full border-collapse text-left text-xs">
               <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
+                  <th className="whitespace-nowrap border-b border-slate-200 px-3 py-3 font-bold">
+                    <input
+                      type="checkbox"
+                      aria-label="Select visible consent-pending testers"
+                      checked={pendingConsentRows.length > 0 && pendingConsentRows.every((row) => selectedConsentRows.has(row.source_key))}
+                      onChange={toggleAllVisiblePending}
+                      disabled={sendingConsentEmails || pendingConsentRows.length === 0}
+                    />
+                  </th>
                   <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">Status</th>
                   <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">Tester ID</th>
                   <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">Tester email</th>
@@ -271,6 +381,17 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
               <tbody className="divide-y divide-slate-100">
                 {filteredRows.map((row) => (
                   <tr key={row.source_key} className="transition hover:bg-slate-50">
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {row.consent_name.trim().toLowerCase() === 'pending' ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${row.tester_email || row.tester_id || row.source_key} for a consent reminder`}
+                          checked={selectedConsentRows.has(row.source_key)}
+                          onChange={() => toggleConsentRow(row.source_key)}
+                          disabled={sendingConsentEmails}
+                        />
+                      ) : null}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">{row.status || 'Not sent'}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.tester_id || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.tester_email || '—'}</td>
