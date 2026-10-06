@@ -658,14 +658,30 @@ const processOneApplauseApprovalEmail = async () => {
 const pollProjectEmailOutbox = async () => {
   if (!outboxWorkerEnabled || outboxWorkerBusy) return;
   outboxWorkerBusy = true;
+  let projectEmailQueueAvailable = true;
+  let applauseEmailQueueAvailable = true;
   try {
     while (true) {
-      const processedProjectEmail = await processOneProjectEmail();
-      const processedApplauseEmail = await processOneApplauseApprovalEmail();
+      let processedProjectEmail = false;
+      let processedApplauseEmail = false;
+      if (projectEmailQueueAvailable) {
+        try {
+          processedProjectEmail = await processOneProjectEmail();
+        } catch (error) {
+          projectEmailQueueAvailable = false;
+          console.error('Project application email queue poll failed; other email queues will continue.', error);
+        }
+      }
+      if (applauseEmailQueueAvailable) {
+        try {
+          processedApplauseEmail = await processOneApplauseApprovalEmail();
+        } catch (error) {
+          applauseEmailQueueAvailable = false;
+          console.error('Applause approval email queue poll failed; other email queues will continue.', error);
+        }
+      }
       if (!processedProjectEmail && !processedApplauseEmail) break;
     }
-  } catch (error) {
-    console.error('Project email outbox poll failed:', error);
   } finally {
     outboxWorkerBusy = false;
   }
@@ -748,7 +764,7 @@ app.use((req, res, next) => {
   if (origin && (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
@@ -858,6 +874,51 @@ app.get('/api/admin/payout-requests', async (req, res) => {
     return res.json({ ok: true, payouts: results });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to load payout requests.';
+    return res.status(400).json({ ok: false, message });
+  }
+});
+
+app.get('/api/admin/applause-approval-emails', async (req, res) => {
+  try {
+    await requireAdmin(req.headers.authorization);
+    const requestedLimit = Number(req.query.limit ?? 100);
+    const requestedOffset = Number(req.query.offset ?? 0);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 200
+      || !Number.isInteger(requestedOffset) || requestedOffset < 0) {
+      return res.status(400).json({ ok: false, message: 'Invalid email log page request.' });
+    }
+
+    const filters = [];
+    if (typeof req.query.projectId === 'string' && req.query.projectId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.query.projectId)) {
+        return res.status(400).json({ ok: false, message: 'Invalid project filter.' });
+      }
+      filters.push(`project_id=eq.${encodeURIComponent(req.query.projectId)}`);
+    }
+    if (typeof req.query.status === 'string' && req.query.status && req.query.status !== 'all') {
+      if (!['pending', 'processing', 'sent', 'failed'].includes(req.query.status)) {
+        return res.status(400).json({ ok: false, message: 'Invalid email status filter.' });
+      }
+      filters.push(`status=eq.${encodeURIComponent(req.query.status)}`);
+    }
+
+    const query = [
+      'select=id,project_id,profile_id,source_key,recipient_email,recipient_name,project_title,project_company,status,attempt_count,provider_message_id,last_error,created_at,updated_at,sent_at',
+      'order=created_at.desc',
+      `limit=${requestedLimit + 1}`,
+      `offset=${requestedOffset}`,
+      ...filters
+    ].join('&');
+    const rows = await callSupabaseRest(`project_applause_approval_email_outbox?${query}`);
+    const hasMore = Array.isArray(rows) && rows.length > requestedLimit;
+    return res.json({
+      ok: true,
+      emails: Array.isArray(rows) ? rows.slice(0, requestedLimit) : [],
+      hasMore
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load approval email history.';
+    console.error('Unable to load admin Applause approval email history:', error);
     return res.status(400).json({ ok: false, message });
   }
 });

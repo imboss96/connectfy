@@ -63,6 +63,10 @@ Apply `supabase/migrations/202610050002_project_approval_email_outbox.sql` after
 
 Apply `supabase/migrations/202610060002_applause_approval_email_outbox.sql` to enable uTest/Applause completion approval emails. It adds the project-scoped deduplication/outbox table, updates the Applause sync RPC to preserve status transitions, and adds worker-only claim/complete RPCs. Restart the email backend after applying the migration so its worker begins processing these jobs.
 
+Admins can review queued, sent, and failed completion approval emails in **Approval Email Log**. The log is read from the protected outbox through an admin-authenticated backend endpoint; the browser does not receive direct access to the service-role-only email table.
+
+Apply `supabase/migrations/202610060005_qualify_project_email_outbox_claim.sql` after the approval outbox migration if the backend logs an ambiguous `attempt_count` error while claiming project emails. It qualifies the outbox columns in the claim function; the backend isolates worker queues so an error in one queue does not stop the Applause approval email queue.
+
 Apply `supabase/migrations/202610060004_platform_member_payroll.sql` after the Applause outbox migration. It links scheduled project payroll entries to a registered tester profile, cancels any pending legacy schedule that cannot be matched to a Connectfy tester by account email or saved uTest ID, and updates the sync RPC so future schedules are created only for matched platform members. Approval emails and scheduled payments both exclude external sheet-only accounts. Admins can review the approval-backed project schedules under **Payments & Schedules**; that page is a report/export view and does not execute those scheduled payments.
 
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` are also required for the backend to verify the signed-in administrator before sending manually requested eligibility, invite, rejection, or uTest-account-update emails. Use the public anon/publishable key for `SUPABASE_ANON_KEY`; these values belong in the email backend environment and are separate from the frontend's `VITE_` build variables.
@@ -176,6 +180,8 @@ PAYPAL_CLIENT_SECRET=your-paypal-rest-app-secret
 Set `PAYPAL_ENV=live` only after the live PayPal app has Payouts access and has been tested. Never expose PayPal secrets through browser/Vite variables or commit them to Git.
 
 The backend endpoints quote USD/KES and create authenticated payout requests; the admin-only payout-review screen dispatches M-Pesa and PayPal requests. Safaricom result/timeout callbacks update M-Pesa payout status. PayPal batch status is reconciled by the backend worker and payout requests remain processing until PayPal confirms an item result. Failed provider transfers release the reserved balance on the tester's next data refresh. Network timeouts and other ambiguous responses remain in `processing`; reconcile them with the provider before taking any retry action to avoid duplicate transfers. The backend's health endpoint reports whether PayPal payouts are configured and the selected environment, but does not disclose credentials.
+
+Before launch, apply `supabase/migrations/202610060006_restrict_profile_role_updates.sql`. It grants authenticated users updates only to profile detail columns, preventing users from promoting themselves by editing `profiles.role`. Admin role changes continue through the admin-only database functions.
 
 ## 5. Run
 

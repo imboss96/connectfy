@@ -14,6 +14,7 @@ import { CRMSection } from './components/CRMSection';
 import { ProjectOperationsSection } from './components/ProjectOperationsSection';
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
 import { PaymentsSection } from './components/PaymentsSection';
+import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -32,7 +33,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Plus,
-  CalendarClock
+  CalendarClock,
+  MailCheck
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -126,6 +128,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <PayoutOperationsSection />
           ) : activeTab === 'payments' ? (
             <PaymentsSection />
+          ) : activeTab === 'approval_emails' ? (
+            <ApprovalEmailLogSection />
           ) : activeTab === 'service_listings' ? (
             <AdminProjectManager />
           ) : activeTab === 'projects' ? (
@@ -274,6 +278,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <CalendarClock className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Payments</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('approval_emails')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'approval_emails'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <MailCheck className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Email Log</span>
               </button>
 
               <button

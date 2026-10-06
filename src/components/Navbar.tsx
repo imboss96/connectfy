@@ -12,6 +12,7 @@ import {
   Wallet,
   Banknote,
   CalendarClock,
+  MailCheck,
   Send,
   X,
   LogOut
@@ -103,6 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck, section: 'Operations' },
           { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
           { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },
+          { label: 'Approval Email Log', tab: 'approval_emails', icon: MailCheck, section: 'Finance' },
           { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' }
         ]
       : [
