@@ -324,7 +324,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-700">
               <p className="font-semibold">Consent name pending: {pendingConsentRows.length} visible</p>
-              <p className="mt-1 text-slate-500">Select matched or external testers with an email and uTest ID to send a payout reminder with a WhatsApp support link. External testers are greeted by uTest ID.</p>
+              <p className="mt-1 text-slate-500">Select consent-pending rows with an email to send a payout reminder with a WhatsApp support link. Reminders use the same “Hello tester” greeting.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

@@ -40,8 +40,7 @@ const allowedOrigins = [
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'sheet_consent_pending') {
-    const name = escapeHtml(payload.toName || 'there');
-    const greeting = payload.externalRecipient ? `Hello uTest tester ${name},` : `Hello ${name},`;
+    const greeting = 'Hello tester,';
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
@@ -153,7 +152,7 @@ const buildText = (payload) => {
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
     return [
-      `${payload.externalRecipient ? 'Hello uTest tester' : 'Hello'} ${payload.toName || 'there'},`,
+      'Hello tester,',
       '',
       `You are one step away from claiming your payout of ${payout}.`,
       `Please complete the remaining consent step for ${payload.projectTitle || 'your project'}.`,
