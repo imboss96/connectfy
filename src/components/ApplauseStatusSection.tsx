@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, FileSpreadsheet, RefreshCw, Search, Send } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchSheetCsv, parseProjectApplauseSheet } from '../lib/projectSheetSync';
+import { sendProjectEmail } from '../lib/emailService';
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -72,8 +73,9 @@ const statusForTab = (row: ApplauseStatusRow, tab: StatusTab) => {
   }
 };
 
-export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: string; sheetUrl?: string; onSynced?: () => void }> = ({
+export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: string; sheetCsvUrl: string; sheetUrl?: string; onSynced?: () => void }> = ({
   projectId,
+  projectTitle,
   sheetCsvUrl,
   sheetUrl,
   onSynced
@@ -88,6 +90,8 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [selectedConsentRows, setSelectedConsentRows] = useState<Set<string>>(() => new Set());
   const [sendingConsentEmails, setSendingConsentEmails] = useState(false);
+  const [requestingUtestDetailsKey, setRequestingUtestDetailsKey] = useState<string | null>(null);
+  const [utestRequestMessage, setUtestRequestMessage] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -242,6 +246,61 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
     }
   };
 
+  const requestUtestDetails = async (row: ApplauseStatusRow) => {
+    if (!supabase || requestingUtestDetailsKey) return;
+    setRequestingUtestDetailsKey(row.source_key);
+    setUtestRequestMessage(null);
+    try {
+      const { data: applicationRows, error: applicationError } = await supabase
+        .from('applications')
+        .select('id,tester_id,profiles:tester_id(email,name)')
+        .eq('project_id', projectId);
+      if (applicationError) throw applicationError;
+
+      const sourceEmails = new Set([row.google_email, row.tester_email]
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean));
+      const matches = (applicationRows || []).filter((application: any) => {
+        const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
+        return profile?.email && sourceEmails.has(String(profile.email).trim().toLowerCase());
+      });
+      if (matches.length !== 1) {
+        throw new Error(matches.length > 1
+          ? 'More than one project application matched this sheet row. Resolve the account match before sending.'
+          : 'No Connectfy project application matched this row’s email, so there is no application to update.');
+      }
+
+      const application: any = matches[0];
+      const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
+      const { error: requestError } = await supabase.rpc('request_application_utest_details', {
+        p_application_id: application.id
+      });
+      if (requestError) throw requestError;
+
+      const updateUrl = new URL(window.location.origin);
+      updateUrl.searchParams.set('applicationUtestUpdate', application.id);
+      await sendProjectEmail({
+        type: 'application_utest_details_request',
+        toEmail: String(profile.email),
+        toName: 'user',
+        projectTitle,
+        projectCompany: 'Connectfy',
+        projectDescription: 'Please add the uTest account details required for your project application.',
+        reason: row.utest_id.trim() ? 'incorrect' : 'missing',
+        actionUrl: updateUrl.toString(),
+        projectLink: updateUrl.toString(),
+        projectId,
+        testerId: application.tester_id,
+        supportEmail: 'support@connectfy.tech'
+      });
+      setUtestRequestMessage(`Request sent to ${profile.email}. The application is paused until the tester submits their uTest ID.`);
+    } catch (requestError) {
+      setUtestRequestMessage(requestError instanceof Error ? requestError.message : 'Unable to request uTest details.');
+    } finally {
+      setRequestingUtestDetailsKey(null);
+    }
+  };
+
   const tabCounts = useMemo(
     () => Object.fromEntries(STATUS_TABS.map(({ id }) => [id, rows.filter((row) => statusForTab(row, id)).length])) as Record<StatusTab, number>,
     [rows]
@@ -286,6 +345,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
       {reminderMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{reminderMessage}</p>}
       {reminderError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{reminderError}</p>}
+      {utestRequestMessage && <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{utestRequestMessage}</p>}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200 p-3">
@@ -375,6 +435,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
                   <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">ID scan status</th>
                   <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">uTest ID</th>
                   <th className="min-w-64 border-b border-slate-200 px-4 py-3 font-bold">Issues</th>
+                  <th className="whitespace-nowrap border-b border-slate-200 px-4 py-3 font-bold">Admin action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -399,6 +460,18 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; sheetCsvUrl: s
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.id_scan_status || '—'}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.utest_id || '—'}</td>
                     <td className="min-w-64 whitespace-pre-wrap px-4 py-3 text-slate-700">{row.issues || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {row.status.trim().toLowerCase() === 'claimed complete' && (
+                        <button
+                          type="button"
+                          onClick={() => void requestUtestDetails(row)}
+                          disabled={Boolean(requestingUtestDetailsKey)}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {requestingUtestDetailsKey === row.source_key ? 'Sending…' : 'Request uTest details'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

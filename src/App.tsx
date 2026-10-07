@@ -15,6 +15,7 @@ import { ProjectOperationsSection } from './components/ProjectOperationsSection'
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
 import { PaymentsSection } from './components/PaymentsSection';
 import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
+import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -56,6 +57,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
   } = useApp();
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
+  const applicationUtestUpdateId = new URLSearchParams(window.location.search).get('applicationUtestUpdate');
 
   const handleMobileNav = (tab: any) => {
     setActiveWorkspaceProjectId(null);
@@ -104,7 +106,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
       {/* Main Container with responsive padding and mobile bottom nav space */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden bg-[#f3f4f6] text-slate-800 md:ml-64 md:w-[calc(100%-16rem)]">
         {/* If Active Workspace is open */}
-        {activeWorkspaceProjectId ? (
+        {applicationUtestUpdateId ? (
+          <ApplicationUtestDetailsUpdatePage applicationId={applicationUtestUpdateId} />
+        ) : activeWorkspaceProjectId ? (
           <TestWorkspace
             projectId={activeWorkspaceProjectId}
             onBack={() => setActiveWorkspaceProjectId(null)}
@@ -674,6 +678,14 @@ const AppExperience: React.FC = () => {
   useEffect(() => {
     syncScreenFromUrl();
   }, []);
+
+  useEffect(() => {
+    const hasApplicationUtestUpdate = new URLSearchParams(window.location.search).has('applicationUtestUpdate');
+    if (hasApplicationUtestUpdate && !isAuthLoading && screen === 'landing') {
+      setAuthMode('login');
+      setScreen('login');
+    }
+  }, [isAuthLoading, screen]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

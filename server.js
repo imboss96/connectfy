@@ -19,7 +19,7 @@ dotenv.config();
 const app = express();
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
-const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply']);
+const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request']);
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -39,6 +39,14 @@ const allowedOrigins = [
 
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'application_utest_details_request') {
+    const projectTitle = escapeHtml(payload.projectTitle || 'your project');
+    const reason = payload.reason === 'incorrect'
+      ? 'We noticed the uTest ID on your project application may be incorrect.'
+      : 'Your project application is missing a uTest ID.';
+    const updateLink = escapeHtml(projectLink);
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Dear user,</p><p>${reason} If you do not have a uTest account, please create one, then add your uTest ID${payload.projectTitle ? ` for <strong>${projectTitle}</strong>` : ''} using the secure link below.</p><p style="margin:24px 0;"><a href="${updateLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Add uTest details</a></p><p>If the button does not work, open this link: <a href="${updateLink}">${updateLink}</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+  }
   if (payload.type === 'sheet_consent_pending') {
     const greeting = 'Hello tester,';
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
@@ -148,6 +156,21 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'application_utest_details_request') {
+    const reason = payload.reason === 'incorrect'
+      ? 'We noticed the uTest ID on your project application may be incorrect.'
+      : 'Your project application is missing a uTest ID.';
+    return [
+      'Dear user,',
+      '',
+      reason,
+      'If you do not have a uTest account, please create one, then add your uTest ID to your project application using this secure link:',
+      projectLink,
+      '',
+      'Best,',
+      'Connectfy Team'
+    ].join('\n');
+  }
   if (payload.type === 'sheet_consent_pending') {
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
@@ -285,6 +308,8 @@ const projectEmailSubject = (payload, type) => type === 'invite'
     ? `Project completion approved: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'sheet_consent_pending'
     ? `Action required: complete your consent step for ${payload.projectTitle || 'your project'}`
+  : type === 'application_utest_details_request'
+    ? `Action required: add your uTest details for ${payload.projectTitle || 'your project'}`
   : type === 'accepted'
     ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`
     : type === 'rejected'
@@ -1307,7 +1332,7 @@ app.post('/api/project-email', async (req, res) => {
     const toName = String(payload.toName || '').trim();
 
     const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
-    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved'];
+    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request'];
 
     if (!supportedTypes.includes(requestType)) {
       return res.status(400).json({ ok: false, message: `Unsupported email type: ${requestType}` });

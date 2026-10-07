@@ -19,7 +19,9 @@ import {
   Calendar,
   Smartphone,
   Eye,
-  Edit3
+  Edit3,
+  Send,
+  Save
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { normalizeProjectStatus } from '../lib/projectStatus';
@@ -27,6 +29,8 @@ import { Project, ProjectTrack } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
+import { supabase } from '../lib/supabase';
+import { sendProjectEmail } from '../lib/emailService';
 
 export const AdminProjectManager: React.FC = () => {
   const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate, setActiveAdminProjectId, setActiveTab, activeTab } = useApp();
@@ -42,6 +46,13 @@ export const AdminProjectManager: React.FC = () => {
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invited' | 'accepted' | 'rejected' | 'needs_utest_update'>('all');
   const [applicationProjectFilter, setApplicationProjectFilter] = useState<string>('all');
   const [expandedApplicationIds, setExpandedApplicationIds] = useState<string[]>([]);
+  const [pendingUtestDetailsRequests, setPendingUtestDetailsRequests] = useState<Set<string>>(() => new Set());
+  const [sendingUtestDetailsRequestId, setSendingUtestDetailsRequestId] = useState<string | null>(null);
+  const [utestDetailsRequestFeedback, setUtestDetailsRequestFeedback] = useState<Record<string, { message: string; error: boolean }>>({});
+  const [utestDetailsDrafts, setUtestDetailsDrafts] = useState<Record<string, { utestId: string; utestEmail: string }>>({});
+  const [savedUtestDetails, setSavedUtestDetails] = useState<Record<string, { utestId: string; utestEmail: string }>>({});
+  const [savingUtestDetailsId, setSavingUtestDetailsId] = useState<string | null>(null);
+  const [locallyCompletedUtestRequests, setLocallyCompletedUtestRequests] = useState<Set<string>>(() => new Set());
   // Metrics
   const totalProjectsCount = projects.length;
   const activeProjectsCount = projects.filter((p) => normalizeProjectStatus(p.status) === 'active').length;
@@ -107,6 +118,121 @@ export const AdminProjectManager: React.FC = () => {
       }
     });
   }, [applications, projects, updateProject]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase
+      .from('application_utest_update_requests')
+      .select('application_id')
+      .eq('status', 'pending')
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Unable to load pending uTest detail requests:', error);
+          return;
+        }
+        setPendingUtestDetailsRequests(new Set((data || []).map((request) => request.application_id)));
+      });
+  }, []);
+
+  const requestApplicationUtestDetails = async (app: typeof applications[number]) => {
+    if (!supabase || sendingUtestDetailsRequestId) return;
+    const project = projects.find((item) => item.id === app.projectId);
+    if (!project || !app.testerEmail) {
+      setUtestDetailsRequestFeedback((current) => ({
+        ...current,
+        [app.id]: { message: 'The project or tester email is unavailable.', error: true }
+      }));
+      return;
+    }
+
+    setSendingUtestDetailsRequestId(app.id);
+    setUtestDetailsRequestFeedback((current) => {
+      const next = { ...current };
+      delete next[app.id];
+      return next;
+    });
+    try {
+      const { error: requestError } = await supabase.rpc('request_application_utest_details', {
+        p_application_id: app.id
+      });
+      if (requestError) throw requestError;
+      setPendingUtestDetailsRequests((current) => new Set([...current, app.id]));
+
+      const updateUrl = new URL(window.location.origin);
+      updateUrl.searchParams.set('applicationUtestUpdate', app.id);
+      await sendProjectEmail({
+        type: 'application_utest_details_request',
+        toEmail: app.testerEmail,
+        toName: 'user',
+        projectTitle: project.title,
+        projectCompany: 'Connectfy',
+        projectDescription: 'Please add the uTest account details required for your project application.',
+        reason: app.uTestId?.trim() ? 'incorrect' : 'missing',
+        actionUrl: updateUrl.toString(),
+        projectLink: updateUrl.toString(),
+        projectId: app.projectId,
+        testerId: app.testerId,
+        supportEmail: 'support@connectfy.tech'
+      });
+      setUtestDetailsRequestFeedback((current) => ({
+        ...current,
+        [app.id]: { message: `Request emailed to ${app.testerEmail}. The application will return to its previous status after the tester saves their details.`, error: false }
+      }));
+    } catch (requestError) {
+      setUtestDetailsRequestFeedback((current) => ({
+        ...current,
+        [app.id]: {
+          message: requestError instanceof Error ? requestError.message : 'Unable to send the uTest details request.',
+          error: true
+        }
+      }));
+    } finally {
+      setSendingUtestDetailsRequestId(null);
+    }
+  };
+
+  const saveApplicationUtestDetails = async (app: typeof applications[number]) => {
+    if (!supabase || savingUtestDetailsId) return;
+    const details = utestDetailsDrafts[app.id] || {
+      utestId: savedUtestDetails[app.id]?.utestId || app.uTestId || '',
+      utestEmail: savedUtestDetails[app.id]?.utestEmail || app.uTestEmail || ''
+    };
+    setSavingUtestDetailsId(app.id);
+    setUtestDetailsRequestFeedback((current) => {
+      const next = { ...current };
+      delete next[app.id];
+      return next;
+    });
+    try {
+      const { error } = await supabase.rpc('admin_save_application_utest_details', {
+        p_application_id: app.id,
+        p_utest_id: details.utestId,
+        p_utest_email: details.utestEmail
+      });
+      if (error) throw error;
+      setSavedUtestDetails((current) => ({ ...current, [app.id]: details }));
+      setPendingUtestDetailsRequests((current) => {
+        const next = new Set(current);
+        next.delete(app.id);
+        return next;
+      });
+      setLocallyCompletedUtestRequests((current) => new Set([...current, app.id]));
+      setUtestDetailsRequestFeedback((current) => ({
+        ...current,
+        [app.id]: { message: 'uTest details saved to this application.', error: false }
+      }));
+    } catch (saveError) {
+      setUtestDetailsRequestFeedback((current) => ({
+        ...current,
+        [app.id]: {
+          message: saveError instanceof Error ? saveError.message : 'Unable to save the uTest details.',
+          error: true
+        }
+      }));
+    } finally {
+      setSavingUtestDetailsId(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in text-slate-700">
@@ -217,7 +343,11 @@ export const AdminProjectManager: React.FC = () => {
             filteredApplications.map((app) => {
               const project = projects.find((p) => p.id === app.projectId);
               const inviteHistory = app.inviteHistory || [];
-              const statusLabel = app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending review';
+              const hasPendingUtestDetailsRequest = pendingUtestDetailsRequests.has(app.id);
+              const hasLocallyCompletedUtestRequest = locallyCompletedUtestRequests.has(app.id);
+              const currentUtestDetails = savedUtestDetails[app.id] || { utestId: app.uTestId || '', utestEmail: app.uTestEmail || '' };
+              const currentUtestDraft = utestDetailsDrafts[app.id] || currentUtestDetails;
+              const statusLabel = hasPendingUtestDetailsRequest ? 'uTest details requested' : hasLocallyCompletedUtestRequest ? 'uTest details saved' : app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending review';
               const isExpanded = expandedApplicationIds.includes(app.id);
 
               return (
@@ -237,7 +367,7 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${app.status === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700' : app.status === 'needs_utest_update' ? 'border-orange-200 bg-orange-50 text-orange-700' : app.inviteStatus === 'accepted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{statusLabel}</span>
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${app.status === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700' : hasPendingUtestDetailsRequest || app.status === 'needs_utest_update' && !hasLocallyCompletedUtestRequest ? 'border-orange-200 bg-orange-50 text-orange-700' : hasLocallyCompletedUtestRequest || app.inviteStatus === 'accepted' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : app.status === 'approved' || app.inviteStatus === 'invited' ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{statusLabel}</span>
                       <span className="whitespace-nowrap text-[10px] text-slate-500">{app.appliedDate}</span>
                       <button
                         type="button"
@@ -266,8 +396,17 @@ export const AdminProjectManager: React.FC = () => {
                     <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3">
                       <p className="text-[10px] uppercase tracking-[0.12em] font-bold text-[#075985]">uTest payment details</p>
                       <div className="mt-2 space-y-1 text-[11px] text-[#164e63]">
-                        <p><span className="font-semibold">uTest ID:</span> {app.uTestId || 'Not provided'}</p>
-                        <p><span className="font-semibold">uTest email:</span> {app.uTestEmail || 'Not provided'}</p>
+                        <label className="block">
+                          <span className="font-semibold">uTest ID</span>
+                          <input value={currentUtestDraft.utestId} onChange={(event) => setUtestDetailsDrafts((current) => ({ ...current, [app.id]: { ...currentUtestDraft, utestId: event.target.value } }))} className="mt-1 w-full rounded-md border border-cyan-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 outline-none focus:border-sky-400" placeholder="Enter uTest ID" />
+                        </label>
+                        <label className="block">
+                          <span className="font-semibold">uTest email</span>
+                          <input type="email" value={currentUtestDraft.utestEmail} onChange={(event) => setUtestDetailsDrafts((current) => ({ ...current, [app.id]: { ...currentUtestDraft, utestEmail: event.target.value } }))} className="mt-1 w-full rounded-md border border-cyan-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 outline-none focus:border-sky-400" placeholder="name@example.com" />
+                        </label>
+                        <button type="button" onClick={() => void saveApplicationUtestDetails(app)} disabled={savingUtestDetailsId !== null} className="inline-flex items-center gap-1 rounded-md bg-sky-700 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-sky-800 disabled:cursor-wait disabled:opacity-60">
+                          <Save className="h-3 w-3" /> {savingUtestDetailsId === app.id ? 'Saving…' : 'Save details'}
+                        </button>
                       </div>
                       {app.uTestAccountScreenshotUrl ? (
                         <a href={app.uTestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-sky-800 underline underline-offset-2">
@@ -312,9 +451,30 @@ export const AdminProjectManager: React.FC = () => {
                       <button type="button" onClick={() => resendInvite(app.id)} className="px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-700 hover:bg-sky-100">Resend Invite</button>
                     )}
 
+                    {app.status !== 'rejected' && (
+                      <button
+                        type="button"
+                        onClick={() => void requestApplicationUtestDetails(app)}
+                        disabled={sendingUtestDetailsRequestId !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        {sendingUtestDetailsRequestId === app.id
+                          ? 'Sending request…'
+                          : hasPendingUtestDetailsRequest
+                            ? 'Resend uTest details request'
+                            : 'Request uTest details'}
+                      </button>
+                    )}
+
                     {app.status === 'rejected' && <span className="text-[11px] text-slate-500">Rejected from this cycle.</span>}
-                    {app.status === 'needs_utest_update' && <span className="text-[11px] text-amber-700">Waiting for the tester to create a new uTest account and reapply.</span>}
+                    {app.status === 'needs_utest_update' && !hasLocallyCompletedUtestRequest && <span className="text-[11px] text-amber-700">{hasPendingUtestDetailsRequest ? 'Waiting for the tester to submit the requested uTest details.' : 'Waiting for the tester to create a new uTest account and reapply.'}</span>}
                   </div>
+                  {utestDetailsRequestFeedback[app.id] && (
+                    <p role={utestDetailsRequestFeedback[app.id].error ? 'alert' : 'status'} className={`mt-2 text-[11px] ${utestDetailsRequestFeedback[app.id].error ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      {utestDetailsRequestFeedback[app.id].message}
+                    </p>
+                  )}
                   </div>}
                 </article>
               );

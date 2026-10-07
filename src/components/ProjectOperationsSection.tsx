@@ -433,6 +433,7 @@ export const ProjectOperationsSection: React.FC = () => {
       {activeSection === 'completion' && (
         <ApplauseStatusSection
           projectId={selectedProject.id}
+          projectTitle={selectedProject.title}
           sheetCsvUrl={applauseCsvUrl}
           sheetUrl={settings?.applause_sheet_url}
           onSynced={refreshSelectedPayroll}

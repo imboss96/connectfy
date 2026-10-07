@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -33,6 +33,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'legacy_sheet_reapply';
     case 'submission_approved':
       return 'submission_approved';
+    case 'application_utest_details_request':
+      return 'application_utest_details_request';
     case 'application':
     default:
       return 'application';
