@@ -2,6 +2,8 @@ import React, { FormEvent, useState } from 'react';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { ConnectfyLogo } from './UTestLogo';
 
+const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignUp: (name: string, email: string, password: string) => Promise<void>;
@@ -85,6 +87,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
             Full name
             <span className="login-input-wrap"><input type="text" value={name} onChange={event => setName(event.target.value)} placeholder="Your full name" autoComplete="name" /></span>
           </label>}
+          {isSignUp && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 text-sm text-purple-950">
+              <p className="font-semibold">Join the Connectfy Slack team</p>
+              <p className="mt-1 text-xs leading-relaxed">After creating your account, accept the Slack invitation using the same email address so the testing team can find you.</p>
+              <a
+                href={SLACK_INVITE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 font-bold text-purple-800 underline underline-offset-2"
+              >
+                Open Slack invitation <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          )}
           <label>
             Email address
             <span className="login-input-wrap"><Mail /><input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></span>

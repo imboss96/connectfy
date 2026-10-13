@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { AdminUserDetailsDialog } from './AdminUserDetailsDialog';
 import { fetchSheetCsv, parseProjectApplauseSheet, parseProjectEligibilitySheet } from '../lib/projectSheetSync';
 import { EmailTemplateMismatchError, sendProjectEmail } from '../lib/emailService';
+import { AdminAccessLevel } from '../types';
 import {
   LEGACY_SHEET_EMAIL_INSTRUCTIONS,
   LEGACY_SHEET_EMAIL_INTRO,
@@ -141,6 +142,7 @@ type PlatformMember = {
   name: string | null;
   email: string | null;
   role: string | null;
+  admin_access_level: AdminAccessLevel | null;
   company: string | null;
   country: string | null;
   city: string | null;
@@ -177,7 +179,8 @@ export const CRMSection: React.FC<{
   projectTitle,
   sheetCsvUrl = SHEET_CSV_URL
 }) => {
-  const { projects } = useApp();
+  const { projects, adminAccessLevel } = useApp();
+  const isSuperAdmin = adminAccessLevel === 'super_admin';
   const [members, setMembers] = useState<PlatformMember[]>([]);
   const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
   const [activeView, setActiveView] = useState<CRMView>(initialView);
@@ -206,6 +209,7 @@ export const CRMSection: React.FC<{
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteAccessLevel, setInviteAccessLevel] = useState<AdminAccessLevel>('reviewer');
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -224,7 +228,7 @@ export const CRMSection: React.FC<{
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, email, role, company, country, city, avatar_url, created_at, profile_data')
+        .select('id, name, email, role, admin_access_level, company, country, city, avatar_url, created_at, profile_data')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -835,10 +839,18 @@ export const CRMSection: React.FC<{
     setInviteStatus(null);
 
     try {
-      const { data, error } = await supabase.rpc('invite_user_as_admin', { p_email: trimmed });
+      const { data, error } = await supabase.rpc('invite_user_as_admin', {
+        p_email: trimmed,
+        p_access_level: inviteAccessLevel
+      });
       if (error) throw error;
 
-      setInviteStatus(data ? `Admin access granted to ${trimmed}.` : `Admin access request processed for ${trimmed}.`);
+      const levelLabel = inviteAccessLevel === 'super_admin'
+        ? 'Super Admin'
+        : inviteAccessLevel === 'project_manager'
+          ? 'Project Manager'
+          : 'Reviewer';
+      setInviteStatus(`${levelLabel} access granted to ${trimmed}.`);
       setInviteEmail('');
       await loadMembers();
     } catch (error) {
@@ -868,7 +880,7 @@ export const CRMSection: React.FC<{
       const { error } = await supabase.rpc('dismiss_admin', { p_user_id: member.id });
       if (error) {
         if (error.code === 'PGRST202') {
-          throw new Error('The admin-dismissal function is not installed in this Supabase project yet. Run supabase/migrations/202610030003_admin_dismissal_function.sql in the Supabase SQL Editor, then retry.');
+          throw new Error('The tiered admin access migration is not installed in this Supabase project yet. Run supabase/migrations/202610140001_tiered_admin_access.sql in the Supabase SQL Editor, then retry.');
         }
         throw error;
       }
@@ -936,6 +948,7 @@ export const CRMSection: React.FC<{
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">Operations Access</span>
               </div>
               <p className="text-xs text-slate-600 mt-1 max-w-xl">Registered Connectfy accounts are shown under Platform Members. Project Participants includes people who applied through the website or project Google Forms and sheets, even if they do not have a Connectfy account.</p>
+              {!isSuperAdmin && <p className="mt-2 text-xs font-semibold text-sky-800">Read-only CRM access. Administrator management, sheet synchronization, and outbound emails are reserved for Super Admins.</p>}
             </div>
           </div>
         </div>
@@ -990,21 +1003,23 @@ export const CRMSection: React.FC<{
                   <h2 className="text-sm font-bold text-white">{projectTitle ? `${projectTitle} eligibility responses` : 'Legacy project-interest responses'}</h2>
                   <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-bold text-cyan-300">Live sheet view</span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400">Read-only platform-style view. Updates automatically every 5 minutes. Select responses to send the project eligibility email.</p>
+                <p className="mt-1 text-[11px] text-slate-400">Read-only platform-style view. Updates automatically every 5 minutes.{isSuperAdmin ? ' Select responses to send the project eligibility email.' : ''}</p>
                 <p className="mt-1 text-[10px] text-slate-500">
                   {sheetLastRefreshed ? `Last synced ${sheetLastRefreshed.toLocaleString()}` : 'Waiting for first sync'}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button
-                  type="button"
-                  onClick={() => void syncLegacyResponses()}
-                  disabled={isSyncingLegacyRecords || sheetLoading || loading}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-60"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  {isSyncingLegacyRecords ? 'Syncing records...' : 'Sync responses to Connectfy'}
-                </button>
+                {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void syncLegacyResponses()}
+                      disabled={isSyncingLegacyRecords || sheetLoading || loading}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/20 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      {isSyncingLegacyRecords ? 'Syncing records...' : 'Sync responses to Connectfy'}
+                    </button>
+                )}
                 <button
                   type="button"
                   onClick={() => void refreshSheet()}
@@ -1014,15 +1029,17 @@ export const CRMSection: React.FC<{
                   <RefreshCw className={`h-3.5 w-3.5 ${sheetLoading ? 'animate-spin' : ''}`} />
                   {sheetLoading ? 'Syncing...' : 'Refresh'}
                 </button>
-                <a
-                  href={sheetCsvUrl.replace(/\/export\?format=csv(?:&.*)?$/, '/edit?usp=sharing')}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#005fce]"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Open sheet
-                </a>
+                {isSuperAdmin && (
+                  <a
+                    href={sheetCsvUrl.replace(/\/export\?format=csv(?:&.*)?$/, '/edit?usp=sharing')}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#005fce]"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open sheet
+                  </a>
+                )}
               </div>
             </div>
             {legacySyncMessage && (
@@ -1050,35 +1067,37 @@ export const CRMSection: React.FC<{
                   className="h-full min-h-10 w-full rounded-xl border border-[#1E2E4E] bg-[#080D1A] py-2 pl-9 pr-3 text-xs text-white outline-none placeholder:text-slate-500 focus:border-cyan-400"
                 />
               </label>
-              <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2 sm:col-span-4">
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+              {isSuperAdmin && (
+                <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#1E2E4E] bg-[#111C33] px-3 py-2 sm:col-span-4">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                    <button
+                      type="button"
+                      onClick={toggleVisibleSheetRecipients}
+                      disabled={visibleSheetEmails.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
+                      className="rounded-lg border border-[#1E2E4E] bg-[#0B132B] px-3 py-1.5 font-semibold text-slate-200 hover:border-cyan-400/40 disabled:opacity-50"
+                    >
+                      {visibleSheetEmails.length > 0 && visibleSheetEmails.every((email) => selectedSheetEmails.has(email))
+                        ? 'Clear visible'
+                        : `Select visible emails (${visibleSheetEmails.length})`}
+                    </button>
+                    <span>{selectedSheetRecipients.length} selected</span>
+                    {sentSheetEmails.size > 0 && <span className="text-emerald-300">{sentSheetEmails.size} already sent</span>}
+                  </div>
                   <button
                     type="button"
-                    onClick={toggleVisibleSheetRecipients}
-                  disabled={visibleSheetEmails.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
-                    className="rounded-lg border border-[#1E2E4E] bg-[#0B132B] px-3 py-1.5 font-semibold text-slate-200 hover:border-cyan-400/40 disabled:opacity-50"
+                    onClick={() => {
+                      setIsSheetEmailPreviewOpen(true);
+                      setSheetEmailResult(null);
+                      setSheetEmailError(null);
+                    }}
+                    disabled={selectedSheetRecipients.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-bold text-white hover:bg-[#005fce] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {visibleSheetEmails.length > 0 && visibleSheetEmails.every((email) => selectedSheetEmails.has(email))
-                      ? 'Clear visible'
-                      : `Select visible emails (${visibleSheetEmails.length})`}
+                    <Send className="h-3.5 w-3.5" />
+                    Send eligibility email
                   </button>
-                  <span>{selectedSheetRecipients.length} selected</span>
-                  {sentSheetEmails.size > 0 && <span className="text-emerald-300">{sentSheetEmails.size} already sent</span>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSheetEmailPreviewOpen(true);
-                    setSheetEmailResult(null);
-                    setSheetEmailError(null);
-                  }}
-                  disabled={selectedSheetRecipients.length === 0 || isSendingSheetEmails || !isSheetEmailTrackingReady}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-xs font-bold text-white hover:bg-[#005fce] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  Send eligibility email
-                </button>
-              </div>
+              )}
             </div>
 
             {sheetEmailResult && (
@@ -1114,7 +1133,7 @@ export const CRMSection: React.FC<{
                 <table className="min-w-[1120px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-[#111C33] text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
                     <tr>
-                      <th className="border-b border-[#1E2E4E] px-3 py-3">
+                      {isSuperAdmin && <th className="border-b border-[#1E2E4E] px-3 py-3">
                         <input
                           type="checkbox"
                           aria-label="Select all visible email addresses"
@@ -1123,7 +1142,7 @@ export const CRMSection: React.FC<{
                           disabled={!isSheetEmailTrackingReady || isSendingSheetEmails}
                           className="h-4 w-4 accent-cyan-400"
                         />
-                      </th>
+                      </th>}
                       <th className="border-b border-[#1E2E4E] px-4 py-3">#</th>
                       <th className="border-b border-[#1E2E4E] px-4 py-3">Member</th>
                       <th className="border-b border-[#1E2E4E] px-4 py-3">Email</th>
@@ -1138,7 +1157,7 @@ export const CRMSection: React.FC<{
                   <tbody className="divide-y divide-[#1E2E4E]">
                     {filteredSheetMembers.map((member, index) => (
                       <tr key={`${member.email}-${member.timestamp}-${index}`} className="transition hover:bg-[#111C33]">
-                        <td className="px-3 py-3">
+                        {isSuperAdmin && <td className="px-3 py-3">
                           <input
                             type="checkbox"
                             aria-label={`Select ${member.email || member.fullName || 'row'}`}
@@ -1147,7 +1166,7 @@ export const CRMSection: React.FC<{
                             onChange={() => toggleSheetRecipient(member.email.trim().toLowerCase())}
                             className="h-4 w-4 accent-cyan-400 disabled:cursor-not-allowed"
                           />
-                        </td>
+                        </td>}
                         <td className="whitespace-nowrap px-4 py-3 text-[10px] font-semibold text-slate-500">{index + 1}</td>
                         <td className="whitespace-nowrap px-4 py-3 font-semibold text-white">{member.fullName || 'Name not provided'}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-cyan-300">{member.email || 'Email not provided'}{sentSheetEmails.has(member.email.trim().toLowerCase()) && <span className="ml-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300">Sent</span>}{blockedSheetEmails.has(member.email.trim().toLowerCase()) && !sentSheetEmails.has(member.email.trim().toLowerCase()) && <span className="ml-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">Check status</span>}</td>
@@ -1262,7 +1281,7 @@ export const CRMSection: React.FC<{
                   <RefreshCw className={`h-3.5 w-3.5 ${projectParticipantsLoading && !projectParticipantsSyncing ? 'animate-spin' : ''}`} />
                   Reload saved data
                 </button>
-                <button
+                {isSuperAdmin && <button
                   type="button"
                   onClick={() => void syncProjectParticipantSheets()}
                   disabled={projectParticipantsLoading || projectParticipantsSyncing}
@@ -1270,7 +1289,7 @@ export const CRMSection: React.FC<{
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${projectParticipantsSyncing ? 'animate-spin' : ''}`} />
                   {projectParticipantsSyncing ? 'Fetching and saving sheets...' : 'Sync sheets now'}
-                </button>
+                </button>}
               </div>
             </div>
             {projectParticipantsSyncMessage && (
@@ -1425,27 +1444,39 @@ export const CRMSection: React.FC<{
             </select>
           </div>
 
-          <div className="flex flex-col md:flex-row md:items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="relative flex-1">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="Invite a user by email as admin"
-                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:border-[#007AFF]"
-              />
+          {isSuperAdmin && (
+            <div className="flex flex-col md:flex-row md:items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="relative min-w-48 flex-1">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Invite a user by email as admin"
+                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-500 focus:outline-none focus:border-[#007AFF]"
+                />
+              </div>
+              <select
+                value={inviteAccessLevel}
+                onChange={(event) => setInviteAccessLevel(event.target.value as AdminAccessLevel)}
+                aria-label="Administrator access level"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#007AFF]"
+              >
+                <option value="reviewer">Reviewer</option>
+                <option value="project_manager">Project Manager</option>
+                <option value="super_admin">Super Admin</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleInviteAdmin}
+                disabled={inviting}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#005fce] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <PlusCircle className="w-4 h-4" />
+                {inviting ? 'Inviting...' : 'Invite Admin'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleInviteAdmin}
-              disabled={inviting}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#005fce] disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <PlusCircle className="w-4 h-4" />
-              {inviting ? 'Inviting...' : 'Invite Admin'}
-            </button>
-          </div>
+          )}
 
           {inviteStatus && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{inviteStatus}</div>}
           {inviteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{inviteError}</div>}
@@ -1472,6 +1503,15 @@ export const CRMSection: React.FC<{
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{member.name || 'Unnamed member'}</h3>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-700 border-slate-200">{roleTag}</span>
+                          {isSuperAdmin && member.role === 'admin' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                              {member.admin_access_level === 'super_admin'
+                                ? 'Super Admin'
+                                : member.admin_access_level === 'project_manager'
+                                  ? 'Project Manager'
+                                  : 'Reviewer'}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                           <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{member.email || 'No email'}</span>
@@ -1483,14 +1523,14 @@ export const CRMSection: React.FC<{
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                      <button
+                      {isSuperAdmin && <button
                         type="button"
                         onClick={() => setSelectedMember(member)}
                         className="inline-flex items-center gap-1 rounded-lg bg-[#007AFF] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#005fce]"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Full user record
-                      </button>
+                      </button>}
                       {member.company ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700">
                           <Briefcase className="w-3.5 h-3.5" />
@@ -1514,7 +1554,7 @@ export const CRMSection: React.FC<{
                       <span className="block text-slate-500">Member ID</span>
                       <strong className="text-slate-800">{member.id.slice(0, 8)}</strong>
                     </div>
-                    {member.role === 'admin' && (
+                    {isSuperAdmin && member.role === 'admin' && (
                       <div className="col-span-full mt-3 flex justify-end">
                         <button
                           type="button"

@@ -20,6 +20,7 @@ const app = express();
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
 const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request']);
+const APPLAUSE_SUPPORT_SLACK_LINK = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -53,10 +54,7 @@ const buildHtml = (payload) => {
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
     const lockDate = escapeHtml(payload.projectLockDate || 'To be confirmed');
-    const whatsappLink = /^https:\/\/wa\.me\/254794502268\?text=/i.test(String(payload.whatsappLink || ''))
-      ? escapeHtml(payload.whatsappLink)
-      : 'https://wa.me/254794502268';
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>If you have issues completing the project, our Kenyan support team can help you on WhatsApp.</p><p style="margin:24px 0;"><a href="${whatsappLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#128c7e;color:#fff;text-decoration:none;font-weight:700;">Chat with Kenyan support on WhatsApp</a></p><p style="font-size:12px;color:#64748b;">The WhatsApp message will be prefilled with your uTest ID. Review it before sending.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>For support, find us in Slack.</p><p style="margin:24px 0;"><a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#4A154B;color:#fff;text-decoration:none;font-weight:700;">Find us in Slack</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
@@ -180,10 +178,8 @@ const buildText = (payload) => {
       `You are one step away from claiming your payout of ${payout}.`,
       `Please complete the remaining consent step for ${payload.projectTitle || 'your project'}.`,
       `The project locks on ${payload.projectLockDate || 'a date to be confirmed'}; please hurry so you have time to finish your testing.`,
-      'If you have issues completing the project, contact our Kenyan support team on WhatsApp:',
-      payload.whatsappLink || 'https://wa.me/254794502268',
-      '',
-      'The message is prefilled with your uTest ID. Review it before sending.',
+      'For support, find us in Slack:',
+      APPLAUSE_SUPPORT_SLACK_LINK,
       '',
       'Connectfy Team'
     ].join('\n');
@@ -415,6 +411,112 @@ const requireAdmin = async (authorization) => {
     throw new Error('Only administrators can manage payouts.');
   }
   return user;
+};
+
+const callSlackApi = async (method, payload) => {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) throw new Error('Slack status notifications are not configured. Set SLACK_BOT_TOKEN on the backend.');
+  const response = await fetch(`https://slack.com/api/${method}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15000)
+  });
+  const result = await response.json();
+  if (!response.ok || !result.ok) {
+    const error = new Error(`Slack ${method} failed: ${result.error || `HTTP ${response.status}`}`);
+    error.slackCode = result.error || `http_${response.status}`;
+    throw error;
+  }
+  return result;
+};
+
+const slackSafeText = (value, fallback = 'Not provided') => {
+  const text = String(value || '').trim();
+  return (text || fallback).slice(0, 1500).replace(/@/g, '@\u200b');
+};
+
+const sendApplauseProjectStatusSlackDms = async (projectId) => {
+  const projectRows = await callSupabaseRest(
+    `projects?id=eq.${encodeURIComponent(projectId)}&select=id,title&limit=1`
+  );
+  const project = Array.isArray(projectRows) ? projectRows[0] : null;
+  if (!project) throw new Error('Project not found.');
+
+  const rows = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    if (offset >= 5000) {
+      const extraRows = await callSupabaseRest(
+        `project_applause_status?project_id=eq.${encodeURIComponent(projectId)}&select=status&limit=1`,
+        { headers: { Range: '5000-5000' } }
+      );
+      if (Array.isArray(extraRows) && extraRows.length) {
+        throw new Error('This project has more than 5,000 sheet rows. Narrow the synced sheet before sending Slack updates.');
+      }
+      break;
+    }
+    const page = await callSupabaseRest(
+      `project_applause_status?project_id=eq.${encodeURIComponent(projectId)}&select=status,tester_email,google_email,consent_name,id_scan_status,issues&order=source_key.asc&limit=${pageSize}`,
+      { headers: { Range: `${offset}-${offset + pageSize - 1}` } }
+    );
+    if (!Array.isArray(page)) throw new Error('Unable to load project status rows for Slack updates.');
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  const recipients = new Map();
+  let missingEmail = 0;
+  for (const row of rows) {
+    const email = String(row.google_email || '').trim() || String(row.tester_email || '').trim();
+    if (!email) {
+      missingEmail += 1;
+      continue;
+    }
+    const normalizedEmail = email.toLowerCase();
+    if (!recipients.has(normalizedEmail)) recipients.set(normalizedEmail, row);
+  }
+
+  const summary = { sent: 0, notFound: 0, missingEmail, failed: 0 };
+  for (const [email, row] of recipients) {
+    try {
+      let member;
+      try {
+        member = await callSlackApi('users.lookupByEmail', { email });
+      } catch (error) {
+        if (error?.slackCode === 'users_not_found') {
+          summary.notFound += 1;
+          continue;
+        }
+        throw error;
+      }
+      const conversation = await callSlackApi('conversations.open', { users: member.user.id });
+      const text = [
+        `Project status update: ${slackSafeText(project.title, 'Project')}`,
+        `Status: ${slackSafeText(row.status)}`,
+        `Consent: ${slackSafeText(row.consent_name)}`,
+        `ID scan: ${slackSafeText(row.id_scan_status)}`,
+        `Issues: ${slackSafeText(row.issues, 'None reported')}`
+      ].join('\n');
+      await callSlackApi('chat.postMessage', {
+        channel: conversation.channel.id,
+        text,
+        mrkdwn: false,
+        link_names: false,
+        parse: 'none'
+      });
+      summary.sent += 1;
+    } catch (error) {
+      summary.failed += 1;
+      console.error('Unable to deliver a project status Slack DM.', {
+        slackCode: error?.slackCode || 'request_failed'
+      });
+    }
+  }
+  return summary;
 };
 
 const getUsdKesRate = async () => {
@@ -731,9 +833,6 @@ const processOneApplauseConsentReminderEmail = async () => {
     if (!job.id || !job.project_id || !job.recipient_email || !job.recipient_name) {
       throw new Error('Applause consent reminder email has an invalid outbox payload.');
     }
-    const utestId = String(job.utest_id || '').trim();
-    const message = `Hello, please help me finish my testing of ${utestId || 'my uTest account'} for ${job.project_title || 'my project'}.`;
-    const whatsappLink = `https://wa.me/254794502268?text=${encodeURIComponent(message)}`;
     const result = await sendEmailThroughBrevo({
       type: 'sheet_consent_pending',
       toEmail: job.recipient_email,
@@ -742,8 +841,6 @@ const processOneApplauseConsentReminderEmail = async () => {
       projectTitle: job.project_title,
       projectAmount: Number(job.project_amount || 0),
       projectLockDate: job.project_lock_date,
-      utestId,
-      whatsappLink,
       supportEmail: 'support@connectfy.tech'
     }, 'sheet_consent_pending');
     await callOutboxRpc('complete_project_applause_consent_reminder_email', {
@@ -913,10 +1010,40 @@ app.get('/health', (_req, res) => {
     ok: true,
     service: 'connectfy-email-backend',
     approvalEmailOutbox: outboxWorkerEnabled ? 'enabled' : 'disabled',
+    slackStatusDms: process.env.SLACK_BOT_TOKEN ? 'configured' : 'disabled',
     paypalPayouts: process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET
       ? (process.env.PAYPAL_ENV || 'sandbox').toLowerCase()
       : 'disabled'
   });
+});
+
+app.post('/api/admin/applause-status-slack-dms', async (req, res) => {
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) {
+      return res.status(401).json({ ok: false, message: 'Sign in as an administrator before sending Slack status updates.' });
+    }
+    try {
+      await requireAdmin(authorization);
+    } catch (authError) {
+      const message = authError instanceof Error ? authError.message : 'Unable to verify administrator access.';
+      const status = /invalid|expired|sign in/i.test(message) ? 401 : 403;
+      return res.status(status).json({ ok: false, message });
+    }
+    const projectId = String(req.body?.projectId || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) {
+      return res.status(400).json({ ok: false, message: 'A valid project ID is required.' });
+    }
+    if (!process.env.SLACK_BOT_TOKEN) {
+      return res.status(503).json({ ok: false, message: 'Slack status DMs are not configured. Set SLACK_BOT_TOKEN on the backend.' });
+    }
+    const result = await sendApplauseProjectStatusSlackDms(projectId);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to send Slack status updates.';
+    console.error('Unable to send project status Slack DMs:', error);
+    return res.status(500).json({ ok: false, message });
+  }
 });
 
 app.get('/api/mpesa/quote', async (req, res) => {

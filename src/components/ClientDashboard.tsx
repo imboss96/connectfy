@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Layers,
   Users,
@@ -44,7 +44,7 @@ import {
 } from '../types';
 import { DocumentViewerModal } from './DocumentViewerModal';
 
-export const ClientDashboard: React.FC = () => {
+export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly = false }) => {
   const {
     clientProfile,
     projects,
@@ -67,6 +67,10 @@ export const ClientDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'submissions' | 'applicants' | 'cycles'>('submissions');
   const [submissionFilter, setSubmissionFilter] = useState<'all' | 'tasks' | 'bugs'>('all');
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentFile | null>(null);
+
+  useEffect(() => {
+    if (reviewOnly) setActiveTab('submissions');
+  }, [reviewOnly]);
 
   // Bug Approval modal state
   const [approvingBug, setApprovingBug] = useState<BugReport | null>(null);
@@ -344,7 +348,7 @@ export const ClientDashboard: React.FC = () => {
           )}
         </button>
 
-        <button
+        {!reviewOnly && <button
           onClick={() => setActiveTab('applicants')}
           className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
             activeTab === 'applicants'
@@ -359,9 +363,9 @@ export const ClientDashboard: React.FC = () => {
               {pendingApplicants.length}
             </span>
           )}
-        </button>
+        </button>}
 
-        <button
+        {!reviewOnly && <button
           onClick={() => setActiveTab('cycles')}
           className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
             activeTab === 'cycles'
@@ -371,7 +375,7 @@ export const ClientDashboard: React.FC = () => {
         >
           <Layers className="w-4 h-4" />
           <span>Projects & Escrow Budgets ({projects.length})</span>
-        </button>
+        </button>}
       </div>
 
       {/* Tab 1: Submissions Review */}
@@ -805,7 +809,7 @@ export const ClientDashboard: React.FC = () => {
       )}
 
       {/* Tab 2: Applicants Vetting */}
-      {activeTab === 'applicants' && (
+      {!reviewOnly && activeTab === 'applicants' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -929,7 +933,7 @@ export const ClientDashboard: React.FC = () => {
       )}
 
       {/* Tab 3: Projects & Escrow Budgets */}
-      {activeTab === 'cycles' && (
+      {!reviewOnly && activeTab === 'cycles' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>

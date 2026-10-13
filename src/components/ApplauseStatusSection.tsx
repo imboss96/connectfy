@@ -3,6 +3,7 @@ import { ExternalLink, FileSpreadsheet, RefreshCw, Search, Send } from 'lucide-r
 import { supabase } from '../lib/supabase';
 import { fetchSheetCsv, parseProjectApplauseSheet } from '../lib/projectSheetSync';
 import { sendProjectEmail } from '../lib/emailService';
+import { sendProjectStatusSlackDms } from '../lib/slackStatusService';
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -94,7 +95,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
   const [utestRequestMessage, setUtestRequestMessage] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
+  const refresh = useCallback(async (signal?: AbortSignal, notifySlack = false) => {
     setLoading(true);
     setError(null);
     setSyncMessage(null);
@@ -120,6 +121,16 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
       setSyncMessage(
         `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts. Consent-pending reminders can be sent to selected matched testers and external uTest testers.`
       );
+      if (notifySlack && !signal?.aborted) {
+        try {
+          const result = await sendProjectStatusSlackDms(projectId);
+          setSyncMessage((current) => `${current || 'Sheet sync complete.'} Slack DMs: ${result.sent} sent, ${result.notFound} Slack accounts not found, ${result.missingEmail} rows without email, ${result.failed} failed.`);
+        } catch (slackFailure) {
+          const slackMessage = describeError(slackFailure);
+          console.error(`Unable to send Applause status Slack DMs: ${slackMessage}`, slackFailure);
+          setError(`The sheet synced, but Slack status updates could not be sent. ${slackMessage}`);
+        }
+      }
       onSynced?.();
     } catch (syncFailure) {
       if (syncFailure instanceof DOMException && syncFailure.name === 'AbortError') return;
@@ -322,7 +333,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void refresh(undefined, true)}
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
           >
@@ -384,7 +395,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-700">
               <p className="font-semibold">Consent name pending: {pendingConsentRows.length} visible</p>
-              <p className="mt-1 text-slate-500">Select consent-pending rows with an email to send a payout reminder with a WhatsApp support link. Reminders use the same “Hello tester” greeting.</p>
+              <p className="mt-1 text-slate-500">Select consent-pending rows with an email to send a payout reminder with a Slack support link. Reminders use the same “Hello tester” greeting.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button

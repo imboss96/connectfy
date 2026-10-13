@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import confetti from 'canvas-confetti';
 import {
   UserRole,
+  AdminAccessLevel,
   Project,
   ProjectApplication,
   BugReport,
@@ -58,6 +59,8 @@ const isInviteProfileComplete = (profile: TesterProfile) => {
 interface AppContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
+  adminAccessLevel: AdminAccessLevel;
+  setAdminAccessLevel: (level: AdminAccessLevel) => void;
   projects: Project[];
   applications: ProjectApplication[];
   bugReports: BugReport[];
@@ -417,6 +420,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
     return (saved === 'client' || saved === 'tester' || saved === 'admin') ? (saved as UserRole) : 'tester';
   });
+  const [adminAccessLevel, setAdminAccessLevelState] = useState<AdminAccessLevel>(() => {
+    const saved = localStorage.getItem(STORAGE_PREFIX + 'adminAccessLevel');
+    return saved === 'project_manager' || saved === 'reviewer' ? saved : 'super_admin';
+  });
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'activeTab');
@@ -730,12 +737,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         const { data: profile, error } = await client
           .from('profiles')
-          .select('id, name, email, role, company, avatar_url, country, city, profile_data')
+          .select('id, name, email, role, admin_access_level, company, avatar_url, country, city, profile_data')
           .eq('id', userId)
           .maybeSingle();
 
         if (error) throw error;
         if (!profile || !mounted) return;
+        const accessLevel = profile.admin_access_level;
+        setAdminAccessLevelState(
+          profile.role === 'admin' && (accessLevel === 'project_manager' || accessLevel === 'reviewer')
+            ? accessLevel
+            : 'super_admin'
+        );
+        localStorage.setItem(
+          STORAGE_PREFIX + 'adminAccessLevel',
+          profile.role === 'admin' && (accessLevel === 'project_manager' || accessLevel === 'reviewer')
+            ? accessLevel
+            : 'super_admin'
+        );
 
         const displayName = profile.name || profile.email?.split('@')[0] || 'User';
         const displayEmail = profile.email || '';
@@ -1132,6 +1151,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setRole = (newRole: UserRole) => {
     setRoleState(newRole);
+    localStorage.setItem(STORAGE_PREFIX + 'role', newRole);
+    if (newRole !== 'admin') setAdminAccessLevel('super_admin');
+  };
+
+  const setAdminAccessLevel = (level: AdminAccessLevel) => {
+    setAdminAccessLevelState(level);
+    localStorage.setItem(STORAGE_PREFIX + 'adminAccessLevel', level);
   };
 
   const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'read'>) => {
@@ -2734,6 +2760,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         role,
         setRole,
+        adminAccessLevel,
+        setAdminAccessLevel,
         projects,
         applications,
         bugReports,

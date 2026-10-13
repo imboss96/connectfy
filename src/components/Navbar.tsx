@@ -20,6 +20,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { NotificationCenter } from './NotificationCenter';
 import { ConnectfyLogo } from './UTestLogo';
+import { canAccessAdminTab } from '../lib/adminPermissions';
 
 interface NavbarProps {
   onOpenWallet: () => void;
@@ -37,6 +38,7 @@ type NavItem = {
 export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onRequestAdminAccess }) => {
   const {
     role,
+    adminAccessLevel,
     testerProfile,
     clientProfile,
     activeTab,
@@ -88,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
     }
   };
 
-  const navItems: NavItem[] = role === 'tester'
+  const navItems: NavItem[] = (role === 'tester'
     ? [
         { label: 'Browse Projects', tab: 'projects', icon: Bug },
         { label: 'My Pipeline', tab: 'tasks', icon: Layers },
@@ -112,10 +114,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
           { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
           { label: 'Organization', tab: 'profile_settings', icon: Sliders }
-        ];
+        ]).filter(({ tab }) => role !== 'admin' || canAccessAdminTab(adminAccessLevel, tab));
 
   const personName = role === 'tester' || role === 'admin' ? (testerProfile.name || clientProfile.name) : clientProfile.name;
-  const personSubtitle = role === 'tester' ? `${testerProfile.tier} QA Tester` : role === 'admin' ? 'Operations & PM' : clientProfile.company;
+  const personSubtitle = role === 'tester'
+    ? `${testerProfile.tier} QA Tester`
+    : role === 'admin'
+        ? adminAccessLevel === 'super_admin'
+          ? 'Super Admin'
+          : adminAccessLevel === 'project_manager'
+            ? 'Project Manager'
+            : 'Submission Reviewer'
+        : clientProfile.company;
   const personAvatar = role === 'tester' || role === 'admin'
     ? (testerProfile.avatar || clientProfile.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(personName || 'User')}&background=random`)
     : (clientProfile.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(personName || 'User')}&background=random`);

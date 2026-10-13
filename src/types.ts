@@ -1,4 +1,5 @@
 export type UserRole = 'tester' | 'client' | 'admin';
+export type AdminAccessLevel = 'super_admin' | 'project_manager' | 'reviewer';
 
 export type ProjectTrack = 
   | 'qa_functional' 

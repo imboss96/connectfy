@@ -31,6 +31,7 @@ import { Project, BugReport, TaskSubmission, AttachmentFile } from '../types';
 import { BugSubmissionModal } from './BugSubmissionModal';
 import { TaskSubmissionModal } from './TaskSubmissionModal';
 import { DocumentViewerModal } from './DocumentViewerModal';
+import { GuidedProjectSteps } from './GuidedProjectSteps';
 
 interface TestWorkspaceProps {
   projectId: string;
@@ -38,50 +39,16 @@ interface TestWorkspaceProps {
 }
 
 export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack }) => {
-  const { projects, bugReports, taskSubmissions, testerProfile } = useApp();
+  const { projects, bugReports, taskSubmissions, testerProfile, applications } = useApp();
   
   const project = projects.find((p) => p.id === projectId);
   
   const isQA = !project || project.projectTrack === 'qa_functional';
 
-  const [activeSubTab, setActiveSubTab] = useState<'bugs' | 'testcases' | 'deliverables' | 'scope'>(
-    isQA ? 'bugs' : 'deliverables'
-  );
+  const [activeSubTab, setActiveSubTab] = useState<'steps' | 'bugs' | 'deliverables' | 'scope'>('steps');
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
   const [isDeliverableModalOpen, setIsDeliverableModalOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentFile | null>(null);
-
-  // Predefined realistic test case execution list for QA cycles
-  const [testCases, setTestCases] = useState([
-    {
-      id: 'tc-1',
-      title: 'Verify 3DS OTP Authentication on Mobile Safari with SMS Auto-fill',
-      bounty: 15.00,
-      status: 'passed' as 'passed' | 'failed' | 'blocked' | 'untested',
-      notes: 'Executed successfully on iPhone 15 Pro. Auto-fill triggered cleanly.'
-    },
-    {
-      id: 'tc-2',
-      title: 'Test Split Payment calculation between EUR and USD with 3 recipients',
-      bounty: 15.00,
-      status: 'failed' as 'passed' | 'failed' | 'blocked' | 'untested',
-      notes: 'Failed: Rounding error results in split sum mismatch. Logged as Bug #102.'
-    },
-    {
-      id: 'tc-3',
-      title: 'Verify Network Dropout Recovery during Biometric Passkey Confirmation',
-      bounty: 15.00,
-      status: 'untested' as 'passed' | 'failed' | 'blocked' | 'untested',
-      notes: ''
-    },
-    {
-      id: 'tc-4',
-      title: 'Validate Localized Currency Symbol placement in Cart Drawer',
-      bounty: 10.00,
-      status: 'untested' as 'passed' | 'failed' | 'blocked' | 'untested',
-      notes: ''
-    }
-  ]);
 
   if (!project) return null;
 
@@ -95,10 +62,16 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
   const earnedFromDeliverables = approvedDeliverables.reduce((acc, s) => acc + s.bountyEarned, 0);
 
   const totalEarnedInProject = earnedFromBugs + earnedFromDeliverables;
-
-  const handleUpdateTestCaseStatus = (id: string, newStatus: 'passed' | 'failed' | 'blocked') => {
-    setTestCases(prev => prev.map(tc => tc.id === id ? { ...tc, status: newStatus } : tc));
-  };
+  const projectApplication = applications.find((application) =>
+    application.projectId === projectId
+    && (application.testerId === testerProfile.id
+      || application.testerEmail.toLowerCase() === testerProfile.email.toLowerCase())
+  );
+  const testerIds = new Set([testerProfile.id, projectApplication?.testerId].filter(Boolean));
+  const checklistSubmission = projectDeliverables.find((submission) =>
+    (submission.title === 'Project Completion Checklist' || submission.title === 'Google Selfies Project Completion')
+    && testerIds.has(submission.testerId)
+  );
 
   const getTrackBadge = () => {
     switch (project.projectTrack) {
@@ -142,6 +115,13 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => setActiveSubTab('steps')}
+              className="w-full sm:w-auto px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-900/30"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>View Project Steps</span>
+            </button>
             {isQA ? (
               <button
                 onClick={() => setIsBugModalOpen(true)}
@@ -150,15 +130,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                 <Bug className="w-4 h-4" />
                 <span>Report New Defect</span>
               </button>
-            ) : (
-              <button
-                onClick={() => setIsDeliverableModalOpen(true)}
-                className="w-full sm:w-auto px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition shadow-lg shadow-purple-900/30"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Submit Deliverable Batch</span>
-              </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -197,6 +169,17 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
 
       {/* Sub tabs navigation */}
       <div className="flex border-b border-slate-200 space-x-4 sm:space-x-6 text-xs sm:text-sm overflow-x-auto scrollbar-none pb-0.5">
+        <button
+          onClick={() => setActiveSubTab('steps')}
+          className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
+            activeSubTab === 'steps'
+              ? 'border-violet-500 text-violet-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          <span>Project Test Steps{checklistSubmission ? ' (Submitted)' : ''}</span>
+        </button>
         {isQA ? (
           <>
             <button
@@ -209,17 +192,6 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             >
               <Bug className="w-4 h-4" />
               <span>Reported Defects ({projectBugs.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveSubTab('testcases')}
-              className={`pb-3 font-semibold flex items-center space-x-2 border-b-2 transition shrink-0 whitespace-nowrap ${
-                activeSubTab === 'testcases'
-                  ? 'border-blue-500 text-blue-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Test Runs & Scenarios ({testCases.length})</span>
             </button>
           </>
         ) : (
@@ -250,6 +222,16 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
       </div>
 
       {/* Non-QA Deliverables View */}
+      {activeSubTab === 'steps' && (
+          <GuidedProjectSteps
+            project={project}
+            testerProfile={testerProfile}
+            applicationEmail={projectApplication?.testerEmail || testerProfile.email}
+            applicationName={projectApplication?.testerName || testerProfile.name}
+            submission={checklistSubmission}
+          />
+      )}
+
       {!isQA && activeSubTab === 'deliverables' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -579,80 +561,6 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {/* QA Test Runs Tab */}
-      {isQA && activeSubTab === 'testcases' && (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Curated Test Scenarios</h3>
-            <p className="text-xs text-slate-600">
-              Execute prioritized test cases and submit your run verdicts for direct run bounty crediting
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            {testCases.map((tc) => (
-              <div
-                key={tc.id}
-                className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase">
-                      {tc.id}
-                    </span>
-                    <h4 className="text-sm font-bold text-slate-900">{tc.title}</h4>
-                  </div>
-                  {tc.notes && (
-                    <p className="text-xs text-slate-600 italic">
-                      Note: {tc.notes}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-3">
-                  <span className="text-xs font-bold text-emerald-400">
-                    +${tc.bounty.toFixed(2)}
-                  </span>
-                  <button
-                    onClick={() => handleUpdateTestCaseStatus(tc.id, 'passed')}
-                    className={`px-3 py-1 rounded text-xs font-semibold flex items-center space-x-1 transition ${
-                      tc.status === 'passed'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Pass</span>
-                  </button>
-                  <button
-                    onClick={() => handleUpdateTestCaseStatus(tc.id, 'failed')}
-                    className={`px-3 py-1 rounded text-xs font-semibold flex items-center space-x-1 transition ${
-                      tc.status === 'failed'
-                        ? 'bg-rose-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>Fail</span>
-                  </button>
-                  <button
-                    onClick={() => handleUpdateTestCaseStatus(tc.id, 'blocked')}
-                    className={`px-3 py-1 rounded text-xs font-semibold flex items-center space-x-1 transition ${
-                      tc.status === 'blocked'
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    <span>Block</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 

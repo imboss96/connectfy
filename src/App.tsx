@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, InviteProfileDetails, useApp } from './context/AppContext';
+import { canAccessAdminTab, getDefaultAdminTab } from './lib/adminPermissions';
 import { isCloudinaryConfigured, uploadToCloudinary } from './lib/cloudinary';
 import { Navbar } from './components/Navbar';
 import { ProjectBoard } from './components/ProjectBoard';
@@ -43,9 +44,25 @@ interface MainContentProps {
   onRequestAdminAccess: () => void;
 }
 
+const adminMobileItems = [
+  { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
+  { tab: 'crm', label: 'CRM', icon: Users },
+  { tab: 'mass_invites', label: 'Invites', icon: Users },
+  { tab: 'project_operations', label: 'Project Ops', icon: Briefcase },
+  { tab: 'payments', label: 'Payments', icon: CalendarClock },
+  { tab: 'approval_emails', label: 'Email Log', icon: MailCheck },
+  { tab: 'payout_operations', label: 'Payouts', icon: DollarSign },
+  { tab: 'service_listings', label: 'Listings', icon: Briefcase },
+  { tab: 'client_submissions', label: 'Reviews', icon: FileCheck },
+  { tab: 'client_applicants', label: 'Applicants', icon: Users },
+  { tab: 'client_cycles', label: 'Projects', icon: Briefcase },
+  { tab: 'profile_settings', label: 'Settings', icon: Sliders }
+] as const;
+
 const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAccess }) => {
   const {
     role,
+    adminAccessLevel,
     activeTab,
     setActiveTab,
     activeWorkspaceProjectId,
@@ -58,6 +75,11 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const applicationUtestUpdateId = new URLSearchParams(window.location.search).get('applicationUtestUpdate');
+  const hasAdminTabAccess = role !== 'admin' || canAccessAdminTab(adminAccessLevel, activeTab);
+
+  useEffect(() => {
+    if (role === 'admin' && !hasAdminTabAccess) setActiveTab(getDefaultAdminTab(adminAccessLevel));
+  }, [adminAccessLevel, hasAdminTabAccess, role, setActiveTab]);
 
   const handleMobileNav = (tab: any) => {
     setActiveWorkspaceProjectId(null);
@@ -106,9 +128,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
       {/* Main Container with responsive padding and mobile bottom nav space */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden bg-[#f3f4f6] text-slate-800 md:ml-64 md:w-[calc(100%-16rem)]">
         {/* If Active Workspace is open */}
-        {applicationUtestUpdateId ? (
+        {applicationUtestUpdateId && (role !== 'admin' || adminAccessLevel === 'super_admin') ? (
           <ApplicationUtestDetailsUpdatePage applicationId={applicationUtestUpdateId} />
-        ) : activeWorkspaceProjectId ? (
+        ) : activeWorkspaceProjectId && (role !== 'admin' || adminAccessLevel !== 'reviewer') ? (
           <TestWorkspace
             projectId={activeWorkspaceProjectId}
             onBack={() => setActiveWorkspaceProjectId(null)}
@@ -121,6 +143,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               else setActiveTab('client_submissions');
             }}
           />
+        ) : role === 'admin' && !hasAdminTabAccess ? (
+          <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer'} />
         ) : activeTab === 'admin_manager' || role === 'admin' ? (
           activeTab === 'crm' ? (
             <CRMSection />
@@ -143,7 +167,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
           ) : activeTab === 'client_applicants' ||
             activeTab === 'client_submissions' ||
             activeTab === 'client_cycles' ? (
-            <ClientDashboard />
+              <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer'} />
           ) : (
             <AdminProjectManager />
           )
@@ -222,131 +246,22 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               </button>
             </>
           ) : role === 'admin' ? (
-            <>
-              {/* Admin PM Portal */}
-              <button
-                onClick={() => handleMobileNav('admin_manager')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'admin_manager'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">PM Ops</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('crm')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'crm'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">CRM</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('mass_invites')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'mass_invites'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Invites</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('project_operations')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'project_operations'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Briefcase className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Project Ops</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('payments')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'payments'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <CalendarClock className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Payments</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('approval_emails')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'approval_emails'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <MailCheck className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Email Log</span>
-              </button>
-
-              <button
-                onClick={() => handleMobileNav('payout_operations')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'payout_operations'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <DollarSign className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Payouts</span>
-              </button>
-
-              {/* Listings */}
-              <button
-                onClick={() => handleMobileNav('service_listings')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'service_listings'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Briefcase className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Listings</span>
-              </button>
-
-              {/* Submissions */}
-              <button
-                onClick={() => handleMobileNav('client_submissions')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'client_submissions'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileCheck className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Reviews</span>
-              </button>
-
-              {/* Settings */}
-              <button
-                onClick={() => handleMobileNav('profile_settings')}
-                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
-                  activeTab === 'profile_settings'
-                    ? 'text-[#00A3E0] font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Sliders className="w-5 h-5" />
-                <span className="text-[10px] mt-0.5">Settings</span>
-              </button>
-            </>
+            adminMobileItems
+              .filter(({ tab }) => canAccessAdminTab(adminAccessLevel, tab))
+              .map(({ tab, label, icon: Icon }) => (
+                <button
+                  key={tab}
+                  onClick={() => handleMobileNav(tab)}
+                  className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                    activeTab === tab
+                      ? 'text-[#00A3E0] font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="text-[10px] mt-0.5">{label}</span>
+                </button>
+              ))
           ) : (
             <>
               {/* Submissions Tab */}
@@ -645,7 +560,7 @@ export default function App() {
 }
 
 const AppExperience: React.FC = () => {
-  const { setRole, applications, acceptInvite, testerProfile, setActiveTab, setActiveWorkspaceProjectId, pendingInviteAcceptanceId } = useApp();
+  const { setRole, setAdminAccessLevel, applications, acceptInvite, testerProfile, setActiveTab, setActiveWorkspaceProjectId, pendingInviteAcceptanceId } = useApp();
   const [screen, setScreen] = useState<'landing' | 'login' | 'reset' | 'app'>('landing');
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -750,8 +665,19 @@ const AppExperience: React.FC = () => {
 
       setScreen('app');
       if (session) {
-        const { data: profile } = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
-        setRole(profile?.role === 'admin' ? 'admin' : 'tester');
+        const { data: profile, error } = await client.from('profiles').select('role,admin_access_level').eq('id', session.user.id).maybeSingle();
+        if (error) {
+          console.error('Unable to load access level:', error);
+          setRole('tester');
+          return;
+        }
+        const isAdmin = profile?.role === 'admin';
+        setRole(isAdmin ? 'admin' : 'tester');
+        setAdminAccessLevel(
+          isAdmin && (profile.admin_access_level === 'project_manager' || profile.admin_access_level === 'reviewer')
+            ? profile.admin_access_level
+            : 'super_admin'
+        );
       }
       setIsAuthLoading(false);
     };
@@ -769,6 +695,7 @@ const AppExperience: React.FC = () => {
 
   const resetLocalUserState = () => {
     localStorage.removeItem('utest_crowdqa_role');
+    localStorage.removeItem('utest_crowdqa_adminAccessLevel');
     localStorage.removeItem('utest_crowdqa_testerProfile');
     localStorage.removeItem('utest_crowdqa_clientProfile');
     localStorage.removeItem('utest_crowdqa_projects');
@@ -863,7 +790,7 @@ const AppExperience: React.FC = () => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Supabase authentication is not configured.');
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
     if (authError) throw authError;
-    const { data: profile, error: profileError } = await supabase.from('profiles').select('role').eq('id', (await supabase.auth.getUser()).data.user?.id || '').maybeSingle();
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('role,admin_access_level').eq('id', (await supabase.auth.getUser()).data.user?.id || '').maybeSingle();
     if (profileError) throw profileError;
     if (profile?.role !== 'admin') {
       await supabase.auth.signOut();
@@ -871,6 +798,11 @@ const AppExperience: React.FC = () => {
     }
     setScreen('app');
     setRole('admin');
+    setAdminAccessLevel(
+      profile.admin_access_level === 'project_manager' || profile.admin_access_level === 'reviewer'
+        ? profile.admin_access_level
+        : 'super_admin'
+    );
     setIsAdminAuthOpen(false);
   };
 

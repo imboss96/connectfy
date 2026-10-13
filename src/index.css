@@ -322,6 +322,23 @@ body,
   border-color: #A84242 !important;
 }
 
+.theme-shell main a.slack-team-join-link {
+  background-color: #4A154B !important;
+  border-color: #4A154B !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(74, 21, 75, 0.2) !important;
+}
+
+.theme-shell main a.slack-team-join-link *,
+.theme-shell main a.slack-team-join-link svg {
+  color: #ffffff !important;
+}
+
+.theme-shell main a.slack-team-join-link:hover {
+  background-color: #35103A !important;
+  border-color: #35103A !important;
+}
+
 /* Settings contains legacy slate surfaces; translate them to the light workspace theme. */
 .theme-settings {
   color: #374151 !important;
