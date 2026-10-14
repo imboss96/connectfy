@@ -542,9 +542,9 @@ body,
 .login-art-card i:nth-child(3) { background: #ffffff; opacity: 0.35; width: 25px; }
 
 @media (max-width: 800px) {
-  .login-page { display: block; height: 100dvh; }
+  .login-page { display: block; height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; }
   .login-art { display: none; }
-  .login-panel { margin: 0 auto; max-height: 100dvh; min-height: 100dvh; padding: 24px; width: 100%; }
+  .login-panel { margin: 16px auto; max-height: none; min-height: calc(100vh - 32px); min-height: calc(100dvh - 32px); overflow: visible; padding: 24px; width: calc(100% - 32px); }
 }
 
 @media (max-height: 760px) and (min-width: 801px) {
