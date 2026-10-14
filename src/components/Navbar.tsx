@@ -94,10 +94,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
     ? [
         { label: 'Browse Projects', tab: 'projects', icon: Bug },
         { label: 'My Pipeline', tab: 'tasks', icon: Layers },
+        { label: 'Browse Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
         { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders }
       ]
     : role === 'admin'
       ? [
+          { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase, section: 'Services' },
           { label: 'Service Listings', tab: 'service_listings', icon: Briefcase, section: 'Services' },
           { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck, section: 'Operations' },
           { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
@@ -110,6 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' }
         ]
       : [
+          { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
           { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
           { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
           { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },

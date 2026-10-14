@@ -4,6 +4,7 @@ import { canAccessAdminTab, getDefaultAdminTab } from './lib/adminPermissions';
 import { isCloudinaryConfigured, uploadToCloudinary } from './lib/cloudinary';
 import { Navbar } from './components/Navbar';
 import { ProjectBoard } from './components/ProjectBoard';
+import { ArbeitnowJobsBoard } from './components/ArbeitnowJobsBoard';
 import { TesterDashboard } from './components/TesterDashboard';
 import { ClientDashboard } from './components/ClientDashboard';
 import { TestWorkspace } from './components/TestWorkspace';
@@ -45,6 +46,7 @@ interface MainContentProps {
 }
 
 const adminMobileItems = [
+  { tab: 'arbeitnow_jobs', label: 'Freelance Jobs', icon: Briefcase },
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
@@ -145,6 +147,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
           />
         ) : role === 'admin' && !hasAdminTabAccess ? (
           <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer'} />
+        ) : activeTab === 'arbeitnow_jobs' ? (
+          <ArbeitnowJobsBoard />
         ) : activeTab === 'admin_manager' || role === 'admin' ? (
           activeTab === 'crm' ? (
             <CRMSection />
@@ -221,6 +225,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
                 <span className="text-[10px] mt-0.5">Pipeline</span>
               </button>
 
+              <button
+                onClick={() => handleMobileNav('arbeitnow_jobs')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'arbeitnow_jobs' && !activeWorkspaceProjectId
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Briefcase className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Freelance</span>
+              </button>
+
               {/* Wallet Tab */}
               <button
                 onClick={() => setIsWalletOpen(true)}
@@ -264,6 +280,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               ))
           ) : (
             <>
+              <button
+                onClick={() => handleMobileNav('arbeitnow_jobs')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'arbeitnow_jobs' && !activeWorkspaceProjectId
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Briefcase className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Freelance</span>
+              </button>
+
               {/* Submissions Tab */}
               <button
                 onClick={() => handleMobileNav('client_submissions')}
