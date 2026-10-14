@@ -19,8 +19,10 @@ dotenv.config();
 const app = express();
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
-const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request']);
+const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up']);
 const APPLAUSE_SUPPORT_SLACK_LINK = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
+const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+const SLACK_DOWNLOAD_URL = 'https://slack.com/downloads';
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -40,6 +42,31 @@ const allowedOrigins = [
 
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'applause_follow_up') {
+    const messages = {
+      settings_video: {
+        subject: 'Action required: upload your uTest settings video',
+        heading: 'Please upload your settings video',
+        body: `Our records show that your settings video is still missing for <strong>${escapeHtml(payload.projectTitle || 'your project')}</strong>. Please sign in to your uTest account and upload the required video so your account is ready for the project.`
+      },
+      project_completion: {
+        subject: 'Reminder: complete your project tasks',
+        heading: 'Please complete your project tasks',
+        body: `Please finish the remaining tasks for <strong>${escapeHtml(payload.projectTitle || 'your project')}</strong> by the project deadline. Completing the required work and approval steps is necessary for consideration in the upcoming payment cycle; payment remains subject to the project terms and approval.`
+      },
+      consent_signature: {
+        subject: 'Action required: sign your project consent form',
+        heading: 'Please sign your consent form',
+        body: `Our records show that a consent form has been sent for <strong>${escapeHtml(payload.projectTitle || 'your project')}</strong>. Please review and sign it promptly. A signed consent form is required to continue with the project.`
+      }
+    };
+    const message = messages[payload.applauseFollowUpKind];
+    if (!message) throw new Error('Unsupported Applause follow-up email kind.');
+    const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    const slackInviteUrl = escapeHtml(CONNECTFY_SLACK_INVITE_URL);
+    const slackDownloadUrl = escapeHtml(SLACK_DOWNLOAD_URL);
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">${message.heading}</h1><p style="line-height:1.7;">${message.body}</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Open Connectfy</a></p><div style="margin:20px 0;padding:16px;border-radius:10px;background:#f8fafc;"><h2 style="margin:0 0 8px;font-size:16px;">Join us on Slack for real-time communication</h2><p style="margin:0 0 12px;line-height:1.6;">Download the Slack app, then join the Connectfy Ops workspace so you can receive project updates and contact the team in real time.</p><p style="margin:0 0 10px;"><a href="${slackDownloadUrl}" style="color:#007f95;font-weight:700;">Download Slack</a></p><p style="margin:0;"><a href="${slackInviteUrl}" style="color:#007f95;font-weight:700;">Join the Connectfy Ops Slack workspace</a></p></div><p style="color:#475569;">If you need assistance, contact <a href="mailto:support@connectfy.tech">support@connectfy.tech</a>.</p><p>Best regards,<br>Connectfy Team</p></div></div></div>`;
+  }
   if (payload.type === 'application_utest_details_request') {
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
     const reason = payload.reason === 'incorrect'
@@ -54,7 +81,9 @@ const buildHtml = (payload) => {
     const amount = Number(payload.projectAmount || 0);
     const payout = Number.isFinite(amount) ? `$${amount.toFixed(2)} USD` : 'your approved payout';
     const lockDate = escapeHtml(payload.projectLockDate || 'To be confirmed');
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>For support, find us in Slack.</p><p style="margin:24px 0;"><a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#4A154B;color:#fff;text-decoration:none;font-weight:700;">Find us in Slack</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+    const slackInviteUrl = escapeHtml(CONNECTFY_SLACK_INVITE_URL);
+    const slackDownloadUrl = escapeHtml(SLACK_DOWNLOAD_URL);
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>Join us on Slack for real-time project communication. Download the Slack app and join the Connectfy Ops workspace:</p><p><a href="${slackDownloadUrl}">Download Slack</a> · <a href="${slackInviteUrl}">Join the Connectfy Ops workspace</a></p><p>For support, find us in Slack.</p><p style="margin:24px 0;"><a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#4A154B;color:#fff;text-decoration:none;font-weight:700;">Open Slack support</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
@@ -154,6 +183,38 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'applause_follow_up') {
+    const messages = {
+      settings_video: {
+        subject: 'Action required: upload your uTest settings video',
+        body: `Our records show that your settings video is still missing for ${payload.projectTitle || 'your project'}. Please sign in to your uTest account and upload the required video so your account is ready for the project.`
+      },
+      project_completion: {
+        subject: 'Reminder: complete your project tasks',
+        body: `Please finish the remaining tasks for ${payload.projectTitle || 'your project'} by the project deadline. Completing the required work and approval steps is necessary for consideration in the upcoming payment cycle; payment remains subject to the project terms and approval.`
+      },
+      consent_signature: {
+        subject: 'Action required: sign your project consent form',
+        body: `Our records show that a consent form has been sent for ${payload.projectTitle || 'your project'}. Please review and sign it promptly. A signed consent form is required to continue with the project.`
+      }
+    };
+    const message = messages[payload.applauseFollowUpKind];
+    if (!message) throw new Error('Unsupported Applause follow-up email kind.');
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      message.body,
+      '',
+      `Open Connectfy: ${projectLink}`,
+      'Join the Connectfy Ops workspace on Slack for real-time project communication:',
+      `Download Slack: ${SLACK_DOWNLOAD_URL}`,
+      `Join the workspace: ${CONNECTFY_SLACK_INVITE_URL}`,
+      'If you need assistance, contact support@connectfy.tech.',
+      '',
+      'Best regards,',
+      'Connectfy Team'
+    ].join('\n');
+  }
   if (payload.type === 'application_utest_details_request') {
     const reason = payload.reason === 'incorrect'
       ? 'We noticed the uTest ID on your project application may be incorrect.'
@@ -178,6 +239,10 @@ const buildText = (payload) => {
       `You are one step away from claiming your payout of ${payout}.`,
       `Please complete the remaining consent step for ${payload.projectTitle || 'your project'}.`,
       `The project locks on ${payload.projectLockDate || 'a date to be confirmed'}; please hurry so you have time to finish your testing.`,
+      'Download Slack and join the Connectfy Ops workspace for real-time project communication:',
+      `Download Slack: ${SLACK_DOWNLOAD_URL}`,
+      `Join the workspace: ${CONNECTFY_SLACK_INVITE_URL}`,
+      '',
       'For support, find us in Slack:',
       APPLAUSE_SUPPORT_SLACK_LINK,
       '',
@@ -298,6 +363,12 @@ const projectEmailSubject = (payload, type) => type === 'invite'
   ? buildProjectApprovalEmailSubject(payload.projectTitle)
   : type === 'application'
     ? `Application received: ${payload.projectTitle || 'Connectfy project'}`
+  : type === 'applause_follow_up'
+    ? ({
+      settings_video: 'Action required: upload your uTest settings video',
+      project_completion: 'Reminder: complete your project tasks',
+      consent_signature: 'Action required: sign your project consent form'
+    })[payload.applauseFollowUpKind] || 'Project follow-up'
   : type === 'submission_approved'
     ? `Project submission approved: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'sheet_project_approved'
@@ -1459,7 +1530,7 @@ app.post('/api/project-email', async (req, res) => {
     const toName = String(payload.toName || '').trim();
 
     const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
-    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request'];
+    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up'];
 
     if (!supportedTypes.includes(requestType)) {
       return res.status(400).json({ ok: false, message: `Unsupported email type: ${requestType}` });
@@ -1474,6 +1545,10 @@ app.post('/api/project-email', async (req, res) => {
           message: `Application confirmation is missing required submitted details: ${missingApplicationFields.join(', ')}.`
         });
       }
+    }
+    if (requestType === 'applause_follow_up'
+      && !['settings_video', 'project_completion', 'consent_signature'].includes(payload.applauseFollowUpKind)) {
+      return res.status(400).json({ ok: false, message: 'Choose a supported Applause follow-up email.' });
     }
 
     if (adminEmailTypes.has(requestType) || requestType === 'submission_approved') {
@@ -1495,7 +1570,7 @@ app.post('/api/project-email', async (req, res) => {
       }
 
       const user = await authResponse.json();
-      const roleResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {
+      const roleResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,admin_access_level`, {
         headers: { apikey: supabaseAnonKey, Authorization: authorization }
       });
       if (!roleResponse.ok) {
@@ -1506,7 +1581,47 @@ app.post('/api/project-email', async (req, res) => {
         return res.status(403).json({ ok: false, message: 'Unable to verify your account access.' });
       }
 
-      if (requestType === 'submission_approved') {
+      if (requestType === 'applause_follow_up') {
+        const requester = profiles[0];
+        if (requester.role !== 'admin'
+          || !['super_admin', 'project_manager'].includes(requester.admin_access_level)) {
+          return res.status(403).json({ ok: false, message: 'Only project managers and super admins can send Applause follow-up emails.' });
+        }
+        const projectId = String(payload.projectId || '');
+        const sourceKey = String(payload.sourceKey || '');
+        if (!projectId || !sourceKey) {
+          return res.status(400).json({ ok: false, message: 'Project and Applause row identifiers are required.' });
+        }
+        const expectedStatuses = {
+          settings_video: 'ready for settings check',
+          project_completion: 'in progress',
+          consent_signature: 'consent form sent'
+        };
+        const expectedStatus = expectedStatuses[payload.applauseFollowUpKind];
+        const restBase = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+        const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization };
+        const [statusResponse, projectResponse] = await Promise.all([
+          fetch(`${restBase}/project_applause_status?project_id=eq.${encodeURIComponent(projectId)}&source_key=eq.${encodeURIComponent(sourceKey)}&select=status,tester_email,google_email`, { headers: restHeaders }),
+          fetch(`${restBase}/projects?id=eq.${encodeURIComponent(projectId)}&select=title`, { headers: restHeaders })
+        ]);
+        if (!statusResponse.ok || !projectResponse.ok) {
+          return res.status(403).json({ ok: false, message: 'Unable to verify the Applause row and project.' });
+        }
+        const [statusRows, projectRows] = await Promise.all([statusResponse.json(), projectResponse.json()]);
+        const statusRow = statusRows[0];
+        const project = projectRows[0];
+        const acceptedEmails = [statusRow?.tester_email, statusRow?.google_email]
+          .map((email) => String(email || '').trim().toLowerCase())
+          .filter(Boolean);
+        if (!statusRow || String(statusRow.status || '').trim().toLowerCase() !== expectedStatus
+          || !acceptedEmails.includes(toEmail.toLowerCase())) {
+          return res.status(400).json({ ok: false, message: 'The recipient or project status no longer matches this follow-up. Sync the sheet and try again.' });
+        }
+        if (!project) {
+          return res.status(404).json({ ok: false, message: 'The project could not be found.' });
+        }
+        payload.projectTitle = project.title;
+      } else if (requestType === 'submission_approved') {
         const projectId = String(payload.projectId || '');
         const submissionId = String(payload.submissionId || '');
         const testerId = String(payload.testerId || '');

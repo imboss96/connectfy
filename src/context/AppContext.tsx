@@ -20,6 +20,7 @@ import { approveSubmissionInSupabase, createProjectInSupabase, createSubmissionI
 import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
+import { APPLICATION_SCREENER_FORM_URL } from '../lib/applicationScreener';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -95,10 +96,10 @@ interface AppContextType {
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
   applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
-  approveApplication: (appId: string) => Promise<void>;
+  approveApplication: (appId: string, screenerSubmitted: boolean) => Promise<void>;
   resendInvite: (appId: string) => void;
-  requestUtestAccountUpdate: (appId: string) => void;
-  rejectApplication: (appId: string) => void;
+  requestUtestAccountUpdate: (appId: string) => Promise<void>;
+  rejectApplication: (appId: string) => Promise<void>;
   inviteTesterToProject: (projectId: string, testerId: string, testerName: string, testerEmail: string) => Promise<void>;
   acceptInvite: (appId: string) => Promise<boolean>;
   completeInviteAcceptance: (appId: string, details: InviteProfileDetails) => Promise<void>;
@@ -123,7 +124,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'payments', 'approval_emails', 'payout_operations'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -1529,7 +1530,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 2. Approval persists first; the database trigger queues the invitation email transactionally.
-  const approveApplication = async (appId: string) => {
+  const approveApplication = async (appId: string, screenerSubmitted: boolean) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
@@ -1542,12 +1543,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await updateApplicationInSupabase(app.id, {
-          status: 'approved',
-          invite_status: 'invited',
-          invite_history: nextHistory,
-          updated_at: new Date().toISOString()
+        const { error } = await supabase.rpc('approve_project_application', {
+          p_application_id: app.id,
+          p_screener_submitted: screenerSubmitted,
+          p_screener_form_url: APPLICATION_SCREENER_FORM_URL,
+          p_invite_history: nextHistory
         });
+        if (error) throw error;
       } catch (error) {
         console.error('Unable to approve application and queue its email in Supabase:', error);
         if (typeof window !== 'undefined') {
@@ -1555,6 +1557,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         return;
       }
+      window.dispatchEvent(new Event('project-manager-activity-updated'));
     }
 
     setApplications(prev => prev.map(a => {
@@ -1584,10 +1587,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const requestUtestAccountUpdate = (appId: string) => {
+  const requestUtestAccountUpdate = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await updateApplicationInSupabase(app.id, {
+          status: 'needs_utest_update',
+          invite_status: null,
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Unable to flag application for a new uTest account:', error);
+        if (typeof window !== 'undefined') {
+          window.alert(error instanceof Error ? error.message : 'The application could not be updated. Please try again.');
+        }
+        return;
+      }
+      window.dispatchEvent(new Event('project-manager-activity-updated'));
+    }
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
@@ -1600,14 +1620,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return a;
     }));
 
-    if (isSupabaseConfigured && supabase) {
-      void updateApplicationInSupabase(app.id, {
-        status: 'needs_utest_update',
-        invite_status: null,
-        updated_at: new Date().toISOString()
-      }).catch(error => console.error('Unable to flag application for uTest update:', error));
-    }
-
     addNotification({
       userId: app.testerId,
       targetRole: 'tester',
@@ -1618,7 +1630,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     if (project && app.testerEmail) {
-      void triggerProjectEmail('utest_update_required', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id, {
+      await triggerProjectEmail('utest_update_required', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id, {
         applicantCountry: '',
         applicantDevice: '',
         uTestId: app.uTestId || '',
@@ -1754,10 +1766,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Client rejects application
-  const rejectApplication = (appId: string) => {
+  const rejectApplication = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await updateApplicationInSupabase(app.id, {
+          status: 'rejected',
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Unable to reject application in Supabase:', error);
+        if (typeof window !== 'undefined') {
+          window.alert(error instanceof Error ? error.message : 'The application could not be rejected. Please try again.');
+        }
+        return;
+      }
+      window.dispatchEvent(new Event('project-manager-activity-updated'));
+    }
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {

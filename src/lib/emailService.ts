@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -35,6 +35,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'submission_approved';
     case 'application_utest_details_request':
       return 'application_utest_details_request';
+    case 'applause_follow_up':
+      return 'applause_follow_up';
     case 'application':
     default:
       return 'application';
@@ -69,9 +71,11 @@ export interface ProjectEmailPayload {
   supportEmail?: string;
   submissionId?: string;
   projectId?: string;
+  sourceKey?: string;
   testerId?: string;
   submissionTitle?: string;
   approvedAmount?: number;
+  applauseFollowUpKind?: 'settings_video' | 'project_completion' | 'consent_signature';
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {
@@ -123,6 +127,10 @@ export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<bo
         message = parsed.message || message;
       } catch {
         // Keep the raw response when the backend did not return JSON.
+      }
+      if (safePayload.type === 'applause_follow_up'
+        && /^Unsupported email type:\s*applause_follow_up$/i.test(message.trim())) {
+        message = 'The email backend is running an older version that does not support Applause follow-ups. Restart the local email server or redeploy the email backend with the current server.js, then try again.';
       }
       throw new Error(message);
     }

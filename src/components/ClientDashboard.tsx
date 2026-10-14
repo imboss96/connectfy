@@ -43,6 +43,8 @@ import {
   PaymentModel
 } from '../types';
 import { DocumentViewerModal } from './DocumentViewerModal';
+import { ApplicationScreenerConfirmation } from './ApplicationScreenerConfirmation';
+import { hasValidUtestIdAndScreenshot } from '../lib/applicationScreener';
 
 export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly = false }) => {
   const {
@@ -67,6 +69,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
   const [activeTab, setActiveTab] = useState<'submissions' | 'applicants' | 'cycles'>('submissions');
   const [submissionFilter, setSubmissionFilter] = useState<'all' | 'tasks' | 'bugs'>('all');
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentFile | null>(null);
+  const [confirmedScreenerIds, setConfirmedScreenerIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (reviewOnly) setActiveTab('submissions');
@@ -826,6 +829,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
               const isPending = app.status === 'pending';
               const isApproved = app.status === 'approved';
               const isRejected = app.status === 'rejected';
+              const hasValidScreenerAccount = hasValidUtestIdAndScreenshot(app.uTestId, app.uTestAccountScreenshotUrl);
 
               return (
                 <div
@@ -857,12 +861,28 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                       "{app.experienceNote}"
                     </p>
 
+                    <p className="text-[11px] text-slate-300">
+                      <span className="font-semibold">uTest ID:</span> {app.uTestId?.trim() || 'Not submitted'}
+                    </p>
+
                     {app.uTestAccountScreenshotUrl ? (
                       <a href={app.uTestAccountScreenshotUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-300 underline underline-offset-2 hover:text-sky-200">
                         <Eye className="h-3.5 w-3.5" /> Review uTest account screenshot
                       </a>
                     ) : (
                       <p className="text-[11px] font-semibold text-rose-300">No uTest account screenshot submitted</p>
+                    )}
+                    {isPending && (
+                      <ApplicationScreenerConfirmation
+                        confirmed={confirmedScreenerIds.has(app.id)}
+                        hasValidAccount={hasValidScreenerAccount}
+                        onConfirmationChange={(confirmed) => setConfirmedScreenerIds((current) => {
+                          const next = new Set(current);
+                          if (confirmed) next.add(app.id);
+                          else next.delete(app.id);
+                          return next;
+                        })}
+                      />
                     )}
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
@@ -890,8 +910,9 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                           Decline
                         </button>
                         <button
-                          onClick={() => approveApplication(app.id)}
-                          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow flex items-center space-x-1.5 transition"
+                          onClick={() => void approveApplication(app.id, confirmedScreenerIds.has(app.id))}
+                          disabled={!confirmedScreenerIds.has(app.id) || !hasValidScreenerAccount}
+                          className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow flex items-center space-x-1.5 transition disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Approve & Send Invite</span>

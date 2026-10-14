@@ -74,11 +74,12 @@ const statusForTab = (row: ApplauseStatusRow, tab: StatusTab) => {
   }
 };
 
-export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: string; sheetCsvUrl: string; sheetUrl?: string; onSynced?: () => void }> = ({
+export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: string; sheetCsvUrl: string; sheetUrl?: string; syncEnabled?: boolean; onSynced?: () => void }> = ({
   projectId,
   projectTitle,
   sheetCsvUrl,
   sheetUrl,
+  syncEnabled = true,
   onSynced
 }) => {
   const [rows, setRows] = useState<ApplauseStatusRow[]>([]);
@@ -94,6 +95,9 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
   const [requestingUtestDetailsKey, setRequestingUtestDetailsKey] = useState<string | null>(null);
   const [utestRequestMessage, setUtestRequestMessage] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const [sendingFollowUpKey, setSendingFollowUpKey] = useState<string | null>(null);
+  const [followUpMessage, setFollowUpMessage] = useState<string | null>(null);
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal, notifySlack = false) => {
     setLoading(true);
@@ -107,40 +111,42 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
     }
 
     let syncError: string | null = null;
-    try {
-      if (!sheetCsvUrl) throw new Error('Set this project’s Applause Google Sheet in Project Integrations before syncing.');
-      const importedRows = await parseProjectApplauseSheet(await fetchSheetCsv(sheetCsvUrl, signal));
-      if (signal?.aborted) return;
+    if (syncEnabled) {
+      try {
+        if (!sheetCsvUrl) throw new Error('Set this project’s Applause Google Sheet in Project Integrations before syncing.');
+        const importedRows = await parseProjectApplauseSheet(await fetchSheetCsv(sheetCsvUrl, signal));
+        if (signal?.aborted) return;
 
-      const { data: importedCount, error: importError } = await supabase.rpc(
-        'sync_project_applause_status',
-        { p_project_id: projectId, p_rows: importedRows }
-      );
-      if (importError) throw importError;
-      setLastSynced(new Date());
-      setSyncMessage(
-        `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. Approval emails and scheduled payments are limited to matched Connectfy tester accounts. Consent-pending reminders can be sent to selected matched testers and external uTest testers.`
-      );
-      if (notifySlack && !signal?.aborted) {
-        try {
-          const result = await sendProjectStatusSlackDms(projectId);
-          setSyncMessage((current) => `${current || 'Sheet sync complete.'} Slack DMs: ${result.sent} sent, ${result.notFound} Slack accounts not found, ${result.missingEmail} rows without email, ${result.failed} failed.`);
-        } catch (slackFailure) {
-          const slackMessage = describeError(slackFailure);
-          console.error(`Unable to send Applause status Slack DMs: ${slackMessage}`, slackFailure);
-          setError(`The sheet synced, but Slack status updates could not be sent. ${slackMessage}`);
+        const { data: importedCount, error: importError } = await supabase.rpc(
+          'sync_project_applause_status',
+          { p_project_id: projectId, p_rows: importedRows }
+        );
+        if (importError) throw importError;
+        setLastSynced(new Date());
+        setSyncMessage(
+          `Synced ${typeof importedCount === 'number' ? importedCount : importedRows.length} records. PM follow-ups and consent reminders can be sent to the contact emails listed in the sheet, including participants without Connectfy accounts. Payment scheduling and completion-approval emails remain Super Admin sync actions.`
+        );
+        if (notifySlack && !signal?.aborted) {
+          try {
+            const result = await sendProjectStatusSlackDms(projectId);
+            setSyncMessage((current) => `${current || 'Sheet sync complete.'} Slack DMs: ${result.sent} sent, ${result.notFound} Slack accounts not found, ${result.missingEmail} rows without email, ${result.failed} failed.`);
+          } catch (slackFailure) {
+            const slackMessage = describeError(slackFailure);
+            console.error(`Unable to send Applause status Slack DMs: ${slackMessage}`, slackFailure);
+            setError(`The sheet synced, but Slack status updates could not be sent. ${slackMessage}`);
+          }
         }
+        onSynced?.();
+      } catch (syncFailure) {
+        if (syncFailure instanceof DOMException && syncFailure.name === 'AbortError') return;
+        syncError = describeError(syncFailure);
+        console.error(`Unable to sync Applause project statuses: ${syncError}`, {
+          code: syncFailure && typeof syncFailure === 'object' && 'code' in syncFailure ? syncFailure.code : undefined,
+          details: syncFailure && typeof syncFailure === 'object' && 'details' in syncFailure ? syncFailure.details : undefined,
+          hint: syncFailure && typeof syncFailure === 'object' && 'hint' in syncFailure ? syncFailure.hint : undefined,
+          error: syncFailure
+        });
       }
-      onSynced?.();
-    } catch (syncFailure) {
-      if (syncFailure instanceof DOMException && syncFailure.name === 'AbortError') return;
-      syncError = describeError(syncFailure);
-      console.error(`Unable to sync Applause project statuses: ${syncError}`, {
-        code: syncFailure && typeof syncFailure === 'object' && 'code' in syncFailure ? syncFailure.code : undefined,
-        details: syncFailure && typeof syncFailure === 'object' && 'details' in syncFailure ? syncFailure.details : undefined,
-        hint: syncFailure && typeof syncFailure === 'object' && 'hint' in syncFailure ? syncFailure.hint : undefined,
-        error: syncFailure
-      });
     }
 
     try {
@@ -167,7 +173,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [onSynced, projectId, sheetCsvUrl]);
+  }, [onSynced, projectId, sheetCsvUrl, syncEnabled]);
 
   useEffect(() => {
     setSelectedConsentRows(new Set());
@@ -240,15 +246,18 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
       setReminderMessage(
         queuedCount > 0
           ? `Queued ${queuedCount} consent reminder email${queuedCount === 1 ? '' : 's'}. The email service will send them shortly.`
-          : 'No emails were queued. The selected rows may not match registered testers or may already be queued.'
+          : 'No emails were queued. The selected rows may not have an email address or may already be queued.'
       );
+      if (queuedCount > 0) window.dispatchEvent(new Event('project-manager-activity-updated'));
     } catch (queueFailure) {
       const rpcError = queueFailure && typeof queueFailure === 'object'
         ? queueFailure as { code?: unknown; message?: unknown }
         : null;
       if (rpcError?.code === 'PGRST202'
         || (typeof rpcError?.message === 'string' && rpcError.message.includes('queue_project_applause_consent_reminders'))) {
-        setReminderError('Supabase cannot find the consent reminder queue function. Apply migration 202610060008_applause_consent_pending_reminders.sql to this Supabase project, then reload the PostgREST schema cache.');
+        setReminderError('Supabase cannot find the consent reminder queue function. Apply supabase/migrations/202610150001_project_manager_workflows.sql to enable consent reminders for Project Managers, then reload the PostgREST schema cache.');
+      } else if (rpcError?.message === 'Only admins can send Applause consent reminders') {
+        setReminderError('Supabase is still using the older Super Admin-only consent function. Apply supabase/migrations/202610150001_project_manager_workflows.sql; it enables both Super Admins and Project Managers to send consent reminders.');
       } else {
         setReminderError(describeError(queueFailure));
       }
@@ -262,38 +271,32 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
     setRequestingUtestDetailsKey(row.source_key);
     setUtestRequestMessage(null);
     try {
-      const { data: applicationRows, error: applicationError } = await supabase
-        .from('applications')
-        .select('id,tester_id,profiles:tester_id(email,name)')
-        .eq('project_id', projectId);
-      if (applicationError) throw applicationError;
-
-      const sourceEmails = new Set([row.google_email, row.tester_email]
+      const sourceEmails = Array.from(new Set([row.google_email, row.tester_email]
         .map((email) => email.trim().toLowerCase())
-        .filter(Boolean));
-      const matches = (applicationRows || []).filter((application: any) => {
-        const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
-        return profile?.email && sourceEmails.has(String(profile.email).trim().toLowerCase());
+        .filter(Boolean)));
+      const { data: matches, error: applicationError } = await supabase.rpc('match_project_applause_application', {
+        p_project_id: projectId,
+        p_emails: sourceEmails
       });
-      if (matches.length !== 1) {
-        throw new Error(matches.length > 1
+      if (applicationError) throw applicationError;
+      if ((matches || []).length !== 1) {
+        throw new Error((matches || []).length > 1
           ? 'More than one project application matched this sheet row. Resolve the account match before sending.'
           : 'No Connectfy project application matched this row’s email, so there is no application to update.');
       }
 
-      const application: any = matches[0];
-      const profile = Array.isArray(application.profiles) ? application.profiles[0] : application.profiles;
+      const application = matches![0];
       const { error: requestError } = await supabase.rpc('request_application_utest_details', {
-        p_application_id: application.id
+        p_application_id: application.application_id
       });
       if (requestError) throw requestError;
 
       const updateUrl = new URL(window.location.origin);
-      updateUrl.searchParams.set('applicationUtestUpdate', application.id);
+      updateUrl.searchParams.set('applicationUtestUpdate', application.application_id);
       await sendProjectEmail({
         type: 'application_utest_details_request',
-        toEmail: String(profile.email),
-        toName: 'user',
+        toEmail: application.tester_email,
+        toName: application.tester_name || 'Tester',
         projectTitle,
         projectCompany: 'Connectfy',
         projectDescription: 'Please add the uTest account details required for your project application.',
@@ -304,11 +307,64 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
         testerId: application.tester_id,
         supportEmail: 'support@connectfy.tech'
       });
-      setUtestRequestMessage(`Request sent to ${profile.email}. The application is paused until the tester submits their uTest ID.`);
+      setUtestRequestMessage(`Request sent to ${application.tester_email}. The application is paused until the tester submits their uTest ID.`);
+      window.dispatchEvent(new Event('project-manager-activity-updated'));
     } catch (requestError) {
       setUtestRequestMessage(requestError instanceof Error ? requestError.message : 'Unable to request uTest details.');
     } finally {
       setRequestingUtestDetailsKey(null);
+    }
+  };
+
+  const sendFollowUp = async (
+    row: ApplauseStatusRow,
+    kind: 'settings_video' | 'project_completion' | 'consent_signature'
+  ) => {
+    if (!supabase || sendingFollowUpKey) return;
+    const action = kind === 'settings_video'
+      ? 'settings_video_requested'
+      : kind === 'project_completion'
+        ? 'project_completion_reminded'
+        : 'consent_signature_requested';
+    const rowKey = `${row.source_key}:${kind}`;
+    setSendingFollowUpKey(rowKey);
+    setFollowUpMessage(null);
+    setFollowUpError(null);
+    try {
+      const recipientEmail = row.google_email.trim() || row.tester_email.trim();
+      if (!recipientEmail) throw new Error('This Applause row has no Google Email or Tester Email, so a follow-up cannot be sent.');
+      const recipientName = 'Tester';
+      const activityTarget = row.utest_id.trim() || row.tester_id.trim() || recipientEmail;
+      await sendProjectEmail({
+        type: 'applause_follow_up',
+        applauseFollowUpKind: kind,
+        toEmail: recipientEmail,
+        toName: recipientName,
+        projectTitle,
+        projectCompany: 'Connectfy',
+        projectDescription: '',
+        actionUrl: `${window.location.origin}?project=${encodeURIComponent(projectId)}`,
+        projectLink: `${window.location.origin}?project=${encodeURIComponent(projectId)}`,
+        projectId,
+        sourceKey: row.source_key,
+        supportEmail: 'support@connectfy.tech'
+      });
+
+      const { error: activityError } = await supabase.rpc('record_applause_follow_up_activity', {
+        p_project_id: projectId,
+        p_source_key: row.source_key,
+        p_action: action,
+        p_target_name: activityTarget
+      });
+      if (activityError) {
+        throw new Error(`The email was sent to ${recipientEmail}, but the activity log could not be saved. ${describeError(activityError)}`);
+      }
+      setFollowUpMessage(`Follow-up sent to ${recipientEmail} and recorded in the project team activity log.`);
+      window.dispatchEvent(new Event('project-manager-activity-updated'));
+    } catch (followUpFailure) {
+      setFollowUpError(describeError(followUpFailure));
+    } finally {
+      setSendingFollowUpKey(null);
     }
   };
 
@@ -357,6 +413,8 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
       {reminderMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{reminderMessage}</p>}
       {reminderError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{reminderError}</p>}
       {utestRequestMessage && <p role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">{utestRequestMessage}</p>}
+      {followUpMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{followUpMessage}</p>}
+      {followUpError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{followUpError}</p>}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex gap-1 overflow-x-auto border-b border-slate-200 p-3">
@@ -395,7 +453,7 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
           <div className="flex flex-col gap-3 border-b border-slate-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-slate-700">
               <p className="font-semibold">Consent name pending: {pendingConsentRows.length} visible</p>
-              <p className="mt-1 text-slate-500">Select consent-pending rows with an email to send a payout reminder with a Slack support link. Reminders use the same “Hello tester” greeting.</p>
+              <p className="mt-1 text-slate-500">Select consent-pending rows with an email to send a payout reminder with instructions to download Slack and join the Connectfy workspace.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -480,6 +538,36 @@ export const ApplauseStatusSection: React.FC<{ projectId: string; projectTitle: 
                           className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                         >
                           {requestingUtestDetailsKey === row.source_key ? 'Sending…' : 'Request uTest details'}
+                        </button>
+                      )}
+                      {row.status.trim().toLowerCase() === 'ready for settings check' && (
+                        <button
+                          type="button"
+                          onClick={() => void sendFollowUp(row, 'settings_video')}
+                          disabled={Boolean(sendingFollowUpKey)}
+                          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                        >
+                          {sendingFollowUpKey === `${row.source_key}:settings_video` ? 'Sending…' : 'Request settings video'}
+                        </button>
+                      )}
+                      {row.status.trim().toLowerCase() === 'in progress' && (
+                        <button
+                          type="button"
+                          onClick={() => void sendFollowUp(row, 'project_completion')}
+                          disabled={Boolean(sendingFollowUpKey)}
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {sendingFollowUpKey === `${row.source_key}:project_completion` ? 'Sending…' : 'Remind to finish project'}
+                        </button>
+                      )}
+                      {row.status.trim().toLowerCase() === 'consent form sent' && (
+                        <button
+                          type="button"
+                          onClick={() => void sendFollowUp(row, 'consent_signature')}
+                          disabled={Boolean(sendingFollowUpKey)}
+                          className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                        >
+                          {sendingFollowUpKey === `${row.source_key}:consent_signature` ? 'Sending…' : 'Remind to sign consent'}
                         </button>
                       )}
                     </td>

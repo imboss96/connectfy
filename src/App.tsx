@@ -17,6 +17,7 @@ import { ProjectOperationsSection } from './components/ProjectOperationsSection'
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
 import { PaymentsSection } from './components/PaymentsSection';
 import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
+import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
@@ -48,6 +49,7 @@ interface MainContentProps {
 const adminMobileItems = [
   { tab: 'arbeitnow_jobs', label: 'Freelance Jobs', icon: Briefcase },
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
+  { tab: 'project_tasks', label: 'Tasks', icon: FileCheck },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
   { tab: 'project_operations', label: 'Project Ops', icon: Briefcase },
@@ -154,6 +156,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <CRMSection />
           ) : activeTab === 'project_operations' ? (
             <ProjectOperationsSection />
+          ) : activeTab === 'project_tasks' ? (
+            <ProjectManagerActivity />
           ) : activeTab === 'mass_invites' ? (
             <MassInviteSection />
           ) : activeTab === 'payout_operations' ? (
@@ -275,7 +279,9 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
                   }`}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="text-[10px] mt-0.5">{label}</span>
+                  <span className="text-[10px] mt-0.5">
+                    {tab === 'project_tasks' && adminAccessLevel === 'super_admin' ? 'Team Activity' : label}
+                  </span>
                 </button>
               ))
           ) : (

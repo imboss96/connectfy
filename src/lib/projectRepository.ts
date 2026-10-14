@@ -194,6 +194,23 @@ export async function deleteProjectFromSupabase(projectId: string) {
 export async function fetchApplicationsFromSupabase() {
   if (!supabase) return [];
 
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (authData.user) {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role,admin_access_level')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    if (profile?.role === 'admin'
+      && (profile.admin_access_level === 'project_manager' || profile.admin_access_level === 'super_admin')) {
+      const { data, error } = await supabase.rpc('fetch_project_manager_applications');
+      if (error) throw error;
+      return data || [];
+    }
+  }
+
   const { data, error } = await supabase
     .from('applications')
     .select(`

@@ -31,6 +31,8 @@ import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 import { supabase } from '../lib/supabase';
 import { sendProjectEmail } from '../lib/emailService';
+import { ApplicationScreenerConfirmation } from './ApplicationScreenerConfirmation';
+import { hasValidUtestIdAndScreenshot } from '../lib/applicationScreener';
 
 export const AdminProjectManager: React.FC = () => {
   const { projects, updateProject, deleteProject, applications, bugReports, taskSubmissions, approveApplication, rejectApplication, resendInvite, requestUtestAccountUpdate, setActiveAdminProjectId, setActiveTab, activeTab } = useApp();
@@ -53,6 +55,7 @@ export const AdminProjectManager: React.FC = () => {
   const [savedUtestDetails, setSavedUtestDetails] = useState<Record<string, { utestId: string; utestEmail: string }>>({});
   const [savingUtestDetailsId, setSavingUtestDetailsId] = useState<string | null>(null);
   const [locallyCompletedUtestRequests, setLocallyCompletedUtestRequests] = useState<Set<string>>(() => new Set());
+  const [confirmedScreenerIds, setConfirmedScreenerIds] = useState<Set<string>>(() => new Set());
   // Metrics
   const totalProjectsCount = projects.length;
   const activeProjectsCount = projects.filter((p) => normalizeProjectStatus(p.status) === 'active').length;
@@ -347,6 +350,7 @@ export const AdminProjectManager: React.FC = () => {
               const hasLocallyCompletedUtestRequest = locallyCompletedUtestRequests.has(app.id);
               const currentUtestDetails = savedUtestDetails[app.id] || { utestId: app.uTestId || '', utestEmail: app.uTestEmail || '' };
               const currentUtestDraft = utestDetailsDrafts[app.id] || currentUtestDetails;
+              const hasValidScreenerAccount = hasValidUtestIdAndScreenshot(app.uTestId, app.uTestAccountScreenshotUrl);
               const statusLabel = hasPendingUtestDetailsRequest ? 'uTest details requested' : hasLocallyCompletedUtestRequest ? 'uTest details saved' : app.status === 'needs_utest_update' ? 'Needs new uTest account' : app.status === 'rejected' ? 'Rejected' : app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending review';
               const isExpanded = expandedApplicationIds.includes(app.id);
 
@@ -438,12 +442,32 @@ export const AdminProjectManager: React.FC = () => {
                     </div>
                   </div>
 
+                  {app.status === 'pending' && (
+                    <ApplicationScreenerConfirmation
+                      confirmed={confirmedScreenerIds.has(app.id)}
+                      hasValidAccount={hasValidScreenerAccount}
+                      onConfirmationChange={(confirmed) => setConfirmedScreenerIds((current) => {
+                        const next = new Set(current);
+                        if (confirmed) next.add(app.id);
+                        else next.delete(app.id);
+                        return next;
+                      })}
+                    />
+                  )}
+
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {app.status === 'pending' && (
                       <>
-                        <button type="button" onClick={() => rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
-                        <button type="button" onClick={() => approveApplication(app.id)} className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE]">Approve & Send Invite</button>
-                        <button type="button" onClick={() => requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request New uTest Account & Reapply</button>
+                        <button type="button" onClick={() => void rejectApplication(app.id)} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100">Reject</button>
+                        <button
+                          type="button"
+                          disabled={!confirmedScreenerIds.has(app.id) || !hasValidScreenerAccount}
+                          onClick={() => void approveApplication(app.id, confirmedScreenerIds.has(app.id))}
+                          className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Approve & Send Invite
+                        </button>
+                        <button type="button" onClick={() => void requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request New uTest Account & Reapply</button>
                       </>
                     )}
 

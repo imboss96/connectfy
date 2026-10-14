@@ -87,6 +87,9 @@ const toSheetLink = (value: string) => {
 };
 
 const errorMessage = (error: unknown) => {
+  if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST202') {
+    return 'Supabase is missing the Project Manager Applause settings function. Apply supabase/migrations/202610150001_project_manager_workflows.sql, then reload the PostgREST schema cache.';
+  }
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
     return error.message;
@@ -107,8 +110,10 @@ const formatKes = (amount: number) => `KSh ${new Intl.NumberFormat('en-KE', {
 }).format(amount)}`;
 
 export const ProjectOperationsSection: React.FC = () => {
-  const { projects, activeAdminProjectId, setActiveAdminProjectId, setActiveTab } = useApp();
-  const [activeSection, setActiveSection] = useState<OperationsTab>('overview');
+  const { projects, activeAdminProjectId, setActiveAdminProjectId, setActiveTab, role, adminAccessLevel } = useApp();
+  const isProjectManager = role === 'admin' && adminAccessLevel === 'project_manager';
+  const isSuperAdmin = role === 'admin' && adminAccessLevel === 'super_admin';
+  const [activeSection, setActiveSection] = useState<OperationsTab>(() => isProjectManager ? 'completion' : 'overview');
   const [settings, setSettings] = useState<ProjectSettings | null>(null);
   const [applauseSheetInput, setApplauseSheetInput] = useState('');
   const [eligibilitySheetInput, setEligibilitySheetInput] = useState('');
@@ -131,6 +136,9 @@ export const ProjectOperationsSection: React.FC = () => {
   );
   const applauseCsvUrl = toCsvUrl(settings?.applause_sheet_url || '');
   const eligibilityCsvUrl = toCsvUrl(settings?.eligibility_sheet_url || '');
+  const visibleOperationsTabs = isProjectManager
+    ? OPERATIONS_TABS.filter(({ id }) => id === 'completion')
+    : OPERATIONS_TABS;
 
   const loadExchangeRate = useCallback(async (signal?: AbortSignal) => {
     setExchangeRateLoading(true);
@@ -167,6 +175,20 @@ export const ProjectOperationsSection: React.FC = () => {
     setSettingsLoading(true);
     setSettingsError(null);
     try {
+      if (isProjectManager) {
+        const { data, error } = await supabase.rpc('get_project_manager_applause_sheet_url', {
+          p_project_id: projectId
+        });
+        if (error) throw error;
+        const loaded = { ...emptySettings(projectId), applause_sheet_url: String(data || '') };
+        setSettings(loaded);
+        setApplauseSheetInput(loaded.applause_sheet_url);
+        setEligibilitySheetInput('');
+        setPayrollAmountInput('');
+        setPayrollDateInput('');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('project_operations_settings')
         .select('project_id,applause_sheet_url,eligibility_sheet_url,payroll_amount,payroll_scheduled_date,updated_at')
@@ -187,10 +209,10 @@ export const ProjectOperationsSection: React.FC = () => {
     } finally {
       setSettingsLoading(false);
     }
-  }, []);
+  }, [isProjectManager]);
 
   const loadPayroll = useCallback(async (projectId: string) => {
-    if (!supabase) return;
+    if (!supabase || !isSuperAdmin) return;
     setPayrollLoading(true);
     setPayrollError(null);
     try {
@@ -208,11 +230,15 @@ export const ProjectOperationsSection: React.FC = () => {
     } finally {
       setPayrollLoading(false);
     }
-  }, []);
+  }, [isSuperAdmin]);
 
   const refreshSelectedPayroll = useCallback(() => {
-    if (selectedProject) void loadPayroll(selectedProject.id);
-  }, [loadPayroll, selectedProject]);
+    if (selectedProject && isSuperAdmin) void loadPayroll(selectedProject.id);
+  }, [isSuperAdmin, loadPayroll, selectedProject]);
+
+  useEffect(() => {
+    setActiveSection(isProjectManager ? 'completion' : 'overview');
+  }, [activeAdminProjectId, isProjectManager]);
 
   useEffect(() => {
     if (!activeAdminProjectId) {
@@ -221,8 +247,9 @@ export const ProjectOperationsSection: React.FC = () => {
       return;
     }
     void loadSettings(activeAdminProjectId);
-    void loadPayroll(activeAdminProjectId);
-  }, [activeAdminProjectId, loadPayroll, loadSettings]);
+    if (isSuperAdmin) void loadPayroll(activeAdminProjectId);
+    else setPayrollRows([]);
+  }, [activeAdminProjectId, isSuperAdmin, loadPayroll, loadSettings]);
 
   const saveSettings = async () => {
     if (!supabase || !selectedProject) return;
@@ -331,7 +358,7 @@ export const ProjectOperationsSection: React.FC = () => {
       </header>
 
       <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2" aria-label="Project operations">
-        {OPERATIONS_TABS.map(({ id, label, icon: Icon }) => (
+        {visibleOperationsTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -436,7 +463,8 @@ export const ProjectOperationsSection: React.FC = () => {
           projectTitle={selectedProject.title}
           sheetCsvUrl={applauseCsvUrl}
           sheetUrl={settings?.applause_sheet_url}
-          onSynced={refreshSelectedPayroll}
+          syncEnabled={!settingsLoading && !settingsError}
+          onSynced={isSuperAdmin ? refreshSelectedPayroll : undefined}
         />
       )}
 
