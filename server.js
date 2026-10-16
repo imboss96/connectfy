@@ -11,6 +11,8 @@ import {
   buildProjectApprovalEmailSubject,
   buildProjectApprovalEmailText
 } from './src/lib/projectApprovalEmail.js';
+import { appendSlackFooterHtml, appendSlackFooterText } from './src/lib/emailSlackFooter.js';
+import { getNextPlatformPayDate } from './src/lib/platformPayDate.js';
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '/etc/connectfy-email.env' });
 dotenv.config({ path: '.env.local' });
@@ -30,6 +32,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
   '"': '&quot;',
   "'": '&#39;'
 })[character]);
+const createHttpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -404,8 +407,8 @@ const sendEmailThroughBrevo = async (payload, type) => {
     sender: { name: 'Connectfy', email: process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech' },
     to: [{ email: toEmail, name: toName }],
     subject,
-    htmlContent: buildHtml({ ...payload, type, projectLink }),
-    textContent: buildText({ ...payload, type, projectLink })
+    htmlContent: appendSlackFooterHtml(buildHtml({ ...payload, type, projectLink })),
+    textContent: appendSlackFooterText(buildText({ ...payload, type, projectLink }))
   };
 
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -630,9 +633,21 @@ const getMpesaConfiguration = () => {
     'MPESA_CALLBACK_TOKEN'
   ];
   const missing = required.filter((key) => !process.env[key]);
-  if (missing.length) throw new Error(`Safaricom B2C configuration is incomplete: ${missing.join(', ')}.`);
-  const callbackBaseUrl = new URL(process.env.MPESA_CALLBACK_BASE_URL);
-  if (callbackBaseUrl.protocol !== 'https:') throw new Error('MPESA_CALLBACK_BASE_URL must use HTTPS.');
+  if (missing.length) {
+    throw createHttpError(
+      503,
+      `Safaricom B2C configuration is incomplete: ${missing.join(', ')}. Configure these server environment variables and restart the payment backend.`
+    );
+  }
+  let callbackBaseUrl;
+  try {
+    callbackBaseUrl = new URL(process.env.MPESA_CALLBACK_BASE_URL);
+  } catch {
+    throw createHttpError(503, 'MPESA_CALLBACK_BASE_URL must be a valid HTTPS URL. Update the payment backend configuration.');
+  }
+  if (callbackBaseUrl.protocol !== 'https:') {
+    throw createHttpError(503, 'MPESA_CALLBACK_BASE_URL must use HTTPS. Update the payment backend configuration.');
+  }
   const baseUrl = process.env.MPESA_ENV === 'production'
     ? 'https://api.safaricom.co.ke'
     : 'https://sandbox.safaricom.co.ke';
@@ -641,14 +656,25 @@ const getMpesaConfiguration = () => {
 
 const getMpesaAccessToken = async (baseUrl) => {
   const credentials = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
-  const response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
-    headers: { Authorization: `Basic ${credentials}` },
-    signal: AbortSignal.timeout(15000)
-  });
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+      headers: { Authorization: `Basic ${credentials}` },
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown connection error';
+    throw createHttpError(502, `Unable to reach the Safaricom token service: ${message}`);
+  }
   const text = await response.text();
-  if (!response.ok) throw new Error(`Safaricom token request failed (${response.status}): ${text}`);
-  const body = JSON.parse(text);
-  if (!body.access_token) throw new Error('Safaricom token response did not include an access token.');
+  if (!response.ok) throw createHttpError(502, `Safaricom token request failed (${response.status}): ${text}`);
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw createHttpError(502, 'Safaricom returned an invalid access-token response.');
+  }
+  if (!body.access_token) throw createHttpError(502, 'Safaricom token response did not include an access token.');
   return body.access_token;
 };
 
@@ -852,7 +878,7 @@ const processOneApplauseApprovalEmail = async () => {
       projectTitle: job.project_title,
       projectCompany: job.project_company,
       approvedAmount: Number(job.approved_amount || 0),
-      expectedPaymentDate: job.expected_payment_date || '',
+      expectedPaymentDate: getNextPlatformPayDate(job.created_at),
       projectDescription: job.project_description,
       projectDeadline: job.project_deadline,
       actionUrl: projectLink.toString(),
@@ -1491,7 +1517,7 @@ app.post('/api/admin/payout-requests/:id/approve', async (req, res) => {
       return res.status(502).json({ ok: false, message: `${provider} did not return a definitive response. The payout remains processing; verify it with the provider before retrying.` });
     }
     console.error('Payout approval failed:', error);
-    return res.status(400).json({ ok: false, message });
+    return res.status(error?.statusCode || 400).json({ ok: false, message });
   }
 });
 

@@ -12,6 +12,7 @@ import {
   buildProjectApprovalEmailSubject,
   buildProjectApprovalEmailText
 } from '../../../src/lib/projectApprovalEmail.js';
+import { appendSlackFooterHtml, appendSlackFooterText } from '../../../src/lib/emailSlackFooter.js';
 
 const allowedOrigins = [
   'https://connectfy.tech',
@@ -297,8 +298,8 @@ serve(async (req) => {
                 : payload.type === 'legacy_sheet_reapply'
                   ? LEGACY_SHEET_EMAIL_SUBJECT
                 : `Application Received: ${payload.projectTitle || 'Project Review'}`,
-      htmlContent: buildHtml({ ...payload, projectLink }),
-      textContent: buildText({ ...payload, projectLink })
+      htmlContent: appendSlackFooterHtml(buildHtml({ ...payload, projectLink })),
+      textContent: appendSlackFooterText(buildText({ ...payload, projectLink }))
     };
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {

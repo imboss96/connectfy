@@ -9,6 +9,9 @@ const applauseStatusMigration = readFileSync(path.resolve('supabase/migrations/2
 const applauseStatusDeleteGuardMigration = readFileSync(path.resolve('supabase/migrations/202610040002_applause_status_sync_delete_guard.sql'), 'utf8');
 const applauseStatusTruncateMigration = readFileSync(path.resolve('supabase/migrations/202610040003_applause_status_sync_truncate.sql'), 'utf8');
 const projectOperationsMigration = readFileSync(path.resolve('supabase/migrations/202610040004_project_scoped_operations_payroll.sql'), 'utf8');
+const missedPayrollMigration = readFileSync(path.resolve('supabase/migrations/202610160001_reschedule_missed_payroll.sql'), 'utf8');
+const matchedPayrollMigration = readFileSync(path.resolve('supabase/migrations/202610160002_match_applause_payroll_profiles.sql'), 'utf8');
+const payrollAmountReconciliationMigration = readFileSync(path.resolve('supabase/migrations/202610160003_reconcile_scheduled_payroll_amounts.sql'), 'utf8');
 const eligibilitySnapshotMigration = readFileSync(path.resolve('supabase/migrations/202610040005_project_eligibility_snapshot_sync.sql'), 'utf8');
 const approvalEmailOutboxMigration = readFileSync(path.resolve('supabase/migrations/202610050002_project_approval_email_outbox.sql'), 'utf8');
 const safaricomPayoutMigration = readFileSync(path.resolve('supabase/migrations/202610050003_safaricom_b2c_payouts.sql'), 'utf8');
@@ -64,6 +67,15 @@ assert.ok(projectOperationsMigration.includes('project_id uuid not null referenc
 assert.ok(projectOperationsMigration.includes('create table public.project_payroll_schedule'), 'Project completion payroll must be stored in the database.');
 assert.ok(projectOperationsMigration.includes('lower(trim(source.status)) = \'claimed complete\''), 'Payroll schedules must be generated only for completed participants.');
 assert.ok(projectOperationsMigration.includes('payout_amount') && projectOperationsMigration.includes('payout_date'), 'Payroll schedules must use the configured project amount and pay date.');
+assert.match(missedPayrollMigration, /public\.next_project_payroll_date\(platform_today\)/, 'Missed payroll must roll to the upcoming semi-monthly pay date.');
+assert.match(missedPayrollMigration, /scheduled_date < platform_today/, 'Only unpaid schedules past their date must be moved.');
+assert.match(missedPayrollMigration, /now\(\) at time zone 'Africa\/Nairobi'/, 'Payroll rescheduling must use the platform calendar.');
+assert.match(missedPayrollMigration, /cron\.schedule\([\s\S]*?'5 21 \* \* \*'/, 'Overdue payroll must be rescheduled shortly after midnight in Nairobi.');
+assert.match(matchedPayrollMigration, /project_id, source_key, profile_id, tester_id, tester_email/, 'Applause payroll entries must include the matched Connectfy tester profile.');
+assert.match(matchedPayrollMigration, /cross join lateral \([\s\S]*?profile\.role = 'tester'/, 'Only sheet rows matched to tester profiles may create payroll entries.');
+assert.match(matchedPayrollMigration, /profile\.profile_data #>> '\{testerProfile,uTestId\}'/, 'Applause payroll matching must support the stored uTest ID.');
+assert.match(payrollAmountReconciliationMigration, /schedule\.status = 'scheduled'/, 'Payroll amount reconciliation must only change unpaid scheduled entries.');
+assert.match(payrollAmountReconciliationMigration, /set amount = settings\.payroll_amount/, 'Active schedule amounts must match the configured per-participant rate.');
 assert.ok(eligibilitySnapshotMigration.includes('public.sync_project_eligibility_responses'), 'Eligibility sheet sync must use a database RPC.');
 assert.ok(eligibilitySnapshotMigration.includes('if not coalesce(public.is_admin(), false)'), 'Only admins may replace project eligibility snapshots.');
 assert.match(eligibilitySnapshotMigration, /delete from public\.legacy_sheet_responses\s+where project_id = p_project_id/i, 'Eligibility snapshot replacement must be scoped to the selected project.');

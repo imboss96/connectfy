@@ -13,6 +13,8 @@ import {
 } from '../lib/projectStepProgress';
 
 const LANGUAGE_SETTINGS_FORM_URL = 'https://forms.monday.com/forms/108f5b47f91717382930502bd999303d?r=use1';
+const LANGUAGE_SETTINGS_REFERENCE_VIDEO_EMBED_URL = 'https://drive.google.com/file/d/1WzraUOaatrefjtcW23H9YEZm77-6vG0S/preview';
+const PROJECT_CONSENT_URL = 'https://prod-data-collection.cloud.utest.com/people/add_person_basics/3bd1eb19-fbf1-4f10-b354-0038bc016b5e/04e9d4c1-a615-4a85-b9fa-5b5b4ba7ff30';
 const SELFIE_COLLECTION_URL = 'https://myaccount.google.com/video-verification/collect?source=42';
 const COMPLETION_EVIDENCE_URL = 'https://wkf.ms/4i83vDd';
 const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
@@ -411,6 +413,14 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         <>
           <p>Open the consent email sent to <strong className="text-slate-800">{applicationEmail || testerProfile.email || 'the email address used for your project application'}</strong> and sign using your name exactly as it appears on your project application: <strong className="text-slate-800">{applicationName || testerProfile.name}</strong>.</p>
           <p>Do not sign with a different name or nickname.</p>
+          <a
+            href={PROJECT_CONSENT_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1 font-semibold text-sky-700 underline underline-offset-2 hover:text-sky-900"
+          >
+            Open the project consent form <ExternalLink className="h-4 w-4" />
+          </a>
         </>
       ), canStartConsent, canStartConsent)}
 
@@ -425,6 +435,16 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
           >
             Open the language settings form <ExternalLink className="h-3.5 w-3.5" />
           </a>
+          <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-slate-200 bg-black">
+            <iframe
+              src={LANGUAGE_SETTINGS_REFERENCE_VIDEO_EMBED_URL}
+              title="Language settings reference video"
+              className="aspect-video w-full"
+              allow="autoplay"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
           <div className="rounded-lg bg-slate-50 p-3">
             <p className="font-semibold text-slate-800">The form asks for:</p>
             <p className="mt-1 text-xs">Name, uTest ID (if you have one), Participant Gmail, Date of Birth, and the required Settings Video upload.</p>

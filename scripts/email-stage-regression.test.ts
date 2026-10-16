@@ -13,6 +13,29 @@ import {
   LEGACY_SHEET_EMAIL_INTRO,
   LEGACY_SHEET_EMAIL_SUBJECT
 } from '../src/lib/legacySheetEmail.js';
+import {
+  appendSlackFooterHtml,
+  appendSlackFooterText,
+  CONNECTFY_SLACK_INVITE_URL,
+  CONNECTFY_SLACK_SUPPORT_URL
+} from '../src/lib/emailSlackFooter.js';
+import { getNextPlatformPayDate } from '../src/lib/platformPayDate.js';
+
+assert.match(appendSlackFooterHtml('<div>approval</div>'), new RegExp(CONNECTFY_SLACK_INVITE_URL));
+assert.match(appendSlackFooterHtml('<div>approval</div>'), new RegExp(CONNECTFY_SLACK_SUPPORT_URL));
+assert.equal(appendSlackFooterHtml(`<div>${CONNECTFY_SLACK_INVITE_URL}</div>`), `<div>${CONNECTFY_SLACK_INVITE_URL}</div>`);
+assert.match(appendSlackFooterText('Reminder'), new RegExp(CONNECTFY_SLACK_INVITE_URL));
+assert.match(appendSlackFooterText('Reminder'), new RegExp(CONNECTFY_SLACK_SUPPORT_URL));
+assert.equal(appendSlackFooterText(CONNECTFY_SLACK_INVITE_URL), CONNECTFY_SLACK_INVITE_URL);
+
+assert.equal(getNextPlatformPayDate('2026-10-14T12:00:00Z'), 'October 15, 2026');
+assert.equal(getNextPlatformPayDate('2026-10-14T22:00:00Z'), 'October 31, 2026');
+assert.equal(getNextPlatformPayDate('2026-10-15T12:00:00Z'), 'October 31, 2026');
+assert.equal(getNextPlatformPayDate('2026-10-30T12:00:00Z'), 'October 31, 2026');
+assert.equal(getNextPlatformPayDate('2026-10-31T12:00:00Z'), 'November 15, 2026');
+assert.equal(getNextPlatformPayDate('2026-02-28T12:00:00Z'), 'March 15, 2026');
+assert.equal(getNextPlatformPayDate('2028-02-28T12:00:00Z'), 'February 29, 2028');
+assert.equal(getNextPlatformPayDate('2028-02-29T12:00:00Z'), 'March 15, 2028');
 
 assert.equal(formatProjectEmailType('application'), 'application');
 assert.equal(formatProjectEmailType('invite'), 'invite');
@@ -85,6 +108,9 @@ assert.match(serverSource, /buildLegacySheetEmailHtml/);
 assert.match(edgeSource, /buildLegacySheetEmailHtml/);
 assert.match(serverSource, /buildProjectApprovalEmailHtml/);
 assert.match(edgeSource, /buildProjectApprovalEmailHtml/);
+assert.match(serverSource, /appendSlackFooterHtml\(buildHtml/);
+assert.match(edgeSource, /appendSlackFooterHtml\(buildHtml/);
+assert.match(serverSource, /expectedPaymentDate: getNextPlatformPayDate\(job\.created_at\)/);
 assert.match(serverSource, /claim_project_email_outbox/);
 assert.match(serverSource, /complete_project_email_outbox/);
 assert.match(serverSource, /Project approval email outbox worker enabled/);
@@ -96,6 +122,9 @@ assert.match(appContextSource, /Approved; invitation queued for email delivery/)
 assert.match(appContextSource, /if \(!isSupabaseConfigured && project && app\.testerEmail\)/);
 assert.match(payoutBackendSource, /\/api\/mpesa\/b2c\/result/);
 assert.match(payoutBackendSource, /\/api\/admin\/payout-requests\/:id\/approve/);
+assert.match(payoutBackendSource, /Safaricom B2C configuration is incomplete/);
+assert.match(payoutBackendSource, /createHttpError\(\s*503,/);
+assert.match(payoutBackendSource, /return res\.status\(error\?\.statusCode \|\| 400\)/);
 assert.match(payoutBackendSource, /MPESA_CALLBACK_TOKEN/);
 assert.match(payoutBackendSource, /Safaricom B2C outcome is ambiguous/);
 assert.match(payoutUiSource, /Approve & send via M-Pesa/);
