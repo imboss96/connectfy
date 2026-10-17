@@ -159,7 +159,23 @@ async def _select_radio(item: Any, value: str, other_text: str = "") -> None:
     if value == "Other":
         option = item.get_by_role("radio", name="Other", exact=False)
     if await option.count() == 0:
-        raise RuntimeError("A required screener choice is no longer available.")
+        question = (await item.locator('[role="heading"]').first.inner_text()).strip()
+        available_options = await item.get_by_role("radio").evaluate_all(
+            """elements => elements
+                .map(element => (
+                    element.getAttribute('aria-label')
+                    || element.innerText
+                    || element.textContent
+                    || ''
+                ).trim())
+                .filter(Boolean)
+                .slice(0, 12)"""
+        )
+        raise RuntimeError(
+            "Required radio choice unavailable for question "
+            f"'{question[:160]}'. Available choices: "
+            f"{json.dumps(available_options, ensure_ascii=True)}"
+        )
     await option.first.click()
     if value == "Other" and other_text:
         other_input = item.get_by_role("textbox", name="Other response")
