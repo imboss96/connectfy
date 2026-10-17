@@ -57,11 +57,14 @@ DEVICE_OPTIONS = {
     "Other",
 }
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9\s().-]*$")
 
 
 def calculate_age_range(date_of_birth: str, today: date | None = None) -> str:
     born = date.fromisoformat(date_of_birth)
     current = today or date.today()
+    if born > current:
+        raise ValueError("Date of birth cannot be in the future.")
     age = current.year - born.year - ((current.month, current.day) < (born.month, born.day))
     if age < 18:
         raise ValueError("The screener is only available to applicants aged 18 or older.")
@@ -97,7 +100,7 @@ def validate_submission(data: dict[str, Any]) -> None:
     for key, maximum in (
         ("full_name", 200),
         ("utest_email", 254),
-        ("phone", 100),
+        ("phone", 30),
         ("gmail_email", 254),
         ("utest_id", 120),
         ("country", 100),
@@ -108,6 +111,12 @@ def validate_submission(data: dict[str, Any]) -> None:
             raise ValueError(f"Enter a valid {key.replace('_', ' ')}.")
     if not EMAIL_PATTERN.fullmatch(str(data["utest_email"]).strip()):
         raise ValueError("Enter a valid uTest email address.")
+    phone = str(data["phone"]).strip()
+    phone_digits = re.sub(r"\D", "", phone)
+    if not PHONE_PATTERN.fullmatch(phone) or not 7 <= len(phone_digits) <= 15:
+        raise ValueError(
+            "Enter a valid phone number using 7 to 15 digits; a leading +, spaces, parentheses, and hyphens are allowed."
+        )
     gmail_email = str(data["gmail_email"]).strip()
     if not EMAIL_PATTERN.fullmatch(gmail_email) or not gmail_email.casefold().endswith("@gmail.com"):
         raise ValueError("Use the applicant's profile email, which must be a @gmail.com address.")

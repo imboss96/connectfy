@@ -71,6 +71,39 @@ const SCREENER_DEVICES = [
   'Other'
 ];
 
+const getDateInputMax = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getScreenerAgeRange = (dateOfBirth: string) => {
+  if (!dateOfBirth) return '';
+  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (Number.isNaN(birthDate.getTime())
+    || birthDate.toISOString().slice(0, 10) !== dateOfBirth
+    || birthDate > today) return '';
+
+  const age = today.getFullYear() - birthDate.getFullYear()
+    - ((today.getMonth() < birthDate.getMonth()
+      || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) ? 1 : 0);
+  if (age < 18) return '';
+  if (age <= 25) return '18-25';
+  if (age <= 39) return '26-39';
+  if (age <= 59) return '40-59';
+  return '60+';
+};
+
+const isValidPhoneNumber = (phoneNumber: string) => {
+  const phone = phoneNumber.trim();
+  const digits = phone.replace(/\D/g, '');
+  return /^[+]?[0-9][0-9 ().-]*$/.test(phone) && digits.length >= 7 && digits.length <= 15;
+};
+
 const getScreenerLanguagesFromProfile = (languages: NonNullable<TesterProfile['languages']>) => {
   const known = new Set(SCREENER_LANGUAGES);
   return languages
@@ -86,7 +119,7 @@ const createDraftFromProject = (project: Project): ApplicationDraft => ({
   fullName: '',
   utestEmail: '',
   dateOfBirth: '',
-  ageRange: '18-24',
+  ageRange: '',
   country: '',
   smartphone: '',
   phoneNumber: '',
@@ -434,13 +467,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
-    const birthDate = new Date(`${applicationDraft.dateOfBirth}T00:00:00`);
-    const now = new Date();
-    const age = now.getFullYear() - birthDate.getFullYear()
-      - ((now.getMonth() < birthDate.getMonth()
-        || (now.getMonth() === birthDate.getMonth() && now.getDate() < birthDate.getDate())) ? 1 : 0);
-    if (Number.isNaN(birthDate.getTime()) || birthDate >= now || age < 18) {
+    const ageRange = getScreenerAgeRange(applicationDraft.dateOfBirth);
+    if (!ageRange) {
       setApplyError('Enter a valid date of birth. Applicants must be at least 18 years old.');
+      return;
+    }
+
+    if (!isValidPhoneNumber(applicationDraft.phoneNumber)) {
+      setApplyError('Enter a valid phone number using 7 to 15 digits. You may include a leading +, spaces, parentheses, or hyphens.');
       return;
     }
 
@@ -491,6 +525,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
     const finalDraft = {
       ...applicationDraft,
+      ageRange,
       updatedAt: new Date().toISOString(),
       smartphone: applicationDraft.smartphone || finalDevices[0],
       phoneNumber: applicationDraft.phoneNumber.trim()
@@ -1390,24 +1425,24 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     Date of Birth
                     <input
                       type="date"
+                      max={getDateInputMax()}
                       value={applicationDraft?.dateOfBirth || ''}
-                      onChange={(event) => updateDraft({ dateOfBirth: event.target.value })}
+                      onChange={(event) => updateDraft({
+                        dateOfBirth: event.target.value,
+                        ageRange: getScreenerAgeRange(event.target.value)
+                      })}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
                     />
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
                     Age Range
-                    <select
-                      value={applicationDraft?.ageRange || '18-24'}
-                      onChange={(event) => updateDraft({ ageRange: event.target.value })}
+                    <input
+                      readOnly
+                      value={getScreenerAgeRange(applicationDraft?.dateOfBirth || '')}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
-                    >
-                      <option value="18-24">18-24</option>
-                      <option value="25-34">25-34</option>
-                      <option value="35-44">35-44</option>
-                      <option value="45+">45+</option>
-                    </select>
+                      placeholder="Calculated from date of birth"
+                    />
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
@@ -1436,11 +1471,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       type="tel"
                       autoComplete="tel"
                       required
+                      maxLength={30}
+                      pattern="[+]?[0-9][0-9 ().-]{5,28}"
+                      title="Enter a phone number with 7 to 15 digits. A leading +, spaces, parentheses, and hyphens are allowed."
+                      inputMode="tel"
                       value={applicationDraft?.phoneNumber || ''}
                       onChange={(event) => updateDraft({ phoneNumber: event.target.value })}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
-                      placeholder="Phone number"
+                      placeholder="e.g. +254 712 345 678"
                     />
+                    <span className="text-[10px] font-normal text-slate-500">Use 7 to 15 digits; a leading +, spaces, parentheses, and hyphens are allowed.</span>
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
@@ -1482,7 +1522,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </div>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
-                    Mobile device type <span className="text-rose-600">*</span>
+                    What type of mobile device do you own, and does it have a functional camera and microphone? <span className="text-rose-600">*</span>
                     <select
                       required
                       value={applicationDraft?.screenerDeviceType || ''}
