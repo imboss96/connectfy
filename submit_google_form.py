@@ -9,7 +9,7 @@ from typing import Any
 
 FORM_URL = (
     "https://docs.google.com/forms/d/e/"
-    "1FAIpQLSeLvCyrZrRNAmKzIST2YDKmv20jSBSfYQlSwpKhGjGwFrlpKg/viewform"
+    "1FAIpQLSeEPV0KzYwNLeLGlhvtvotOSt7goCnw4GB8bonAqJEQjqCLzA/viewform"
 )
 ANSWER_YES = "Yes"
 AMBASSADOR_FULL_NAME = "Ezra Bosley"
