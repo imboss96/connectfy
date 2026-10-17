@@ -72,7 +72,7 @@ const faqs = [
   },
   {
     question: 'Do I need a uTest account?',
-    answer: 'Only projects that use uTest require a uTest account. The listing and application will tell you when it is needed.'
+    answer: 'Most of our projects are carried out through uTest and require a valid uTest account. Add your uTest ID to your Connectfy profile under Profile Settings, and check each listing for its specific requirements.'
   }
 ];
 

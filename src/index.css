@@ -530,6 +530,25 @@ body,
 .login-google-button:hover { background: #f8fafc; border-color: #9ebec8; }
 .login-google-mark { align-items: center; color: #4285f4; display: inline-flex; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 900; justify-content: center; line-height: 1; }
 .login-signup { color: #64748b; font-size: 13px; margin: 24px 0 0; text-align: center; }
+.utest-guide-link { align-items: center; color: #087b9c; display: inline-flex; font-size: 13px; font-weight: 800; gap: 8px; margin-top: 16px; text-align: left; }
+.utest-guide-link:hover { color: #056f8b; text-decoration: underline; }
+.utest-guide-link svg { height: 17px; width: 17px; }
+.utest-signup-notice { background: #eafaff; border: 1px solid #b9dfe7; border-radius: 10px; color: #28566a; font-size: 12px; line-height: 1.55; margin: 10px 0 0; padding: 11px 13px; }
+.utest-guide-backdrop { align-items: center; background: rgba(9, 13, 18, 0.72); display: flex; inset: 0; justify-content: center; padding: 20px; position: fixed; z-index: 100; }
+.utest-guide-dialog { background: #ffffff; border: 1px solid #d8edf1; border-radius: 20px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3); max-height: calc(100dvh - 40px); max-width: 720px; overflow-y: auto; padding: 28px; position: relative; width: 100%; }
+.utest-guide-close { align-items: center; border-radius: 8px; color: #64748b; display: flex; height: 36px; justify-content: center; position: absolute; right: 20px; top: 20px; width: 36px; }
+.utest-guide-close:hover { background: #f1f5f9; color: #17202a; }
+.utest-guide-close svg { height: 20px; width: 20px; }
+.utest-guide-dialog h2 { color: #090d12; font-size: clamp(24px, 4vw, 32px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.1; margin: 0 44px 8px 0; }
+.utest-guide-description { color: #64748b; font-size: 14px; line-height: 1.5; margin: 0 0 18px; }
+.utest-guide-video { aspect-ratio: 16 / 9; background: #090d12; border-radius: 12px; overflow: hidden; width: 100%; }
+.utest-guide-video iframe { border: 0; height: 100%; width: 100%; }
+.utest-guide-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-top: 18px; }
+.utest-guide-actions a { align-items: center; color: #087b9c; display: inline-flex; font-size: 13px; font-weight: 800; gap: 6px; }
+.utest-guide-actions a:hover { text-decoration: underline; }
+.utest-guide-actions a svg { height: 15px; width: 15px; }
+.utest-guide-actions > button { background: #078eae; border-radius: 10px; color: #ffffff; font-size: 13px; font-weight: 800; padding: 11px 16px; }
+.utest-guide-actions > button:hover { background: #056f8b; }
 .login-trust { align-items: center; border-top: 1px solid #e5eef1; color: #82909d; display: flex; font-size: 11px; gap: 7px; line-height: 1.45; margin-top: 18px; padding-top: 14px; }
 .login-trust svg { color: #078eae; flex: 0 0 auto; height: 16px; width: 16px; }
 .login-art { align-items: center; background: #0b0e12; display: flex; justify-content: center; overflow: hidden; position: relative; }
@@ -548,6 +567,12 @@ body,
   .login-page { display: block; height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; }
   .login-art { display: none; }
   .login-panel { margin: 16px auto; max-height: none; min-height: calc(100vh - 32px); min-height: calc(100dvh - 32px); overflow: visible; padding: 24px; width: calc(100% - 32px); }
+}
+
+@media (max-width: 520px) {
+  .utest-guide-backdrop { padding: 12px; }
+  .utest-guide-dialog { max-height: calc(100dvh - 24px); padding: 22px 18px; }
+  .utest-guide-close { right: 12px; top: 12px; }
 }
 
 @media (max-height: 760px) and (min-width: 801px) {

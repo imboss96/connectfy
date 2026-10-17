@@ -1,8 +1,10 @@
-import React, { FormEvent, useState } from 'react';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
+import React, { FormEvent, useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Video, X } from 'lucide-react';
 import { ConnectfyLogo } from './UTestLogo';
 
 const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+const UTEST_GUIDE_SEEN_KEY = 'connectfy_utest_signup_guide_seen';
+const UTEST_GUIDE_VIDEO_URL = 'https://www.youtube.com/watch?v=F_XmEVQZaHc';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -22,6 +24,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUtestGuideOpen, setIsUtestGuideOpen] = useState(false);
+
+  useEffect(() => {
+    if (isSignUp && localStorage.getItem(UTEST_GUIDE_SEEN_KEY) !== 'true') {
+      setIsUtestGuideOpen(true);
+    }
+  }, [isSignUp]);
+
+  useEffect(() => {
+    if (!isUtestGuideOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        localStorage.setItem(UTEST_GUIDE_SEEN_KEY, 'true');
+        setIsUtestGuideOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isUtestGuideOpen]);
+
+  const closeUtestGuide = () => {
+    localStorage.setItem(UTEST_GUIDE_SEEN_KEY, 'true');
+    setIsUtestGuideOpen(false);
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -82,6 +108,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
           <p>{isSignUp ? 'Create your Connectfy account and find flexible opportunities that match your skills.' : 'Sign in to manage your testing projects, submissions, earnings, and profile.'}</p>
         </div>
 
+        {isSignUp && <button type="button" className="utest-guide-link" onClick={() => setIsUtestGuideOpen(true)}><Video /> Watch the uTest account setup guide</button>}
+        {isSignUp && (
+          <p className="utest-signup-notice">
+            Most of our projects are carried out through uTest and require a valid uTest account. Create your uTest account, then add your uTest ID to your Connectfy profile under Profile Settings so we can match you with eligible projects. Check each project listing for its specific requirements.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="login-form">
           {isSignUp && <label>
             Full name
@@ -123,6 +156,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
         <div className="login-trust"><ShieldCheck /> Secure workspace access for testers, clients, and operations teams.</div>
       </div>
       <div className="login-art" aria-hidden="true"><div className="login-art-glow" /><div className="login-art-card"><span>Connectfy workspace</span><strong>Build better digital experiences together.</strong><div><i /><i /><i /></div></div></div>
+      {isUtestGuideOpen && (
+        <div className="utest-guide-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeUtestGuide(); }}>
+          <section className="utest-guide-dialog" role="dialog" aria-modal="true" aria-labelledby="utest-guide-title">
+            <button type="button" className="utest-guide-close" onClick={closeUtestGuide} aria-label="Close uTest account setup guide"><X /></button>
+            <p className="login-kicker">Before you get started</p>
+            <h2 id="utest-guide-title">Create your uTest account</h2>
+            <p className="utest-guide-description">Most of our projects are carried out through uTest and require a valid uTest account. Follow the video to create your account, then add your uTest ID to your Connectfy profile under Profile Settings so we can match you with eligible projects. Check each project listing for its specific requirements.</p>
+            <div className="utest-guide-video">
+              <iframe
+                src="https://www.youtube-nocookie.com/embed/F_XmEVQZaHc"
+                title="How to create a uTest account"
+                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+            <div className="utest-guide-actions">
+              <a href={UTEST_GUIDE_VIDEO_URL} target="_blank" rel="noreferrer">Open video on YouTube <ArrowRight /></a>
+              <button type="button" onClick={closeUtestGuide}>Continue to signup</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
