@@ -237,7 +237,7 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
     submit_clicked = False
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context()
+        context = await browser.new_context(locale="en-US")
         page = await context.new_page()
         try:
             await page.goto(FORM_URL, wait_until="domcontentloaded", timeout=30000)
@@ -245,7 +245,9 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
 
             for _ in range(MAX_PAGES):
                 await fill_current_page(page, data)
-                next_button = page.get_by_role("button", name="Next", exact=True)
+                next_button = page.get_by_role(
+                    "button", name=re.compile(r"^(?:Next|Weiter)$", re.IGNORECASE)
+                )
                 if await next_button.count():
                     previous_questions = await page.locator(
                         'div[role="listitem"] [role="heading"]'
@@ -264,7 +266,9 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
                         )
                     continue
 
-                submit_button = page.get_by_role("button", name="Submit", exact=True)
+                submit_button = page.get_by_role(
+                    "button", name=re.compile(r"^(?:Submit|Senden)$", re.IGNORECASE)
+                )
                 if await submit_button.count():
                     await submit_button.first.click()
                     submit_clicked = True
