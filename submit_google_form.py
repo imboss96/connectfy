@@ -280,7 +280,27 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
                         }
                     return {"ok": True, "submitted": True}
 
-                raise RuntimeError("The screener did not provide a Next or Submit button.")
+                visible_buttons = await page.locator(
+                    'button:visible, [role="button"]:visible'
+                ).evaluate_all(
+                    """elements => elements
+                        .map(element => (element.innerText || element.getAttribute('aria-label') || '').trim())
+                        .filter(Boolean)
+                        .slice(0, 12)"""
+                )
+                question_headings = await page.locator(
+                    'div[role="listitem"] [role="heading"]'
+                ).all_inner_texts()
+                diagnostics = {
+                    "url": page.url,
+                    "title": (await page.title())[:160],
+                    "visible_buttons": visible_buttons,
+                    "question_headings": [heading[:120] for heading in question_headings[:10]],
+                }
+                raise RuntimeError(
+                    "The screener did not provide a Next or Submit button. "
+                    f"Page diagnostics: {json.dumps(diagnostics, ensure_ascii=True)}"
+                )
             raise RuntimeError("The screener exceeded the configured page limit.")
         except Exception as error:
             return {
