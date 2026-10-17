@@ -80,13 +80,19 @@ const getDateInputMax = () => {
 };
 
 const getScreenerAgeRange = (dateOfBirth: string) => {
-  if (!dateOfBirth) return '';
-  const birthDate = new Date(`${dateOfBirth}T00:00:00`);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth);
+  if (!match) return '';
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const birthDate = new Date(year, month - 1, day);
+  if (birthDate.getFullYear() !== year
+    || birthDate.getMonth() !== month - 1
+    || birthDate.getDate() !== day) return '';
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  if (Number.isNaN(birthDate.getTime())
-    || birthDate.toISOString().slice(0, 10) !== dateOfBirth
-    || birthDate > today) return '';
+  if (birthDate > today) return '';
 
   const age = today.getFullYear() - birthDate.getFullYear()
     - ((today.getMonth() < birthDate.getMonth()
