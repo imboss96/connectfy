@@ -15,6 +15,7 @@ import {
   MailCheck,
   ClipboardList,
   Send,
+  CheckCircle2,
   X,
   LogOut
 } from 'lucide-react';
@@ -104,6 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Service Listings', tab: 'service_listings', icon: Briefcase, section: 'Services' },
           { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck, section: 'Operations' },
           { label: adminAccessLevel === 'super_admin' ? 'Team Activity' : 'My Tasks', tab: 'project_tasks', icon: ClipboardList, section: 'Operations' },
+          { label: 'Applause Submissions', tab: 'application_screener_submissions', icon: CheckCircle2, section: 'Operations' },
           { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
           { label: 'CRM & Members', tab: 'crm', icon: Users, section: 'Operations' },
           { label: 'Project Operations', tab: 'project_operations', icon: Briefcase, section: 'Operations' },

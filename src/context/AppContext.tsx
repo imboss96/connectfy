@@ -20,7 +20,7 @@ import { approveSubmissionInSupabase, createProjectInSupabase, createSubmissionI
 import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProjectEmail } from '../lib/emailService';
 import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
-import { APPLICATION_SCREENER_FORM_URL } from '../lib/applicationScreener';
+import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -95,7 +95,7 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => Promise<boolean>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => Promise<{ saved: boolean; applicationId?: string; screener?: ApplicationScreenerResult }>;
   approveApplication: (appId: string, screenerSubmitted: boolean) => Promise<void>;
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => Promise<void>;
@@ -124,7 +124,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations', 'application_screener_submissions'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -1411,9 +1411,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string }) => {
-    if (!emailDetails?.applicantUtestScreenshotUrl) return false;
-    const { applicantPhone = '', ...emailPayloadDetails } = emailDetails;
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => {
+    if (!emailDetails?.applicantUtestScreenshotUrl) return { saved: false };
+    const {
+      applicantPhone = '',
+      applicantGmailEmail,
+      applicantGender,
+      applicantGenderOther,
+      applicantFluentLanguages,
+      applicantLanguageOther,
+      applicantRecordingSpaceAvailable,
+      applicantScreenerDeviceType,
+      applicantScreenerDeviceOther,
+      applicantScreenerOsVersion,
+      applicantScreenerConsent,
+      ...emailPayloadDetails
+    } = emailDetails;
 
     const userContext = await getActiveUserContext();
     let liveEmail = '';
@@ -1430,10 +1443,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const effectiveTesterEmail = await resolveTesterEmail(effectiveTesterId, liveEmail || testerProfile.email || userContext.email || '');
 
     const existing = applications.find(a => a.projectId === projectId && a.testerId === effectiveTesterId);
-    if (existing && existing.status !== 'needs_utest_update') return false;
+    if (existing && existing.status !== 'needs_utest_update') return { saved: false };
 
     const project = projects.find(p => p.id === projectId);
-    if (!existing && !isProjectOpenForApplications(project)) return false;
+    if (!existing && !isProjectOpenForApplications(project)) return { saved: false };
     const newAppId = existing?.id || createApplicationId();
     const newApp: ProjectApplication = {
       id: newAppId,
@@ -1483,7 +1496,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             device_confirmation: emailDetails.applicantDevice || emailDetails.applicantSmartphone || '',
             has_valid_id: Boolean(emailDetails.applicantHasValidId),
             willing_voice_recording: Boolean(emailDetails.applicantWillingVoiceRecording),
-            utest_account_screenshot_url: emailDetails.applicantUtestScreenshotUrl || ''
+            utest_account_screenshot_url: emailDetails.applicantUtestScreenshotUrl || '',
+            gmail_email: applicantGmailEmail,
+            gender: applicantGender,
+            gender_other: applicantGenderOther,
+            fluent_languages: applicantFluentLanguages,
+            language_other: applicantLanguageOther,
+            recording_space_available: applicantRecordingSpaceAvailable,
+            screener_device_type: applicantScreenerDeviceType,
+            screener_device_other: applicantScreenerDeviceOther,
+            screener_os_version: applicantScreenerOsVersion,
+            screener_consent: applicantScreenerConsent,
+            screener_consent_at: applicantScreenerConsent ? new Date().toISOString() : null
           });
 
           await updateTesterApplicationUtestDetailsInSupabase(effectiveTesterId, {
@@ -1496,7 +1520,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       } catch (error) {
         console.error('Unable to save application details to Supabase:', error);
-        return false;
+        return { saved: false };
       }
     }
 
@@ -1526,7 +1550,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
-    return true;
+    return {
+      saved: true,
+      applicationId: newAppId,
+      screener: {
+        submitted: false,
+        queued: true,
+        retryable: false,
+        message: 'Your application and screener answers are saved. The backend has queued the screener for automatic submission.'
+      }
+    };
   };
 
   // 2. Approval persists first; the database trigger queues the invitation email transactionally.

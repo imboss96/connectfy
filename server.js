@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildLegacySheetEmailHtml,
   buildLegacySheetEmailText,
@@ -19,6 +22,7 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 const app = express();
+const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
 const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up']);
@@ -86,7 +90,7 @@ const buildHtml = (payload) => {
     const lockDate = escapeHtml(payload.projectLockDate || 'To be confirmed');
     const slackInviteUrl = escapeHtml(CONNECTFY_SLACK_INVITE_URL);
     const slackDownloadUrl = escapeHtml(SLACK_DOWNLOAD_URL);
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>Join us on Slack for real-time project communication. Download the Slack app and join the Connectfy Ops workspace:</p><p><a href="${slackDownloadUrl}">Download Slack</a> · <a href="${slackInviteUrl}">Join the Connectfy Ops workspace</a></p><p>For support, find us in Slack.</p><p style="margin:24px 0;"><a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#4A154B;color:#fff;text-decoration:none;font-weight:700;">Open Slack support</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>${greeting}</p><h1 style="font-size:21px;">You’re one step away from claiming your payout</h1><p>Complete the remaining consent step for <strong>${projectTitle}</strong> to claim your payout of <strong>${payout}</strong>.</p><p><strong>This project locks on ${lockDate}.</strong> Please hurry so you have time to finish your testing.</p><p>Join us on Slack for real-time project communication. Download the Slack app and join the Connectfy Ops workspace:</p><p><a href="${slackDownloadUrl}">Download Slack</a> · <a href="${slackInviteUrl}">Join the Connectfy Ops workspace</a></p><p>For support, find us in Slack: <a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="color:#007f95;font-weight:700;">Find us in Slack</a></p><p style="margin:24px 0;"><a href="${APPLAUSE_SUPPORT_SLACK_LINK}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#4A154B;color:#fff;text-decoration:none;font-weight:700;">Open Slack support</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'sheet_project_approved') {
     const name = escapeHtml(payload.toName || 'there');
@@ -439,7 +443,9 @@ const sendEmailThroughBrevo = async (payload, type) => {
 const supabaseServiceUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const outboxWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && process.env.BREVO_API_KEY);
+const applicationScreenerWorkerEnabled = outboxWorkerEnabled;
 let outboxWorkerBusy = false;
+let applicationScreenerWorkerBusy = false;
 let paypalPayoutPollBusy = false;
 let cachedKesRate = null;
 
@@ -1107,6 +1113,7 @@ app.get('/health', (_req, res) => {
     ok: true,
     service: 'connectfy-email-backend',
     approvalEmailOutbox: outboxWorkerEnabled ? 'enabled' : 'disabled',
+    applicationScreenerWorker: applicationScreenerWorkerEnabled ? 'enabled' : 'disabled',
     slackStatusDms: process.env.SLACK_BOT_TOKEN ? 'configured' : 'disabled',
     paypalPayouts: process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET
       ? (process.env.PAYPAL_ENV || 'sandbox').toLowerCase()
@@ -1509,7 +1516,7 @@ app.post('/api/admin/payout-requests/:id/approve', async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to approve payout.';
     if (dispatchClaimed && payout) {
-      console.error(`${payout.method} payout outcome is ambiguous; payout remains processing for reconciliation.`, {
+      console.error('Safaricom B2C outcome is ambiguous; payout remains processing for reconciliation.', {
         payoutId: payout.id,
         error: message
       });
@@ -1544,6 +1551,507 @@ app.post('/api/mpesa/b2c/timeout', async (req, res) => {
   } catch (error) {
     console.error('Unable to process Safaricom B2C timeout callback:', error);
     return res.status(500).json({ ResultCode: 1, ResultDesc: 'Callback processing failed' });
+  }
+});
+
+const runApplicationScreener = (submission) => new Promise((resolve, reject) => {
+  const pythonCommand = process.env.PYTHON_EXECUTABLE
+    || (process.platform === 'win32' ? 'python' : 'python3');
+  const scriptPath = path.join(serverDirectory, 'submit_google_form.py');
+  const child = spawn(pythonCommand, ['-u', scriptPath], {
+    stdio: ['pipe', 'pipe', 'ignore'],
+    windowsHide: true
+  });
+  let stdout = '';
+  let completed = false;
+  const timeout = setTimeout(() => {
+    child.kill();
+    if (!completed) {
+      completed = true;
+      resolve({ timedOut: true, result: null });
+    }
+  }, 90000);
+
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+    if (stdout.length > 50000) {
+      child.kill();
+    }
+  });
+  child.on('error', (error) => {
+    clearTimeout(timeout);
+    if (!completed) {
+      completed = true;
+      reject(error);
+    }
+  });
+  child.on('close', () => {
+    clearTimeout(timeout);
+    if (completed) return;
+    completed = true;
+    const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+    try {
+      resolve({ timedOut: false, result: lines.length ? JSON.parse(lines[lines.length - 1]) : null });
+    } catch {
+      resolve({ timedOut: false, result: null });
+    }
+  });
+  child.stdin.on('error', (error) => {
+    clearTimeout(timeout);
+    if (!completed) {
+      completed = true;
+      reject(error);
+    }
+  });
+  child.stdin.end(JSON.stringify(submission));
+});
+
+const completeApplicationScreenerJob = (applicationId, status, error = null) =>
+  callOutboxRpc('complete_application_screener_submission', {
+    p_application_id: applicationId,
+    p_status: status,
+    p_error: error
+  });
+
+const processOneApplicationScreenerJob = async () => {
+  const claimed = await callOutboxRpc('claim_application_screener_submission', {});
+  const job = Array.isArray(claimed) ? claimed[0] : null;
+  if (!job) return false;
+  let externalSubmissionStarted = false;
+
+  try {
+    const applicationRows = await callSupabaseRest(
+      `applications?id=eq.${encodeURIComponent(job.application_id)}&select=id,status,invite_status&limit=1`
+    );
+    const detailsRows = await callSupabaseRest(
+      `application_utest_details?application_id=eq.${encodeURIComponent(job.application_id)}&select=application_id,tester_id,full_name,utest_id,utest_email,date_of_birth,phone_number,country,gmail_email,gender,gender_other,fluent_languages,language_other,has_valid_id,recording_space_available,screener_device_type,screener_device_other,screener_os_version,screener_consent,screener_consent_at,screener_submission_status,utest_account_screenshot_url&limit=1`
+    );
+    const application = Array.isArray(applicationRows) ? applicationRows[0] : null;
+    const details = Array.isArray(detailsRows) ? detailsRows[0] : null;
+    if (job.resume_approval && !application) {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'approval_failed',
+        'Google confirmed the screener, but the application record is unavailable for automatic approval.'
+      );
+      return true;
+    }
+    if (job.resume_approval && application
+      && application.status !== 'pending'
+      && !(application.status === 'approved' && application.invite_status === 'invited')) {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'approval_failed',
+        'Google confirmed the screener, but the application status changed before automatic approval. Review the application and invitation manually.'
+      );
+      return true;
+    }
+    if (job.resume_approval && !details) {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'approval_failed',
+        'Google confirmed the screener, but the saved application details are unavailable for automatic approval.'
+      );
+      return true;
+    }
+    if (!application || !details) {
+      await completeApplicationScreenerJob(job.application_id, 'failed', 'Application or saved screener answers were not found.');
+      return true;
+    }
+
+    if (job.resume_approval) {
+      try {
+        await callOutboxRpc('approve_application_after_screener', {
+          p_application_id: job.application_id
+        });
+        await completeApplicationScreenerJob(job.application_id, 'submitted');
+        console.info('Application screener approval completed.', { applicationId: job.application_id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Automatic application approval failed.';
+        await completeApplicationScreenerJob(job.application_id, 'approval_pending', message);
+        console.error('Application screener was confirmed; approval will be retried without resubmitting the form.', {
+          applicationId: job.application_id,
+          error: message
+        });
+      }
+      return true;
+    }
+
+    const missingAnswers = [
+      ['application status', application.status === 'pending'],
+      ['applicant consent', details.screener_consent === true && Boolean(details.screener_consent_at)],
+      ['full legal name', Boolean(String(details.full_name || '').trim())],
+      ['uTest ID beginning with 30', /^30\d+$/.test(String(details.utest_id || '').trim())],
+      ['uTest email', Boolean(String(details.utest_email || '').trim())],
+      ['phone number', Boolean(String(details.phone_number || '').trim())],
+      ['profile Gmail address', /^[^\s@]+@gmail\.com$/i.test(String(details.gmail_email || '').trim())],
+      ['date of birth', Boolean(details.date_of_birth)],
+      ['country', Boolean(String(details.country || '').trim())],
+      ['gender', Boolean(String(details.gender || '').trim())],
+      ['fluent languages', Array.isArray(details.fluent_languages) && details.fluent_languages.length > 0],
+      ['ID confirmation', typeof details.has_valid_id === 'boolean'],
+      ['recording-space confirmation', typeof details.recording_space_available === 'boolean'],
+      ['mobile device', Boolean(String(details.screener_device_type || '').trim())],
+      ['OS version', Boolean(String(details.screener_os_version || '').trim())],
+      ['uTest account screenshot', /^https?:\/\/[^\s]+$/i.test(String(details.utest_account_screenshot_url || '').trim())]
+    ].filter(([, valid]) => !valid).map(([label]) => label);
+
+    if (missingAnswers.length) {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'failed',
+        `Submission blocked: missing or invalid ${missingAnswers.join(', ')}.`
+      );
+      return true;
+    }
+
+    const submission = {
+      full_name: details.full_name,
+      utest_id: details.utest_id,
+      utest_email: details.utest_email,
+      phone: details.phone_number,
+      gmail_email: details.gmail_email,
+      country: details.country,
+      date_of_birth: details.date_of_birth,
+      gender: details.gender,
+      gender_other: details.gender_other,
+      languages: details.fluent_languages,
+      language_other: details.language_other,
+      has_valid_id: details.has_valid_id,
+      recording_space_available: details.recording_space_available,
+      device_type: details.screener_device_type,
+      device_other: details.screener_device_other,
+      os_version: details.screener_os_version,
+      screener_consent: details.screener_consent
+    };
+    externalSubmissionStarted = true;
+    const processResult = await runApplicationScreener(submission);
+
+    if (processResult?.result?.submitted === true && processResult.result.ok === true) {
+      await completeApplicationScreenerJob(job.application_id, 'approval_pending');
+      try {
+        await callOutboxRpc('approve_application_after_screener', {
+          p_application_id: job.application_id
+        });
+        await completeApplicationScreenerJob(job.application_id, 'submitted');
+        console.info('Application screener submitted; application approved and invitation queued.', {
+          applicationId: job.application_id
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Automatic application approval failed.';
+        await completeApplicationScreenerJob(job.application_id, 'approval_pending', message);
+        console.error('Application screener was confirmed; approval will be retried without resubmitting the form.', {
+          applicationId: job.application_id,
+          error: message
+        });
+      }
+    } else if (!processResult?.timedOut && processResult?.result?.submitted === false) {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'failed',
+        processResult.result.error || 'The external screener did not accept the response.'
+      );
+    } else {
+      await completeApplicationScreenerJob(
+        job.application_id,
+        'ambiguous',
+        processResult?.result?.error || 'The external form may have received the response, but confirmation was not received. Reconcile it before retrying.'
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Application screener worker failed.';
+    console.error('Application screener job failed before a confirmed result:', {
+      applicationId: job.application_id,
+      error: message
+    });
+    await completeApplicationScreenerJob(
+      job.application_id,
+      externalSubmissionStarted ? 'ambiguous' : 'failed',
+      externalSubmissionStarted
+        ? `${message} External delivery is uncertain; reconcile the form before retrying.`
+        : message
+    );
+  }
+  return true;
+};
+
+const pollApplicationScreenerQueue = async () => {
+  if (!applicationScreenerWorkerEnabled || applicationScreenerWorkerBusy) return;
+  applicationScreenerWorkerBusy = true;
+  try {
+    while (await processOneApplicationScreenerJob()) {
+      // Drain queued submissions serially so Google Forms is not opened concurrently.
+    }
+  } catch (error) {
+    console.error('Application screener queue poll failed:', error);
+  } finally {
+    applicationScreenerWorkerBusy = false;
+  }
+};
+
+app.post('/api/application-screener', async (req, res) => {
+  return res.status(410).json({
+    ok: false,
+    retryable: false,
+    message: 'Application screeners are submitted by the protected background queue worker.'
+  });
+
+  const authorization = req.headers.authorization;
+  const applicationId = String(req.body?.applicationId || '').trim();
+  if (!authorization) {
+    return res.status(401).json({ ok: false, retryable: true, message: 'Sign in as a project manager or super admin to submit application screeners.' });
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId)) {
+    return res.status(400).json({ ok: false, retryable: false, message: 'A valid application ID is required.' });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return res.status(500).json({ ok: false, retryable: true, message: 'Screener service is missing Supabase configuration.' });
+  }
+
+  const supabaseBase = supabaseUrl.replace(/\/$/, '');
+  const restBase = `${supabaseBase}/rest/v1`;
+  const headers = {
+    apikey: supabaseAnonKey,
+    Authorization: authorization
+  };
+
+  try {
+    let user;
+    try {
+      user = await getAuthUser(authorization);
+    } catch {
+      return res.status(401).json({ ok: false, retryable: true, message: 'Your session is invalid or has expired. Sign in again.' });
+    }
+    const adminProfiles = await callSupabaseRest(
+      `profiles?id=eq.${encodeURIComponent(user.id)}&select=role,admin_access_level&limit=1`
+    );
+    const adminProfile = Array.isArray(adminProfiles) ? adminProfiles[0] : null;
+    if (adminProfile?.role !== 'admin'
+      || !['super_admin', 'project_manager'].includes(adminProfile.admin_access_level)) {
+      return res.status(403).json({ ok: false, retryable: false, message: 'Only project managers and super admins can submit application screeners.' });
+    }
+
+    const applicationQuery = new URLSearchParams({
+      id: `eq.${applicationId}`,
+      select: 'id,status',
+      limit: '1'
+    });
+    const applicationResponse = await fetch(`${restBase}/applications?${applicationQuery}`, { headers });
+    if (!applicationResponse.ok) {
+      console.error('Unable to load the application for admin screener submission:', await applicationResponse.text());
+      return res.status(500).json({ ok: false, retryable: true, message: 'Unable to load the application. Refresh and try again.' });
+    }
+    const applicationRows = await applicationResponse.json();
+    const application = Array.isArray(applicationRows) ? applicationRows[0] : null;
+    if (!application) {
+      return res.status(404).json({ ok: false, retryable: false, message: 'The application was not found or is not visible to your admin account.' });
+    }
+    if (application.status !== 'pending' && application.status !== 'approved') {
+      return res.status(409).json({ ok: false, retryable: false, message: 'Only pending applications can be submitted to the screener.' });
+    }
+    const detailsQuery = new URLSearchParams({
+      application_id: `eq.${applicationId}`,
+      select: 'application_id,tester_id,full_name,utest_id,utest_email,date_of_birth,phone_number,country,gmail_email,gender,gender_other,fluent_languages,language_other,has_valid_id,recording_space_available,screener_device_type,screener_device_other,screener_os_version,screener_consent,screener_consent_at,screener_submission_status'
+    });
+    const detailsResponse = await fetch(`${restBase}/application_utest_details?${detailsQuery}`, { headers });
+    if (!detailsResponse.ok) {
+      console.error('Unable to read the application screener fields from Supabase:', await detailsResponse.text());
+      return res.status(500).json({ ok: false, retryable: true, message: 'Unable to load the saved screener answers. Apply the application screener migration and try again.' });
+    }
+    const detailRows = await detailsResponse.json();
+    const details = Array.isArray(detailRows) ? detailRows[0] : null;
+    if (!details) {
+      return res.status(404).json({ ok: false, retryable: false, message: 'The application screener details were not found for your account.' });
+    }
+    if (!/^30\d+$/.test(String(details.utest_id || '').trim())) {
+      return res.status(400).json({
+        ok: false,
+        retryable: false,
+        message: 'The Applause screener is available only for uTest IDs that start with 30 and contain digits only.'
+      });
+    }
+    if (details.screener_submission_status === 'submitted') {
+      try {
+        await callOutboxRpc('approve_application_after_screener', {
+          p_application_id: applicationId
+        });
+        return res.json({
+          ok: true,
+          message: 'The external screener was already submitted; the application is approved and its invitation is queued.'
+        });
+      } catch (error) {
+        console.error('Unable to complete automatic application approval after screener confirmation:', error);
+        return res.status(503).json({
+          ok: false,
+          screenerConfirmed: true,
+          retryable: true,
+          message: 'The screener is confirmed, but automatic approval or invitation could not be completed. Retry to finish approval; the screener will not be submitted again.'
+        });
+      }
+    }
+    if (details.screener_submission_status === 'pending') {
+      return res.status(409).json({
+        ok: false,
+        retryable: false,
+        message: 'The screener may already have been submitted, but confirmation is pending. Contact support before retrying to avoid a duplicate response.'
+      });
+    }
+    if (!['not_started', 'failed'].includes(details.screener_submission_status)
+      || details.screener_consent !== true
+      || !details.screener_consent_at
+      || !details.full_name
+      || !details.utest_id
+      || !details.utest_email
+      || !details.phone_number
+      || !details.country
+      || !details.gmail_email
+      || !details.date_of_birth
+      || !details.gender
+      || !Array.isArray(details.fluent_languages)
+      || details.fluent_languages.length === 0
+      || typeof details.has_valid_id !== 'boolean'
+      || typeof details.recording_space_available !== 'boolean'
+      || !details.screener_device_type
+      || !details.screener_os_version) {
+      return res.status(400).json({ ok: false, retryable: false, message: 'The saved screener answers are incomplete or consent was not recorded.' });
+    }
+
+    const claimQuery = new URLSearchParams({
+      application_id: `eq.${applicationId}`,
+      tester_id: `eq.${details.tester_id}`,
+      screener_submission_status: 'in.(not_started,failed)'
+    });
+    const claimResponse = await fetch(`${restBase}/application_utest_details?${claimQuery}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ screener_submission_status: 'pending' })
+    });
+    if (!claimResponse.ok) {
+      console.error('Unable to reserve an application screener submission:', await claimResponse.text());
+      return res.status(500).json({ ok: false, retryable: true, message: 'Unable to reserve the screener submission. Please retry.' });
+    }
+    const claimedRows = await claimResponse.json();
+    if (!Array.isArray(claimedRows) || claimedRows.length !== 1) {
+      return res.status(409).json({ ok: false, retryable: false, message: 'A screener submission is already in progress. Contact support before retrying.' });
+    }
+
+    const submission = {
+      full_name: details.full_name,
+      utest_id: details.utest_id,
+      utest_email: details.utest_email,
+      phone: details.phone_number,
+      gmail_email: details.gmail_email,
+      country: details.country,
+      date_of_birth: details.date_of_birth,
+      gender: details.gender,
+      gender_other: details.gender_other,
+      languages: details.fluent_languages,
+      language_other: details.language_other,
+      has_valid_id: details.has_valid_id,
+      recording_space_available: details.recording_space_available,
+      device_type: details.screener_device_type,
+      device_other: details.screener_device_other,
+      os_version: details.screener_os_version,
+      screener_consent: details.screener_consent
+    };
+
+    let processResult;
+    try {
+      processResult = await runApplicationScreener(submission);
+    } catch (error) {
+      console.error('Unable to start the application screener process:', error);
+      try {
+        const markFailed = await fetch(`${restBase}/application_utest_details?${new URLSearchParams({
+          application_id: `eq.${applicationId}`,
+          tester_id: `eq.${details.tester_id}`,
+          screener_submission_status: 'eq.pending'
+        })}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+          body: JSON.stringify({ screener_submission_status: 'failed' })
+        });
+        const failedRows = markFailed.ok ? await markFailed.json() : [];
+        if (Array.isArray(failedRows) && failedRows.length === 1) {
+          return res.status(503).json({ ok: false, retryable: true, message: 'The Python screener service could not start. Your application is saved; retry the screener.' });
+        }
+      } catch (statusError) {
+        console.error('Unable to save the Python screener startup failure:', statusError);
+      }
+      return res.status(503).json({ ok: false, retryable: false, message: 'The Python screener service could not start. Contact support before retrying.' });
+    }
+
+    if (processResult?.result?.submitted === true && processResult.result.ok === true) {
+      const markSubmitted = await fetch(`${restBase}/application_utest_details?${new URLSearchParams({
+        application_id: `eq.${applicationId}`,
+        tester_id: `eq.${details.tester_id}`,
+        screener_submission_status: 'eq.pending'
+      })}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({
+          screener_submission_status: 'submitted',
+          screener_submitted_at: new Date().toISOString()
+        })
+      });
+      if (!markSubmitted.ok) {
+        console.error('The form confirmed submission, but Supabase could not save its status:', await markSubmitted.text());
+        return res.status(502).json({ ok: false, retryable: false, message: 'Applause confirmed the response, but Connectfy could not save the confirmation. Contact support; do not retry the form.' });
+      }
+      const submittedRows = await markSubmitted.json();
+      if (!Array.isArray(submittedRows) || submittedRows.length !== 1) {
+        return res.status(502).json({ ok: false, retryable: false, message: 'Applause confirmed the response, but Connectfy could not save the confirmation. Contact support; do not retry the form.' });
+      }
+      try {
+        await callOutboxRpc('approve_application_after_screener', {
+          p_application_id: applicationId
+        });
+      } catch (error) {
+        console.error('Screener was confirmed, but automatic application approval failed:', error);
+        return res.status(503).json({
+          ok: false,
+          screenerConfirmed: true,
+          retryable: true,
+          message: 'The screener is confirmed, but automatic approval or invitation could not be completed. Retry to finish approval; the screener will not be submitted again.'
+        });
+      }
+      return res.json({
+        ok: true,
+        message: 'The external Applause screener was submitted, the application was approved, and its invitation was queued.'
+      });
+    }
+
+    if (!processResult?.timedOut && processResult?.result?.submitted === false) {
+      const markFailed = await fetch(`${restBase}/application_utest_details?${new URLSearchParams({
+        application_id: `eq.${applicationId}`,
+        tester_id: `eq.${details.tester_id}`,
+        screener_submission_status: 'eq.pending'
+      })}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ screener_submission_status: 'failed' })
+      });
+      if (!markFailed.ok) {
+        console.error('Unable to save the failed application screener status:', await markFailed.text());
+        return res.status(502).json({ ok: false, retryable: false, message: 'The screener did not submit, but Connectfy could not save that status. Contact support before retrying.' });
+      }
+      const failedRows = await markFailed.json();
+      if (!Array.isArray(failedRows) || failedRows.length !== 1) {
+        return res.status(502).json({ ok: false, retryable: false, message: 'The screener did not submit, but Connectfy could not save that status. Contact support before retrying.' });
+      }
+      return res.status(502).json({ ok: false, retryable: true, message: 'The external screener could not be submitted. Your application is saved; retry the screener.' });
+    }
+
+    return res.status(502).json({
+      ok: false,
+      retryable: false,
+      message: 'The screener service could not confirm whether Applause received the response. Contact support before retrying to avoid a duplicate submission.'
+    });
+  } catch (error) {
+    console.error('Application screener request failed:', error);
+    return res.status(500).json({ ok: false, retryable: true, message: 'The application screener service failed. Your application is saved; retry the screener.' });
   }
 });
 
@@ -1716,6 +2224,14 @@ if (outboxWorkerEnabled) {
   void pollProjectEmailOutbox();
 } else {
   console.warn('Project approval email outbox worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BREVO_API_KEY.');
+}
+
+if (applicationScreenerWorkerEnabled) {
+  console.info('Application screener queue worker enabled.');
+  void pollApplicationScreenerQueue();
+  setInterval(() => void pollApplicationScreenerQueue(), 5000);
+} else {
+  console.warn('Application screener queue worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BREVO_API_KEY.');
 }
 
 setInterval(() => void pollPayPalPayouts(), 30000);

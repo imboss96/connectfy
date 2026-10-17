@@ -13,7 +13,7 @@ export const appendSlackFooterHtml = (html) => {
     <div style="margin:16px auto;padding:14px 20px;max-width:520px;font-family:Arial,sans-serif;font-size:13px;line-height:1.6;color:#475569;text-align:center;">
       Join us on Slack:
       <a href="${CONNECTFY_SLACK_INVITE_URL}" style="color:#007f95;font-weight:700;">Connectfy Ops workspace</a>
-      · <a href="${CONNECTFY_SLACK_SUPPORT_URL}" style="color:#007f95;font-weight:700;">Slack support</a>
+      · <a href="${CONNECTFY_SLACK_SUPPORT_URL}" style="color:#007f95;font-weight:700;">Find us in Slack</a>
     </div>`;
 };
 
@@ -27,5 +27,5 @@ export const appendSlackFooterText = (text) => {
 
 Join us on Slack:
 Connectfy Ops workspace: ${CONNECTFY_SLACK_INVITE_URL}
-Slack support: ${CONNECTFY_SLACK_SUPPORT_URL}`;
+Find us in Slack: ${CONNECTFY_SLACK_SUPPORT_URL}`;
 };

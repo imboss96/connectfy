@@ -16,6 +16,7 @@ type ActivityRow = {
 
 const actionLabels: Record<string, string> = {
   application_approved: 'Approved application',
+  application_screener_auto_approved: 'Automatically approved application after screener submission',
   application_rejected: 'Rejected application',
   application_utest_account_requested: 'Requested a new uTest account',
   submission_approved: 'Approved a submission',

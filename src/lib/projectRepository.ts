@@ -449,6 +449,17 @@ export async function upsertApplicationUtestDetailsInSupabase(details: {
   has_valid_id: boolean;
   willing_voice_recording: boolean;
   utest_account_screenshot_url: string;
+  gmail_email?: string;
+  gender?: string;
+  gender_other?: string;
+  fluent_languages?: string[];
+  language_other?: string;
+  recording_space_available?: boolean | null;
+  screener_device_type?: string;
+  screener_device_other?: string;
+  screener_os_version?: string;
+  screener_consent?: boolean;
+  screener_consent_at?: string | null;
 }) {
   if (!supabase) return;
 

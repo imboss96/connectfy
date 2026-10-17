@@ -29,7 +29,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { getProjectAvailabilityLabel, isProjectOpenForApplications, isProjectVisibleToTesters } from '../lib/projectStatus';
 import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
-import { Project, DeviceType, ProjectCategory, ProjectTrack } from '../types';
+import { Project, DeviceType, ProjectCategory, ProjectTrack, TesterProfile } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
@@ -48,8 +48,36 @@ type ApplicationDraft = {
   hasValidId: boolean;
   willingVoiceRecording: boolean;
   utestAccountScreenshotUrl: string;
+  gmailEmail: string;
+  screenerGender: string;
+  screenerGenderOther: string;
+  fluentLanguages: string[];
+  languageOther: string;
+  recordingSpaceAvailable: boolean | null;
+  screenerDeviceType: string;
+  screenerDeviceOther: string;
+  screenerOsVersion: string;
+  screenerConsent: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+const SCREENER_LANGUAGES = ['English', 'Bengali', 'Hindi', 'Bahasa', 'Portuguese', 'Spanish (MX)', 'None of the above', 'Other'];
+const SCREENER_GENDERS = ['Male', 'Female', 'Non-Binary', 'Prefer not to say', 'Other'];
+const SCREENER_DEVICES = [
+  'Android (mobile) — camera & mic functional',
+  'iOS (mobile) — camera & mic functional',
+  'No functional camera/microphone',
+  'Other'
+];
+
+const getScreenerLanguagesFromProfile = (languages: NonNullable<TesterProfile['languages']>) => {
+  const known = new Set(SCREENER_LANGUAGES);
+  return languages
+    .filter((language) => language.proficiency === 'Native' || language.proficiency === 'Fluent')
+    .map((language) => language.language.trim())
+    .map((language) => language.toLowerCase().startsWith('spanish') ? 'Spanish (MX)' : language)
+    .filter((language) => known.has(language) && language !== 'None of the above' && language !== 'Other');
 };
 
 const createDraftFromProject = (project: Project): ApplicationDraft => ({
@@ -65,6 +93,16 @@ const createDraftFromProject = (project: Project): ApplicationDraft => ({
   hasValidId: false,
   willingVoiceRecording: false,
   utestAccountScreenshotUrl: '',
+  gmailEmail: '',
+  screenerGender: '',
+  screenerGenderOther: '',
+  fluentLanguages: [],
+  languageOther: '',
+  recordingSpaceAvailable: null,
+  screenerDeviceType: '',
+  screenerDeviceOther: '',
+  screenerOsVersion: '',
+  screenerConsent: true,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 });
@@ -105,8 +143,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const [experienceNote, setExperienceNote] = useState('');
   const [applySuccess, setApplySuccess] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [applicationScreenerResult, setApplicationScreenerResult] = useState<{
+    applicationId: string;
+    submitted: boolean;
+    queued: boolean;
+    retryable: boolean;
+    message: string;
+  } | null>(null);
   const [shareFeedback, setShareFeedback] = useState<{ projectId: string; url: string; error: boolean } | null>(null);
   const [isUploadingUtestScreenshot, setIsUploadingUtestScreenshot] = useState(false);
+  const [isSubmittingApplication, setIsSubmittingApplication] = useState(false);
   const [showAddDeviceForm, setShowAddDeviceForm] = useState(false);
   const [deviceDraft, setDeviceDraft] = useState({
     category: 'Smartphone' as 'Smartphone' | 'Tablet' | 'Computer' | 'Smart TV' | 'Wearable' | 'Console',
@@ -174,6 +220,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   const featuredProject = filteredProjects.find((project) => project.isFeatured === true);
   const regularProjects = filteredProjects.filter((project) => project.id !== featuredProject?.id);
+  const featuredApplication = featuredProject
+    ? applications.find((application) => application.projectId === featuredProject.id && application.testerId === testerProfile.id)
+    : undefined;
   const featuredNeedsUtestUpdate = featuredProject
     ? applications.some((application) => application.projectId === featuredProject.id && application.testerId === testerProfile.id && application.status === 'needs_utest_update')
     : false;
@@ -225,11 +274,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       phoneNumber: testerProfile.phone || '',
       hasValidId: Boolean(testerProfile.hasValidId),
       willingVoiceRecording: Boolean(testerProfile.willingVoiceRecording),
-      utestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || ''
+      utestAccountScreenshotUrl: testerProfile.uTestAccountScreenshotUrl || '',
+      gmailEmail: testerProfile.email || '',
+      fluentLanguages: getScreenerLanguagesFromProfile(testerProfile.languages || []),
+      screenerConsent: true
     };
 
     setApplyingProject(project);
     setApplicationDraft(draft);
+    setApplicationScreenerResult(null);
+    setApplyError('');
     setSelectedDevices(draft.smartphone ? [draft.smartphone] : []);
 
     void fetchApplicationDraft(project.id).then((savedDraft) => {
@@ -237,6 +291,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       const restoredDraft = {
         ...draft,
         ...savedDraft,
+        gmailEmail: draft.gmailEmail,
         fullName: String(savedDraft.fullName || draft.fullName),
         testerId: String(savedDraft.testerId || draft.testerId),
         utestEmail: String(savedDraft.utestEmail || draft.utestEmail),
@@ -250,6 +305,19 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
           ? savedDraft.willingVoiceRecording
           : draft.willingVoiceRecording,
         utestAccountScreenshotUrl: String(savedDraft.utestAccountScreenshotUrl || draft.utestAccountScreenshotUrl),
+        screenerGender: String(savedDraft.screenerGender || draft.screenerGender),
+        screenerGenderOther: String(savedDraft.screenerGenderOther || draft.screenerGenderOther),
+        fluentLanguages: Array.isArray(savedDraft.fluentLanguages)
+          ? savedDraft.fluentLanguages.filter((language): language is string => typeof language === 'string')
+          : draft.fluentLanguages,
+        languageOther: String(savedDraft.languageOther || draft.languageOther),
+        recordingSpaceAvailable: typeof savedDraft.recordingSpaceAvailable === 'boolean'
+          ? savedDraft.recordingSpaceAvailable
+          : draft.recordingSpaceAvailable,
+        screenerDeviceType: String(savedDraft.screenerDeviceType || draft.screenerDeviceType),
+        screenerDeviceOther: String(savedDraft.screenerDeviceOther || draft.screenerDeviceOther),
+        screenerOsVersion: String(savedDraft.screenerOsVersion || draft.screenerOsVersion),
+        screenerConsent: true,
         ...(requiresNewUtestAccount ? { testerId: '', utestEmail: '', utestAccountScreenshotUrl: '' } : {}),
         projectId: project.id
       } as ApplicationDraft;
@@ -300,6 +368,17 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     }
   };
 
+  const handleToggleScreenerLanguage = (language: string) => {
+    if (!applicationDraft) return;
+    const selected = applicationDraft.fluentLanguages;
+    const next = selected.includes(language)
+      ? selected.filter((item) => item !== language)
+      : language === 'None of the above'
+        ? [language]
+        : [...selected.filter((item) => item !== 'None of the above'), language];
+    updateDraft({ fluentLanguages: next });
+  };
+
   const handleAddInlineDevice = () => {
     const brand = deviceDraft.brand.trim();
     const model = deviceDraft.model.trim();
@@ -343,10 +422,44 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
   const handleSubmitApplication = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!applyingProject || !applicationDraft) return;
+    if (!applyingProject || !applicationDraft || isSubmittingApplication) return;
 
     if (!applicationDraft.fullName || !applicationDraft.utestEmail || !applicationDraft.dateOfBirth || !applicationDraft.country || !applicationDraft.phoneNumber.trim() || !applicationDraft.smartphone) {
       setApplyError('Please complete all required fields before submitting your application.');
+      return;
+    }
+
+    if (!/^30\d+$/.test(applicationDraft.testerId.trim())) {
+      setApplyError('The Applause screener is available only for uTest IDs that start with 30 and contain digits only.');
+      return;
+    }
+
+    const birthDate = new Date(`${applicationDraft.dateOfBirth}T00:00:00`);
+    const now = new Date();
+    const age = now.getFullYear() - birthDate.getFullYear()
+      - ((now.getMonth() < birthDate.getMonth()
+        || (now.getMonth() === birthDate.getMonth() && now.getDate() < birthDate.getDate())) ? 1 : 0);
+    if (Number.isNaN(birthDate.getTime()) || birthDate >= now || age < 18) {
+      setApplyError('Enter a valid date of birth. Applicants must be at least 18 years old.');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(applicationDraft.gmailEmail.trim())
+      || !applicationDraft.gmailEmail.trim().toLowerCase().endsWith('@gmail.com')) {
+      setApplyError('The email address in your Connectfy profile must be a valid @gmail.com address for this screener.');
+      return;
+    }
+
+    if (!applicationDraft.screenerGender
+      || (applicationDraft.screenerGender === 'Other' && !applicationDraft.screenerGenderOther.trim())
+      || applicationDraft.fluentLanguages.length === 0
+      || (applicationDraft.fluentLanguages.includes('Other') && !applicationDraft.languageOther.trim())
+      || (applicationDraft.fluentLanguages.includes('None of the above') && applicationDraft.fluentLanguages.length > 1)
+      || applicationDraft.recordingSpaceAvailable === null
+      || !applicationDraft.screenerDeviceType
+      || (applicationDraft.screenerDeviceType === 'Other' && !applicationDraft.screenerDeviceOther.trim())
+      || !applicationDraft.screenerOsVersion.trim()) {
+      setApplyError('Complete the required Applause screener answers before submitting.');
       return;
     }
 
@@ -382,59 +495,87 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       smartphone: applicationDraft.smartphone || finalDevices[0],
       phoneNumber: applicationDraft.phoneNumber.trim()
     };
-    await saveApplicationDraft(applyingProject.id, finalDraft);
+    setIsSubmittingApplication(true);
+    try {
+      await saveApplicationDraft(applyingProject.id, finalDraft);
 
-    const combinedExperience = [
-      experienceNote.trim(),
-      `Full name: ${finalDraft.fullName}`,
-      `uTest email: ${finalDraft.utestEmail}`,
-      `DOB: ${finalDraft.dateOfBirth}`,
-      `Age range: ${finalDraft.ageRange}`,
-      `Country: ${finalDraft.country}`,
-      `Device: ${finalDraft.smartphone}`,
-      `Government ID available: ${finalDraft.hasValidId ? 'Yes' : 'No'}`,
-      `Voice recordings consent: ${finalDraft.willingVoiceRecording ? 'Yes' : 'No'}`
-    ].filter(Boolean).join(' | ');
+      const combinedExperience = [
+        experienceNote.trim(),
+        `Full name: ${finalDraft.fullName}`,
+        `uTest email: ${finalDraft.utestEmail}`,
+        `DOB: ${finalDraft.dateOfBirth}`,
+        `Age range: ${finalDraft.ageRange}`,
+        `Country: ${finalDraft.country}`,
+        `Device: ${finalDraft.smartphone}`,
+        `Government ID available: ${finalDraft.hasValidId ? 'Yes' : 'No'}`,
+        `Voice recordings consent: ${finalDraft.willingVoiceRecording ? 'Yes' : 'No'}`
+      ].filter(Boolean).join(' | ');
 
-    updateTesterProfile({
-      legalName: finalDraft.fullName,
-      dateOfBirth: finalDraft.dateOfBirth,
-      uTestId: finalDraft.testerId,
-      uTestEmail: finalDraft.utestEmail,
-      ageRange: finalDraft.ageRange,
-      country: finalDraft.country,
-      smartphone: finalDraft.smartphone,
-      phone: finalDraft.phoneNumber,
-      hasValidId: finalDraft.hasValidId,
-      willingVoiceRecording: finalDraft.willingVoiceRecording,
-      uTestAccountScreenshotUrl: finalDraft.utestAccountScreenshotUrl
-    });
+      updateTesterProfile({
+        legalName: finalDraft.fullName,
+        dateOfBirth: finalDraft.dateOfBirth,
+        uTestId: finalDraft.testerId,
+        uTestEmail: finalDraft.utestEmail,
+        ageRange: finalDraft.ageRange,
+        country: finalDraft.country,
+        smartphone: finalDraft.smartphone,
+        phone: finalDraft.phoneNumber,
+        hasValidId: finalDraft.hasValidId,
+        willingVoiceRecording: finalDraft.willingVoiceRecording,
+        uTestAccountScreenshotUrl: finalDraft.utestAccountScreenshotUrl
+      });
 
-    const ok = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
-      applicantCountry: finalDraft.country,
-      applicantDevice: finalDraft.smartphone,
-      uTestId: finalDraft.testerId,
-      uTestEmail: finalDraft.utestEmail,
-      applicantFullName: finalDraft.fullName,
-      applicantDateOfBirth: finalDraft.dateOfBirth,
-      applicantAgeRange: finalDraft.ageRange,
-      applicantSmartphone: finalDraft.smartphone,
-      applicantPhone: finalDraft.phoneNumber,
-      applicantHasValidId: finalDraft.hasValidId,
-      applicantWillingVoiceRecording: finalDraft.willingVoiceRecording,
-      applicantUtestScreenshotUrl: finalDraft.utestAccountScreenshotUrl,
-      submittedAt: finalDraft.updatedAt
-    });
-    if (ok) {
-      void deleteApplicationDraft(applyingProject.id);
-      setApplySuccess(true);
-      setTimeout(() => {
-        setApplyingProject(null);
-        setApplicationDraft(null);
-        setApplySuccess(false);
-      }, 1400);
-    } else {
-      setApplyError('You may already have applied, or the project has filled its remaining slots.');
+      const result = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
+        applicantCountry: finalDraft.country,
+        applicantDevice: finalDraft.smartphone,
+        uTestId: finalDraft.testerId,
+        uTestEmail: finalDraft.utestEmail,
+        applicantFullName: finalDraft.fullName,
+        applicantDateOfBirth: finalDraft.dateOfBirth,
+        applicantAgeRange: finalDraft.ageRange,
+        applicantSmartphone: finalDraft.smartphone,
+        applicantPhone: finalDraft.phoneNumber,
+        applicantHasValidId: finalDraft.hasValidId,
+        applicantWillingVoiceRecording: finalDraft.willingVoiceRecording,
+        applicantUtestScreenshotUrl: finalDraft.utestAccountScreenshotUrl,
+        applicantGmailEmail: finalDraft.gmailEmail.trim(),
+        applicantGender: finalDraft.screenerGender,
+        applicantGenderOther: finalDraft.screenerGenderOther.trim(),
+        applicantFluentLanguages: finalDraft.fluentLanguages,
+        applicantLanguageOther: finalDraft.languageOther.trim(),
+        applicantRecordingSpaceAvailable: Boolean(finalDraft.recordingSpaceAvailable),
+        applicantScreenerDeviceType: finalDraft.screenerDeviceType,
+        applicantScreenerDeviceOther: finalDraft.screenerDeviceOther.trim(),
+        applicantScreenerOsVersion: finalDraft.screenerOsVersion.trim(),
+        applicantScreenerConsent: finalDraft.screenerConsent,
+        submittedAt: finalDraft.updatedAt
+      });
+      if (result.saved && result.applicationId && result.screener) {
+        void deleteApplicationDraft(applyingProject.id);
+        setApplySuccess(true);
+        setApplicationScreenerResult({
+          applicationId: result.applicationId,
+          submitted: result.screener.submitted,
+          queued: result.screener.queued,
+          retryable: result.screener.retryable,
+          message: result.screener.message
+        });
+        if (result.screener.submitted) {
+          setTimeout(() => {
+            setApplyingProject(null);
+            setApplicationDraft(null);
+            setApplySuccess(false);
+            setApplicationScreenerResult(null);
+          }, 1800);
+        }
+      } else {
+        setApplyError('You may already have applied, or the project has filled its remaining slots.');
+      }
+    } catch (error) {
+      console.error('Unable to submit the project application:', error);
+      setApplyError(error instanceof Error ? error.message : 'Unable to submit your application. Please try again.');
+    } finally {
+      setIsSubmittingApplication(false);
     }
   };
 
@@ -694,15 +835,19 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               >
                 View Scope
               </button>
-              <button
-                onClick={() => handleOpenApplyModal(featuredProject)}
-                disabled={!isProjectOpenForApplications(featuredProject) && !featuredNeedsUtestUpdate}
-                className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
-              >
-                {isProjectOpenForApplications(featuredProject)
-                  ? featuredNeedsUtestUpdate ? 'Create Account & Reapply' : 'Apply to Featured Project'
-                  : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt, featuredProject.slotsFilled, featuredProject.slotsTotal)}
-              </button>
+              {role === 'tester' && featuredApplication?.status === 'pending' ? (
+                <span className="text-xs font-semibold text-amber-700">Application pending · screener handled automatically</span>
+              ) : (
+                <button
+                  onClick={() => handleOpenApplyModal(featuredProject)}
+                  disabled={!isProjectOpenForApplications(featuredProject) && !featuredNeedsUtestUpdate}
+                  className="rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                >
+                  {isProjectOpenForApplications(featuredProject)
+                    ? featuredNeedsUtestUpdate ? 'Create Account & Reapply' : 'Apply to Featured Project'
+                    : getProjectAvailabilityLabel(featuredProject.status, featuredProject.startsAt, featuredProject.slotsFilled, featuredProject.slotsTotal)}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -885,7 +1030,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <span className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-emerald-400 py-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                   </span>
-                ) : requiresNewUtestAccount ? (
+                ) : requiresNewUtestAccount && !hasApplied ? (
                   <button
                     onClick={() => handleOpenApplyModal(project)}
                     className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl flex items-center justify-center space-x-1.5 transition shadow"
@@ -898,9 +1043,14 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     Not Selected
                   </span>
                 ) : hasApplied ? (
-                  <span className="inline-flex items-center justify-center sm:justify-start gap-1 text-xs font-semibold text-amber-400/90 py-1">
-                    <Clock className="w-3.5 h-3.5" /> Application Pending
-                  </span>
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center justify-center sm:justify-start gap-1 text-xs font-semibold text-amber-400/90 py-1">
+                      <Clock className="w-3.5 h-3.5" /> Application Pending
+                    </span>
+                    {role === 'tester' && app && (
+                      <span className="block text-[11px] font-semibold text-sky-200">Screener handled automatically</span>
+                    )}
+                  </div>
                 ) : !isProjectOpenForApplications(project) ? (
                   <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
                     {getProjectAvailabilityLabel(project.status, project.startsAt, project.slotsFilled, project.slotsTotal)}
@@ -1113,17 +1263,21 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     <Link2 className="h-3.5 w-3.5" />
                     Share apply link
                   </button>
-                  <button
-                    onClick={() => {
-                      const proj = viewingProject;
-                      setViewingProject(null);
-                      handleOpenApplyModal(proj);
-                    }}
-                    disabled={!isProjectOpenForApplications(viewingProject)}
-                    className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
-                  >
-                    {isProjectOpenForApplications(viewingProject) ? 'Apply for Opportunity' : getProjectAvailabilityLabel(viewingProject.status, viewingProject.startsAt, viewingProject.slotsFilled, viewingProject.slotsTotal)}
-                  </button>
+                  {role === 'tester' && getApplicationForProject(viewingProject.id)?.status === 'pending' ? (
+                    <span className="text-xs font-semibold text-amber-700">Application pending · screener handled automatically</span>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const proj = viewingProject;
+                        setViewingProject(null);
+                        handleOpenApplyModal(proj);
+                      }}
+                      disabled={!isProjectOpenForApplications(viewingProject)}
+                      className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white text-xs font-bold rounded-xl transition shadow-sm shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                    >
+                      {isProjectOpenForApplications(viewingProject) ? 'Apply for Opportunity' : getProjectAvailabilityLabel(viewingProject.status, viewingProject.startsAt, viewingProject.slotsFilled, viewingProject.slotsTotal)}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1141,6 +1295,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               </div>
               <button
                 onClick={() => setApplyingProject(null)}
+                disabled={isSubmittingApplication}
                 className="text-slate-500 hover:text-slate-900"
               >
                 <X className="w-5 h-5" />
@@ -1152,10 +1307,21 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <div className="w-12 h-12 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <h4 className="text-base font-bold text-slate-900">Application Submitted!</h4>
+                <h4 className="text-base font-bold text-slate-900">
+                  {applicationScreenerResult?.submitted === false ? 'Application Saved' : 'Application Submitted!'}
+                </h4>
                 <p className="text-xs text-slate-600">
-                  {applyingProject.company} will review your profile & fleet hardware. You will receive an invite notification once approved.
+                  {applicationScreenerResult?.queued
+                    ? `${applicationScreenerResult.message} If Applause confirms the response, your application will be approved and an invitation email queued.`
+                    : applicationScreenerResult?.message || 'Your application has been submitted.'}
                 </p>
+                {applicationScreenerResult && !applicationScreenerResult.queued && !applicationScreenerResult.submitted && (
+                  <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left">
+                    <p className="text-xs leading-relaxed text-amber-900">
+                      Your application is saved, but there was a problem saving the screener details. {applicationScreenerResult.message}
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <form onSubmit={handleSubmitApplication} className="min-h-0 space-y-4 overflow-y-auto pr-1 pt-4 text-xs">
@@ -1206,6 +1372,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
                       placeholder="uTest Tester ID"
                     />
+                    <span className="text-[10px] font-normal text-slate-500">Applause screener submissions require an ID beginning with 30.</span>
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
@@ -1275,7 +1442,129 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       placeholder="Phone number"
                     />
                   </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Gmail address from your Connectfy profile <span className="text-rose-600">*</span>
+                    <input
+                      type="email"
+                      required
+                      readOnly
+                      value={applicationDraft?.gmailEmail || ''}
+                      className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-800 outline-none"
+                    />
+                    <span className="text-[10px] font-normal text-slate-500">The Applause screener requires a Gmail address. Update your account profile if this is not the right address.</span>
+                  </label>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="screener-gender" className="block font-semibold text-slate-700">
+                      Gender <span className="text-rose-600">*</span>
+                    </label>
+                    <select
+                      id="screener-gender"
+                      required
+                      value={applicationDraft?.screenerGender || ''}
+                      onChange={(event) => updateDraft({ screenerGender: event.target.value })}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                    >
+                      <option value="" disabled>Select an option</option>
+                      {SCREENER_GENDERS.map((gender) => <option key={gender} value={gender}>{gender}</option>)}
+                    </select>
+                    {applicationDraft?.screenerGender === 'Other' && (
+                      <input
+                        value={applicationDraft.screenerGenderOther}
+                        onChange={(event) => updateDraft({ screenerGenderOther: event.target.value })}
+                        required
+                        aria-label="Enter gender"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                        placeholder="Enter gender"
+                      />
+                    )}
+                  </div>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Mobile device type <span className="text-rose-600">*</span>
+                    <select
+                      required
+                      value={applicationDraft?.screenerDeviceType || ''}
+                      onChange={(event) => updateDraft({ screenerDeviceType: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                    >
+                      <option value="" disabled>Select an option</option>
+                      {SCREENER_DEVICES.map((device) => <option key={device} value={device}>{device}</option>)}
+                    </select>
+                    {applicationDraft?.screenerDeviceType === 'Other' && (
+                      <input
+                        value={applicationDraft.screenerDeviceOther}
+                        onChange={(event) => updateDraft({ screenerDeviceOther: event.target.value })}
+                        required
+                        aria-label="Enter mobile device type"
+                        className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                        placeholder="Enter device type"
+                      />
+                    )}
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
+                    Mobile device OS version <span className="text-rose-600">*</span>
+                    <input
+                      required
+                      value={applicationDraft?.screenerOsVersion || ''}
+                      onChange={(event) => updateDraft({ screenerOsVersion: event.target.value })}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="e.g. Android 14 or iOS 18.1"
+                    />
+                  </label>
                 </div>
+
+                <fieldset className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <legend className="px-1 font-semibold text-slate-800">
+                    Fluent languages <span className="text-rose-600">*</span>
+                  </legend>
+                  <p className="text-[11px] text-slate-600">Select every language you can speak and read naturally.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SCREENER_LANGUAGES.map((language) => (
+                      <label key={language} className="flex items-center gap-2 text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(applicationDraft?.fluentLanguages.includes(language))}
+                          onChange={() => handleToggleScreenerLanguage(language)}
+                          className="h-4 w-4 accent-[#00A3E0]"
+                        />
+                        {language}
+                      </label>
+                    ))}
+                  </div>
+                  {applicationDraft?.fluentLanguages.includes('Other') && (
+                    <input
+                      value={applicationDraft.languageOther}
+                      onChange={(event) => updateDraft({ languageOther: event.target.value })}
+                      required
+                      aria-label="Enter fluent language"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
+                      placeholder="Enter fluent language"
+                    />
+                  )}
+                </fieldset>
+
+                <fieldset className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <legend className="px-1 font-semibold text-slate-800">
+                    Do you have access to both a quiet recording space and a space with background noise? <span className="text-rose-600">*</span>
+                  </legend>
+                  <div className="flex gap-5">
+                    {[true, false].map((available) => (
+                      <label key={String(available)} className="flex items-center gap-2 text-slate-700">
+                        <input
+                          type="radio"
+                          name="recording-space-available"
+                          checked={applicationDraft?.recordingSpaceAvailable === available}
+                          onChange={() => updateDraft({ recordingSpaceAvailable: available })}
+                          className="h-4 w-4 accent-[#00A3E0]"
+                        />
+                        {available ? 'Yes' : 'No'}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
 
                 <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <label className="block font-semibold text-slate-800" htmlFor="utest-account-screenshot">
@@ -1313,6 +1602,18 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 <p className="rounded-lg border border-[#00A3E0]/30 bg-[#007AFF]/10 px-3 py-2 text-[11px] leading-relaxed text-[#005b85]">
                   Payment reminder: Connectfy does not collect your payments. Your uTest ID and uTest email are required for payment processing through uTest.
                 </p>
+
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                  <p className="text-[11px] leading-relaxed text-sky-950">
+                    This organization-only project uses your prior hiring authorization. After you apply, Connectfy automatically sends your saved application details and screener answers to Applause through its{' '}
+                    <a
+                      href="https://docs.google.com/forms/d/e/1FAIpQLSeEPV0KzYwNLeLGlhvtvotOSt7goCnw4GB8bonAqJEQjqCLzA/viewform"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >Google Form</a>. Contact project management if your prior authorization has changed.
+                  </p>
+                </div>
 
                 <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <label className="flex items-start gap-2 text-slate-700">
@@ -1513,16 +1814,17 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <button
                     type="button"
                     onClick={() => setApplyingProject(null)}
+                    disabled={isSubmittingApplication}
                     className="px-4 py-2 bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 font-semibold rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={isUploadingUtestScreenshot}
-                    className="px-5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white font-bold rounded-xl shadow transition shadow-[#007AFF]/30"
+                    disabled={isUploadingUtestScreenshot || isSubmittingApplication}
+                    className="px-5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white font-bold rounded-xl shadow transition shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Confirm & Send Application
+                    {isSubmittingApplication ? 'Submitting…' : 'Confirm & Send Application'}
                   </button>
                 </div>
               </form>

@@ -19,6 +19,7 @@ import { PaymentsSection } from './components/PaymentsSection';
 import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
+import { ApplicationScreenerSubmissions } from './components/ApplicationScreenerSubmissions';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -38,7 +39,8 @@ import {
   ShieldCheck,
   Plus,
   CalendarClock,
-  MailCheck
+  MailCheck,
+  CheckCircle2
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -50,6 +52,7 @@ const adminMobileItems = [
   { tab: 'arbeitnow_jobs', label: 'Freelance Jobs', icon: Briefcase },
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
   { tab: 'project_tasks', label: 'Tasks', icon: FileCheck },
+  { tab: 'application_screener_submissions', label: 'Applause', icon: CheckCircle2 },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
   { tab: 'project_operations', label: 'Project Ops', icon: Briefcase },
@@ -158,6 +161,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <ProjectOperationsSection />
           ) : activeTab === 'project_tasks' ? (
             <ProjectManagerActivity />
+          ) : activeTab === 'application_screener_submissions' ? (
+            <ApplicationScreenerSubmissions />
           ) : activeTab === 'mass_invites' ? (
             <MassInviteSection />
           ) : activeTab === 'payout_operations' ? (
