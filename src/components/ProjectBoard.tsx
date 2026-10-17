@@ -472,6 +472,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       setApplyError('Enter a valid date of birth. Applicants must be at least 18 years old.');
       return;
     }
+    if (applicationDraft.ageRange !== ageRange) {
+      setApplyError('Select the age range that matches your date of birth.');
+      return;
+    }
 
     if (!isValidPhoneNumber(applicationDraft.phoneNumber)) {
       setApplyError('Enter a valid phone number using 7 to 15 digits. You may include a leading +, spaces, parentheses, or hyphens.');
@@ -1437,12 +1441,18 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
                     Age Range
-                    <input
-                      readOnly
-                      value={getScreenerAgeRange(applicationDraft?.dateOfBirth || '')}
+                    <select
+                      required
+                      value={applicationDraft?.ageRange || ''}
+                      onChange={(event) => updateDraft({ ageRange: event.target.value })}
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
-                      placeholder="Calculated from date of birth"
-                    />
+                    >
+                      <option value="" disabled>Select an age range</option>
+                      <option value="18-25">18-25</option>
+                      <option value="26-39">26-39</option>
+                      <option value="40-59">40-59</option>
+                      <option value="60+">60+</option>
+                    </select>
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
