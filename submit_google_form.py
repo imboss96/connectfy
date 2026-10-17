@@ -245,6 +245,25 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
 
             for _ in range(MAX_PAGES):
                 await fill_current_page(page, data)
+                next_button = page.get_by_role("button", name="Next", exact=True)
+                if await next_button.count():
+                    previous_questions = await page.locator(
+                        'div[role="listitem"] [role="heading"]'
+                    ).all_inner_texts()
+                    await next_button.first.click()
+                    await page.wait_for_timeout(700)
+                    current_questions = await page.locator(
+                        'div[role="listitem"] [role="heading"]'
+                    ).all_inner_texts()
+                    if current_questions == previous_questions:
+                        errors = await page.locator('[role="alert"]').all_inner_texts()
+                        raise RuntimeError(
+                            "The screener rejected one or more answers."
+                            if errors
+                            else "The screener did not advance to the next page."
+                        )
+                    continue
+
                 submit_button = page.get_by_role("button", name="Submit", exact=True)
                 if await submit_button.count():
                     await submit_button.first.click()
@@ -261,24 +280,7 @@ async def submit_one(data: dict[str, Any]) -> dict[str, Any]:
                         }
                     return {"ok": True, "submitted": True}
 
-                next_button = page.get_by_role("button", name="Next", exact=True)
-                if not await next_button.count():
-                    raise RuntimeError("The screener did not provide a Next or Submit button.")
-                previous_questions = await page.locator(
-                    'div[role="listitem"] [role="heading"]'
-                ).all_inner_texts()
-                await next_button.first.click()
-                await page.wait_for_timeout(700)
-                current_questions = await page.locator(
-                    'div[role="listitem"] [role="heading"]'
-                ).all_inner_texts()
-                if current_questions == previous_questions:
-                    errors = await page.locator('[role="alert"]').all_inner_texts()
-                    raise RuntimeError(
-                        "The screener rejected one or more answers."
-                        if errors
-                        else "The screener did not advance to the next page."
-                    )
+                raise RuntimeError("The screener did not provide a Next or Submit button.")
             raise RuntimeError("The screener exceeded the configured page limit.")
         except Exception as error:
             return {
