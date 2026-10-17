@@ -1789,6 +1789,43 @@ const pollApplicationScreenerQueue = async () => {
   }
 };
 
+app.post('/api/admin/reconcile-application-screener', async (req, res) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res.status(401).json({ ok: false, message: 'Sign in as an administrator to reconcile a screener response.' });
+  }
+  try {
+    await requireAdmin(authorization);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to verify administrator access.';
+    const status = /invalid|expired|sign in/i.test(message) ? 401 : 403;
+    return res.status(status).json({ ok: false, message });
+  }
+
+  const applicationId = String(req.body?.applicationId || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(applicationId)) {
+    return res.status(400).json({ ok: false, message: 'A valid application ID is required.' });
+  }
+
+  try {
+    await callOutboxRpc('reconcile_confirmed_application_screener', {
+      p_application_id: applicationId,
+      p_form_url: 'https://docs.google.com/forms/d/e/1FAIpQLSeLvCyrZrRNAmKzIST2YDKmv20jSBSfYQlSwpKhGjGwFrlpKg/viewform'
+    });
+    return res.json({
+      ok: true,
+      message: 'The confirmed screener response was reconciled. The form was not resubmitted.'
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to reconcile the confirmed screener response.';
+    console.error('Unable to reconcile externally confirmed application screener:', {
+      applicationId,
+      error: message
+    });
+    return res.status(409).json({ ok: false, message });
+  }
+});
+
 app.post('/api/application-screener', async (req, res) => {
   return res.status(410).json({
     ok: false,

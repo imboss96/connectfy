@@ -47,6 +47,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [reconcilingApplicationId, setReconcilingApplicationId] = useState<string | null>(null);
   const loadSubmissions = useCallback(async (showLoading = true) => {
     if (!supabase) {
       setError('Connectfy database is not configured.');
@@ -81,6 +82,49 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
     const refreshInterval = setInterval(() => void loadSubmissions(false), 10000);
     return () => clearInterval(refreshInterval);
   }, [loadSubmissions]);
+
+  const reconcileConfirmedResponse = async (applicationId: string) => {
+    if (!window.confirm(
+      'Confirm that you personally verified this applicant’s response in the Google Form response sheet. Connectfy will mark it submitted, approve the application, and queue its invitation without submitting the form again.'
+    )) return;
+    if (!supabase) {
+      setError('Connectfy database is not configured.');
+      return;
+    }
+
+    setReconcilingApplicationId(applicationId);
+    setError('');
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error('Your session has expired. Sign in again.');
+
+      const configuredUrl = import.meta.env.VITE_EMAIL_BACKEND_URL || 'http://localhost:3002/api/project-email';
+      const backendUrl = new URL(configuredUrl);
+      backendUrl.pathname = '/';
+      backendUrl.search = '';
+      backendUrl.hash = '';
+      const response = await fetch(new URL('/api/admin/reconcile-application-screener', backendUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ applicationId })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to reconcile the confirmed form response.');
+      }
+      window.location.reload();
+    } catch (reconcileError) {
+      setError(reconcileError instanceof Error
+        ? reconcileError.message
+        : 'Unable to reconcile the confirmed form response.');
+      setReconcilingApplicationId(null);
+    }
+  };
 
   const filteredSubmissions = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -240,6 +284,20 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
                       {submission.screener_submission_error && submission.screener_submission_status !== 'failed' && (
                         <p role="alert" className="mt-1 text-xs text-rose-700">{submission.screener_submission_error}</p>
                       )}
+                      {submission.screener_submission_status === 'pending'
+                        && submission.screener_submission_error?.includes('worker stopped while the external submission was in progress')
+                        && (
+                          <button
+                            type="button"
+                            disabled={reconcilingApplicationId !== null}
+                            onClick={() => void reconcileConfirmedResponse(application.id)}
+                            className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            {reconcilingApplicationId === application.id
+                              ? 'Reconciling confirmed response…'
+                              : 'I verified the sheet response — reconcile'}
+                          </button>
+                        )}
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">
                       {submission.utest_account_screenshot_url && (
