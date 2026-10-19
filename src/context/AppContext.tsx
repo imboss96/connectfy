@@ -1999,12 +1999,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     const dateOfBirth = new Date(`${details.dateOfBirth}T00:00:00`);
     const allowedAgeRanges = ['18-24', '25-34', '35-44', '45+'];
-    if (!details.uTestId.trim() || !details.legalName.trim() || !details.dateOfBirth
-      || Number.isNaN(dateOfBirth.getTime()) || dateOfBirth >= new Date()
-      || !details.phone.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.uTestEmail.trim())
-      || !allowedAgeRanges.includes(details.ageRange) || !details.country.trim() || !details.smartphone.trim()
-      || !details.hasValidId || !details.willingVoiceRecording || !details.uTestAccountScreenshotUrl.trim()) {
-      throw new Error('Complete every required project application field, upload your uTest account screenshot, and confirm the ID and recording requirements before accepting the invitation.');
+    const invalidFields: string[] = [];
+    if (!details.uTestId.trim()) invalidFields.push('uTest ID');
+    if (!details.legalName.trim()) invalidFields.push('full name');
+    if (!details.dateOfBirth || Number.isNaN(dateOfBirth.getTime()) || dateOfBirth >= new Date()) {
+      invalidFields.push('a valid date of birth');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.uTestEmail.trim())) invalidFields.push('a valid email address');
+    if (!allowedAgeRanges.includes(details.ageRange)) invalidFields.push('age range');
+    if (!details.country.trim()) invalidFields.push('country');
+    if (!details.smartphone.trim()) invalidFields.push('device used for the project');
+    if (!details.phone.trim()) invalidFields.push('phone number');
+    if (!details.hasValidId) invalidFields.push('confirmation that you have a valid government-issued ID');
+    if (!details.willingVoiceRecording) invalidFields.push('confirmation that you are willing to complete voice recordings');
+    if (!details.uTestAccountScreenshotUrl.trim()) invalidFields.push('uTest account screenshot');
+    if (invalidFields.length > 0) {
+      throw new Error(`Please complete or correct: ${invalidFields.join(', ')} before accepting the invitation.`);
     }
 
     const normalizedDetails: InviteProfileDetails = {
