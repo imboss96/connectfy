@@ -21,6 +21,7 @@ import { formatProjectEmailType, ProjectEmailType, ProjectEmailPayload, sendProj
 import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
 import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
+import { calculateTesterRanking } from '../lib/testerRanking';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -205,7 +206,7 @@ const emptyTesterProfile: TesterProfile = {
   headline: '',
   bio: '',
   languages: [],
-  tier: 'Bronze',
+  tier: 'Unrated',
   rating: 0,
   totalReviews: 0,
   acceptanceRate: 0,
@@ -864,7 +865,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           uTestEmail: storedUtestDetails?.utest_email || app.profiles?.profile_data?.testerProfile?.uTestEmail || '',
           uTestAccountScreenshotUrl: storedUtestDetails?.utest_account_screenshot_url || '',
           testerRating: Number(app.profiles?.profile_data?.testerProfile?.rating || app.tester_rating || 0),
-          testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Bronze',
+          testerTier: app.profiles?.profile_data?.testerProfile?.tier || app.tester_tier || 'Unrated',
           appliedDate: app.applied_at ? new Date(app.applied_at).toISOString().replace('T', ' ').substring(0, 16) : '',
           selectedDevices: Array.isArray(app.selected_devices) ? app.selected_devices : [],
           experienceNote: app.experience_note || '',
@@ -1008,6 +1009,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const testerRows = serverRows.filter((row: any) => row.tester_id === userId);
           const approvedRows = testerRows.filter((row: any) => row.status === 'approved');
           const pendingRows = testerRows.filter((row: any) => row.status === 'submitted' || row.status === 'under_review');
+          const ranking = calculateTesterRanking(testerRows);
           const payoutRows = await fetchPayoutRequestsFromSupabase(userId);
           let payrollRows: any[] = [];
           if (supabase) {
@@ -1047,7 +1049,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             availableBalance: Math.max(0, Number((availableEarnings - totalWithdrawn).toFixed(2))),
             lifetimeEarnings: Number(lifetimeEarnings.toFixed(2)),
             pendingEscrow: Number(pendingEscrow.toFixed(2)),
-            approvedBugsCount: approvedRows.filter((row: any) => row.kind === 'bug').length
+            approvedBugsCount: approvedRows.filter((row: any) => row.kind === 'bug').length,
+            ...ranking
           }));
 
           const creditTransactions: WalletTransaction[] = approvedRows.map((row: any) => ({
@@ -1483,7 +1486,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       uTestEmail: emailDetails?.uTestEmail || '',
       uTestAccountScreenshotUrl: emailDetails.applicantUtestScreenshotUrl,
       testerRating: testerProfile.rating,
-      testerTier: testerProfile.tier === 'Unrated' ? 'Bronze' : testerProfile.tier,
+      testerTier: testerProfile.tier,
       appliedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
       selectedDevices: devices,
       experienceNote,

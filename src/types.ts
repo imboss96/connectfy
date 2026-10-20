@@ -345,6 +345,12 @@ export interface TesterProfile {
   headline?: string;
   languages?: LanguageSkill[];
   tier: 'Unrated' | 'Bronze' | 'Silver' | 'Gold' | 'Top Rated';
+  rankingScore?: number;
+  rankingQualityScore?: number;
+  rankingReliabilityScore?: number;
+  rankingVolumeScore?: number;
+  rankingApprovedCount?: number;
+  rankingReviewedCount?: number;
   rating: number; // 4.92
   totalReviews: number;
   acceptanceRate: number; // 96%

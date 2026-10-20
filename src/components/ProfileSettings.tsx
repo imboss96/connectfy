@@ -1288,6 +1288,47 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
       {/* Tab 3: Skills, Badges & Academy */}
       {currentTab === 'skills' && (
         <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">Connectfy performance rank</p>
+                <h3 className="mt-1 text-xl font-black text-white">
+                  {testerProfile.tier === 'Unrated' ? 'Building your ranking' : `${testerProfile.tier} tester`}
+                </h3>
+                <p className="mt-1 text-xs text-slate-400">Based on client-reviewed work from the last six months.</p>
+              </div>
+              <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-right">
+                <p className="text-2xl font-black text-cyan-200">{Number(testerProfile.rankingScore || 0).toFixed(1)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-100/70">Score / 100</p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Quality · 40%', value: testerProfile.rankingQualityScore || 0 },
+                { label: 'Approval rate · 35%', value: testerProfile.rankingReliabilityScore || 0 },
+                { label: 'Approved work · 25%', value: testerProfile.rankingVolumeScore || 0 }
+              ].map((metric) => (
+                <div key={metric.label} className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-slate-300">{metric.label}</span>
+                    <span className="font-bold text-white">{Number(metric.value).toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-700">
+                    <div className="h-full rounded-full bg-cyan-400" style={{ width: `${Math.min(100, Math.max(0, metric.value))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-4 text-xs text-slate-400">
+              {testerProfile.tier === 'Unrated'
+                ? `${testerProfile.rankingApprovedCount || 0} of 5 approved submissions needed to earn a tier.`
+                : `${testerProfile.rankingApprovedCount || 0} approved out of ${testerProfile.rankingReviewedCount || 0} reviewed submissions.`}
+              {' '}Tiers: Bronze below 70, Silver 70+, Gold 82+, and Top Rated 92+. You need at least 5 approvals in the rolling six-month period; approved-work points cap at 20 approvals. Ratings use a 4.2/5 baseline that has less influence as client reviews accumulate.
+            </p>
+          </section>
+
           {/* Top QA Standing Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
@@ -1300,11 +1341,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-              <span className="text-xs text-slate-400 block mb-1">Bug Acceptance Rate</span>
+              <span className="text-xs text-slate-400 block mb-1">Approval Rate · 6 Months</span>
               <span className="text-2xl font-black text-emerald-400">
                 {testerProfile.acceptanceRate}%
               </span>
-              <span className="text-[10px] text-emerald-300/80 mt-1 block">Top 5% Global Standing</span>
+              <span className="text-[10px] text-emerald-300/80 mt-1 block">Approved ÷ reviewed work</span>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
