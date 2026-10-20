@@ -97,42 +97,45 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
   return (
     <div className="theme-shell min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#f3f4f6] text-slate-900 flex flex-col font-sans selection:bg-[#007AFF] selection:text-white">
-      {/* Top Navigation */}
-      <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} onRequestAdminAccess={onRequestAdminAccess} />
+      <div className="fixed inset-x-0 top-0 z-40 w-full">
+        <Navbar onOpenWallet={() => setIsWalletOpen(true)} onLogout={onLogout} onRequestAdminAccess={onRequestAdminAccess} />
 
-      {/* Freelance Scope Quick Bar - shown on tablet/desktop to avoid mobile horizontal blowout */}
-      <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#edf7fb] border-b border-[#dfe7eb] px-3 sm:px-4 py-2 text-xs text-slate-500 md:ml-64 md:w-[calc(100%-16rem)]">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto scrollbar-none min-w-0">
-          <div className="flex items-center space-x-2 shrink-0">
-            <span className="font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
-              <Route className="w-3.5 h-3.5 text-[#00A3E0]" />
-              <span>Marketplace Flow:</span>
-            </span>
-            <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 shrink-0">
-              <span className="text-slate-300">1. Commission & Post</span>
-              <span>→</span>
-              <span className="text-slate-300">2. Apply & Invite</span>
-              <span>→</span>
-              <span className="text-slate-300">3. Task / Defect</span>
-              <span>→</span>
-              <span className="text-emerald-400 font-semibold">4. Approved & Credited</span>
-              <span>→</span>
-              <span className="text-[#00A3E0] font-semibold">5. Payout</span>
+        {/* Freelance Scope Quick Bar - shown on tablet/desktop to avoid mobile horizontal blowout */}
+        <div className="theme-flowbar hidden sm:block w-full max-w-full overflow-hidden bg-[#edf7fb] border-b border-[#dfe7eb] px-3 sm:px-4 py-2 text-xs text-slate-500 md:ml-64 md:w-[calc(100%-16rem)]">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto scrollbar-none min-w-0">
+            <div className="flex items-center space-x-2 shrink-0">
+              <span className="font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
+                <Route className="w-3.5 h-3.5 text-[#00A3E0]" />
+                <span>Marketplace Flow:</span>
+              </span>
+              <div className="flex items-center space-x-1.5 text-[11px] text-slate-400 shrink-0">
+                <span className="text-slate-300">1. Commission & Post</span>
+                <span>→</span>
+                <span className="text-slate-300">2. Apply & Invite</span>
+                <span>→</span>
+                <span className="text-slate-300">3. Task / Defect</span>
+                <span>→</span>
+                <span className="text-emerald-400 font-semibold">4. Approved & Credited</span>
+                <span>→</span>
+                <span className="text-[#00A3E0] font-semibold">5. Payout</span>
+              </div>
             </div>
-          </div>
 
-          <div className="hidden sm:flex items-center space-x-2 text-[11px] shrink-0">
-            <span className="text-slate-400">Active Persona:</span>
-            <span className="px-2 py-0.5 rounded bg-[#111C33] text-slate-200 font-semibold border border-[#1E2E4E]">
-              {role === 'tester'
-                ? `Tester: ${testerProfile.name || 'New Tester'} (${testerProfile.tier || 'Unrated'} Freelancer)`
-                : role === 'admin'
-                ? `Admin & PM: ${clientProfile.name || 'Admin User'} (${clientProfile.company || 'Operations'})`
-                : `Client: ${clientProfile.company || 'New Client'}`}
-            </span>
+            <div className="hidden sm:flex items-center space-x-2 text-[11px] shrink-0">
+              <span className="text-slate-400">Active Persona:</span>
+              <span className="px-2 py-0.5 rounded bg-[#111C33] text-slate-200 font-semibold border border-[#1E2E4E]">
+                {role === 'tester'
+                  ? `Tester: ${testerProfile.name || 'New Tester'} (${testerProfile.tier || 'Unrated'} Freelancer)`
+                  : role === 'admin'
+                  ? `Admin & PM: ${clientProfile.name || 'Admin User'} (${clientProfile.company || 'Operations'})`
+                  : `Client: ${clientProfile.company || 'New Client'}`}
+              </span>
+            </div>
           </div>
         </div>
       </div>
+
+      <div className="h-14 shrink-0 sm:h-[104px]" aria-hidden="true" />
 
       {/* Main Container with responsive padding and mobile bottom nav space */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 min-w-0 overflow-x-hidden bg-[#f3f4f6] text-slate-800 md:ml-64 md:w-[calc(100%-16rem)]">

@@ -188,7 +188,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         </div>
       </aside>
 
-      <header className="theme-topbar sticky top-0 z-40 w-full border-b border-[#1E2E4E] bg-[#0B132B]/95 text-slate-100 backdrop-blur-md md:ml-64 md:w-[calc(100%-16rem)]">
+      <header className="theme-topbar relative z-40 w-full border-b border-[#1E2E4E] bg-[#0B132B]/95 text-slate-100 backdrop-blur-md md:ml-64 md:w-[calc(100%-16rem)]">
         <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
             <button onClick={handleLogoTap} className="md:hidden"><ConnectfyLogo size="sm" showSubtitle={false} /></button>
@@ -205,7 +205,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         </div>
       </header>
 
-      {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 max-h-[calc(100dvh-3.5rem)] space-y-4 overflow-y-auto border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-16 sm:max-h-[calc(100dvh-4rem)] md:hidden">
+      {isMobileMenuOpen && <div className="fixed inset-x-0 top-14 z-50 max-h-[calc(100dvh-3.5rem)] space-y-4 overflow-y-auto border-b border-[#1E2E4E] bg-[#0B132B] p-4 shadow-2xl sm:top-[104px] sm:max-h-[calc(100dvh-6.5rem)] md:hidden">
         <div className="flex items-center gap-3 rounded-xl border border-[#1E2E4E] bg-[#111C33] p-3"><img src={personAvatar} alt="Profile" className="h-10 w-10 rounded-xl object-cover" referrerPolicy="no-referrer" /><div className="min-w-0"><p className="truncate text-sm font-bold text-white">{personName}</p><p className="truncate text-xs text-slate-400">{personSubtitle}</p></div></div>
         {renderNavItems()}
         <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border-t border-[#1E2E4E] px-3 pt-3 text-xs font-semibold text-slate-500"><LogOut className="h-4 w-4" />Log out</button>
