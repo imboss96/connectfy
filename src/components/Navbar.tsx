@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Send,
   CheckCircle2,
+  UserPlus,
   X,
   LogOut
 } from 'lucide-react';
@@ -97,6 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         { label: 'Browse Projects', tab: 'projects', icon: Bug },
         { label: 'My Pipeline', tab: 'tasks', icon: Layers },
         { label: 'Browse Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
+        { label: 'Refer & Earn', tab: 'ambassador', icon: UserPlus },
         { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders }
       ]
     : role === 'admin'

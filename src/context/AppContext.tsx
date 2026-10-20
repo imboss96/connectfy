@@ -124,7 +124,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations', 'application_screener_submissions'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'ambassador', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations', 'application_screener_submissions'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -1018,13 +1018,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (payrollError) throw payrollError;
             payrollRows = data || [];
           }
+          let referralRewardRows: any[] = [];
+          if (supabase) {
+            const { data, error: referralRewardsError } = await supabase
+              .from('wallet_transactions')
+              .select('id,tester_id,amount,description,project_id,status,created_at,reference_id')
+              .eq('tester_id', userId)
+              .eq('type', 'credit_referral')
+              .eq('status', 'completed');
+            if (referralRewardsError) throw referralRewardsError;
+            referralRewardRows = data || [];
+          }
           const earnedPayrollRows = payrollRows.filter((row) => row.status === 'scheduled' || row.status === 'paid');
           const availablePayrollRows = payrollRows.filter((row) => row.status === 'scheduled');
           const deductedPayoutRows = payoutRows.filter((row: any) => row.status !== 'failed');
+          const referralEarnings = referralRewardRows.reduce((total, row) => total + Number(row.amount || 0), 0);
           const lifetimeEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0)
-            + earnedPayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+            + earnedPayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0)
+            + referralEarnings;
           const availableEarnings = approvedRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0)
-            + availablePayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+            + availablePayrollRows.reduce((total, row) => total + Number(row.amount || 0), 0)
+            + referralEarnings;
           const totalWithdrawn = deductedPayoutRows.reduce((total: number, row: any) => total + Number(row.amount || 0), 0);
           const pendingEscrow = pendingRows.reduce((total: number, row: any) => total + Number(row.bounty_earned || 0), 0);
 
@@ -1061,6 +1075,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               referenceId: `APPL-${String(row.project_id).slice(-8).toUpperCase()}-${row.source_key}`
             };
           });
+          const referralTransactions: WalletTransaction[] = referralRewardRows.map((row) => ({
+            id: row.id,
+            testerId: row.tester_id,
+            type: 'credit_referral',
+            amount: Number(row.amount || 0),
+            description: row.description || 'Ambassador referral reward',
+            relatedProjectId: row.project_id || undefined,
+            status: 'completed',
+            date: row.created_at,
+            referenceId: row.reference_id
+          }));
           const withdrawalTransactions: WalletTransaction[] = payoutRows.map((row: any) => ({
             id: row.id,
             testerId: row.tester_id,
@@ -1072,7 +1097,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             method: row.method,
             referenceId: row.transaction_ref
           }));
-          setWalletTransactions([...creditTransactions, ...projectPayrollTransactions, ...withdrawalTransactions].sort((left, right) => right.date.localeCompare(left.date)));
+          setWalletTransactions([...creditTransactions, ...projectPayrollTransactions, ...referralTransactions, ...withdrawalTransactions].sort((left, right) => right.date.localeCompare(left.date)));
         }
       } catch (error) {
         console.error('Unable to load submissions from Supabase:', error);

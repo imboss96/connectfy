@@ -223,7 +223,7 @@ export interface NotificationItem {
 export interface WalletTransaction {
   id: string;
   testerId: string;
-  type: 'credit_bounty' | 'payout_withdrawal';
+  type: 'credit_bounty' | 'credit_referral' | 'payout_withdrawal';
   amount: number;
   description: string;
   relatedProjectId?: string;

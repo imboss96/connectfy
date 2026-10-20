@@ -20,6 +20,7 @@ import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { ApplicationScreenerSubmissions } from './components/ApplicationScreenerSubmissions';
+import { AmbassadorDashboard } from './components/AmbassadorDashboard';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
@@ -40,7 +41,8 @@ import {
   Plus,
   CalendarClock,
   MailCheck,
-  CheckCircle2
+  CheckCircle2,
+  UserPlus
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -150,6 +152,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               else setActiveTab('client_submissions');
             }}
           />
+        ) : role === 'tester' && activeTab === 'ambassador' ? (
+          <AmbassadorDashboard />
         ) : role === 'admin' && !hasAdminTabAccess ? (
           <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer'} />
         ) : activeTab === 'arbeitnow_jobs' ? (
@@ -244,6 +248,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               >
                 <Briefcase className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Freelance</span>
+              </button>
+
+              <button
+                onClick={() => handleMobileNav('ambassador')}
+                className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                  activeTab === 'ambassador'
+                    ? 'text-[#00A3E0] font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <UserPlus className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">Refer</span>
               </button>
 
               {/* Wallet Tab */}
@@ -798,15 +814,20 @@ const AppExperience: React.FC = () => {
     const returnUrl = new URL(appUrl);
     const currentParams = new URLSearchParams(window.location.search);
     const projectId = currentParams.get('project');
+    const referralCode = currentParams.get('ref')?.trim().toUpperCase();
     if (projectId) {
       returnUrl.searchParams.set('project', projectId);
       if (currentParams.get('apply') === '1') returnUrl.searchParams.set('apply', '1');
     }
+    if (referralCode) returnUrl.searchParams.set('ref', referralCode);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: name },
+        data: {
+          full_name: name,
+          ...(referralCode ? { referral_code: referralCode } : {})
+        },
         emailRedirectTo: returnUrl.toString()
       }
     });

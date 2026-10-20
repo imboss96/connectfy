@@ -125,7 +125,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
     taskSubmissions.filter((submission) => submission.testerId === testerProfile.id && (submission.status === 'submitted' || submission.status === 'under_review')).length;
   const visibleTransactions = walletTransactions.filter((transaction) =>
     ledgerFilter === 'all' ||
-    (ledgerFilter === 'credits' && transaction.type === 'credit_bounty') ||
+    (ledgerFilter === 'credits' && transaction.type !== 'payout_withdrawal') ||
     (ledgerFilter === 'withdrawals' && transaction.type === 'payout_withdrawal')
   );
 
@@ -179,8 +179,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
       ...visibleTransactions.map((transaction: WalletTransaction) => [
         transaction.date,
         transaction.description,
-        transaction.type === 'credit_bounty' ? 'Slot payout' : 'Withdrawal',
-        `${transaction.type === 'credit_bounty' ? '' : '-'}${transaction.amount.toFixed(2)}`,
+        transaction.type === 'credit_bounty' ? 'Slot payout' : transaction.type === 'credit_referral' ? 'Ambassador reward' : 'Withdrawal',
+        `${transaction.type === 'payout_withdrawal' ? '-' : ''}${transaction.amount.toFixed(2)}`,
         transaction.status,
         transaction.referenceId
       ])
@@ -440,10 +440,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                 <div className="px-4 py-10 text-center">
                   <Wallet className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="mt-2 text-sm font-semibold text-slate-800">No wallet activity yet</p>
-                  <p className="mt-1 text-xs text-slate-500">Approved slot payouts and withdrawals will appear here.</p>
+                  <p className="mt-1 text-xs text-slate-500">Project earnings, ambassador rewards, and withdrawals will appear here.</p>
                 </div>
               ) : visibleTransactions.map((tx) => {
-                const isCredit = tx.type === 'credit_bounty';
+                const isCredit = tx.type !== 'payout_withdrawal';
                 const statusStyle = tx.status === 'completed'
                   ? 'bg-emerald-50 text-emerald-800'
                   : tx.status === 'failed'
