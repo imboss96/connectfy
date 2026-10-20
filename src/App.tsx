@@ -399,7 +399,7 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
     dateOfBirth: testerProfile.dateOfBirth || '',
     uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
     phone: testerProfile.phone || '',
-    ageRange: testerProfile.ageRange || '18-24',
+    ageRange: testerProfile.ageRange || '18-25',
     country: testerProfile.country || '',
     smartphone: testerProfile.smartphone || '',
     hasValidId: Boolean(testerProfile.hasValidId),
@@ -417,7 +417,7 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
       dateOfBirth: testerProfile.dateOfBirth || '',
       uTestEmail: testerProfile.uTestEmail || testerProfile.email || '',
       phone: testerProfile.phone || '',
-      ageRange: testerProfile.ageRange || '18-24',
+      ageRange: testerProfile.ageRange || '18-25',
       country: testerProfile.country || '',
       smartphone: testerProfile.smartphone || '',
       hasValidId: Boolean(testerProfile.hasValidId),
@@ -518,10 +518,10 @@ const InviteAcceptanceDialog: React.FC<{ applicationId: string; onDismiss: () =>
             <label className="space-y-1.5 text-xs font-semibold text-slate-700">
               <span>Age range</span>
               <select required value={details.ageRange} onChange={(event) => setDetails((previous) => ({ ...previous, ageRange: event.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#007AFF]">
-                <option value="18-24">18-24</option>
-                <option value="25-34">25-34</option>
-                <option value="35-44">35-44</option>
-                <option value="45+">45+</option>
+                <option value="18-25">18-25</option>
+                <option value="26-39">26-39</option>
+                <option value="40-59">40-59</option>
+                <option value="60+">60+</option>
               </select>
             </label>
             <label className="space-y-1.5 text-xs font-semibold text-slate-700">

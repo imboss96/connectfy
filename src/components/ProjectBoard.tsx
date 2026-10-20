@@ -307,7 +307,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       utestEmail: requiresNewUtestAccount ? '' : testerProfile.uTestEmail || '',
       fullName: testerProfile.legalName || '',
       dateOfBirth: testerProfile.dateOfBirth || '',
-      ageRange: testerProfile.ageRange || '18-24',
+      ageRange: testerProfile.ageRange || '18-25',
       country: testerProfile.country || '',
       smartphone: testerProfile.smartphone || '',
       phoneNumber: testerProfile.phone || '',

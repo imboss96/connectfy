@@ -38,7 +38,7 @@ export interface InviteProfileDetails {
 
 const isInviteProfileComplete = (profile: TesterProfile) => {
   const dateOfBirth = profile.dateOfBirth ? new Date(`${profile.dateOfBirth}T00:00:00`) : null;
-  const ageRanges = ['18-24', '25-34', '35-44', '45+'];
+  const ageRanges = ['18-25', '26-39', '40-59', '60+'];
   return Boolean(
     profile.uTestId?.trim()
     && profile.legalName?.trim()
@@ -1998,7 +1998,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       throw new Error('This invitation is no longer available for your account.');
     }
     const dateOfBirth = new Date(`${details.dateOfBirth}T00:00:00`);
-    const allowedAgeRanges = ['18-24', '25-34', '35-44', '45+'];
+    const allowedAgeRanges = ['18-25', '26-39', '40-59', '60+'];
     const invalidFields: string[] = [];
     if (!details.uTestId.trim()) invalidFields.push('uTest ID');
     if (!details.legalName.trim()) invalidFields.push('full name');
