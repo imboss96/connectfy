@@ -306,7 +306,7 @@ begin
         and schedule.status = 'scheduled'
     ), 0)
     + coalesce((
-      select sum(transaction.amount)
+      select sum(wallet_credit.amount)
       from public.wallet_transactions as wallet_credit
       where wallet_credit.tester_id = p_tester_id
         and wallet_credit.type = 'credit_referral'
