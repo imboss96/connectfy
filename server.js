@@ -17,6 +17,7 @@ import {
 import { appendSlackFooterHtml, appendSlackFooterText } from './src/lib/emailSlackFooter.js';
 import { getNextPlatformPayDate } from './src/lib/platformPayDate.js';
 import { buildEmployeeContractPdf } from './src/lib/employeeContractPdf.js';
+import { EmailProviderHttpError, sendWithEmailProviderFailover } from './src/lib/emailProviderFailover.js';
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '/etc/connectfy-email.env' });
 dotenv.config({ path: '.env.local' });
@@ -520,10 +521,11 @@ const projectEmailSubject = (payload, type) => type === 'invite'
             ? LEGACY_SHEET_EMAIL_SUBJECT
             : `Application Received: ${payload.projectTitle || 'Project Review'}`;
 
-const sendEmailThroughBrevo = async (payload, type) => {
-  const brevoApiKey = process.env.BREVO_API_KEY;
-  if (!brevoApiKey) throw new Error('Missing BREVO_API_KEY');
+const hasBrevoEmailProvider = () => Boolean(process.env.BREVO_API_KEY);
+const hasMailjetEmailProvider = () => Boolean(process.env.MAILJET_API_KEY && process.env.MAILJET_API_SECRET);
+const hasEmailProvider = () => hasBrevoEmailProvider() || hasMailjetEmailProvider();
 
+const sendEmailThroughProvider = async (payload, type, provider) => {
   let toEmail = String(payload.toEmail || '').trim();
   let toName = String(payload.toName || '').trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) throw new Error('Invalid recipient email');
@@ -531,29 +533,68 @@ const sendEmailThroughBrevo = async (payload, type) => {
 
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   const subject = projectEmailSubject(payload, type);
-  const requestPayload = {
-    sender: { name: 'Connectfy', email: process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech' },
-    to: [{ email: toEmail, name: toName }],
-    subject,
-    htmlContent: appendSlackFooterHtml(buildHtml({ ...payload, type, projectLink })),
-    textContent: appendSlackFooterText(buildText({ ...payload, type, projectLink }))
-  };
-  if (type === 'employee_welcome' && Array.isArray(payload.emailAttachments) && payload.emailAttachments.length) {
-    requestPayload.attachment = payload.emailAttachments;
-  }
+  const htmlContent = appendSlackFooterHtml(buildHtml({ ...payload, type, projectLink }));
+  const textContent = appendSlackFooterText(buildText({ ...payload, type, projectLink }));
+  let endpoint;
+  let headers;
+  let requestPayload;
 
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
+  if (provider === 'brevo') {
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    if (!brevoApiKey) throw new Error('BREVO_API_KEY is not configured.');
+    endpoint = 'https://api.brevo.com/v3/smtp/email';
+    headers = {
       'Content-Type': 'application/json',
       'api-key': brevoApiKey,
       Accept: 'application/json'
-    },
+    };
+    requestPayload = {
+      sender: { name: 'Connectfy', email: process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech' },
+      to: [{ email: toEmail, name: toName }],
+      subject,
+      htmlContent,
+      textContent
+    };
+    if (type === 'employee_welcome' && Array.isArray(payload.emailAttachments) && payload.emailAttachments.length) {
+      requestPayload.attachment = payload.emailAttachments;
+    }
+  } else {
+    const mailjetApiKey = process.env.MAILJET_API_KEY;
+    const mailjetApiSecret = process.env.MAILJET_API_SECRET;
+    if (!mailjetApiKey || !mailjetApiSecret) throw new Error('MAILJET_API_KEY and MAILJET_API_SECRET are required.');
+    endpoint = 'https://api.mailjet.com/v3.1/send';
+    headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${Buffer.from(`${mailjetApiKey}:${mailjetApiSecret}`).toString('base64')}`
+    };
+    const message = {
+      From: {
+        Email: process.env.MAILJET_SENDER_EMAIL || process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech',
+        Name: process.env.MAILJET_SENDER_NAME || 'Connectfy'
+      },
+      To: [{ Email: toEmail, Name: toName }],
+      Subject: subject,
+      HTMLPart: htmlContent,
+      TextPart: textContent
+    };
+    if (type === 'employee_welcome' && Array.isArray(payload.emailAttachments) && payload.emailAttachments.length) {
+      message.Attachments = payload.emailAttachments.map((attachment) => ({
+        ContentType: attachment.contentType || 'application/octet-stream',
+        Filename: attachment.name,
+        Base64Content: attachment.content
+      }));
+    }
+    requestPayload = { Messages: [message] };
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
     body: JSON.stringify(requestPayload)
   });
   const responseText = await response.text();
   if (!response.ok) {
-    throw new Error(`Brevo request failed (${response.status}): ${responseText}`);
+    throw new EmailProviderHttpError(provider, response.status, responseText);
   }
 
   let result = {};
@@ -561,15 +602,37 @@ const sendEmailThroughBrevo = async (payload, type) => {
     try {
       result = JSON.parse(responseText);
     } catch {
-      throw new Error('Brevo returned an invalid success response.');
+      throw new Error(`${provider} returned an invalid success response.`);
     }
   }
-  return { subject, messageId: result.messageId || null };
+  if (provider === 'mailjet' && result.Messages?.[0]?.Status !== 'success') {
+    throw new Error('Mailjet did not confirm email acceptance.');
+  }
+  const messageId = provider === 'brevo'
+    ? result.messageId || null
+    : result.Messages?.[0]?.To?.[0]?.MessageID || null;
+  return { subject, messageId, provider };
+};
+
+const sendEmailWithFailover = async (payload, type) => {
+  const preferredProvider = process.env.EMAIL_PRIMARY_PROVIDER === 'mailjet' ? 'mailjet' : 'brevo';
+  const availableProviders = {
+    brevo: hasBrevoEmailProvider(),
+    mailjet: hasMailjetEmailProvider()
+  };
+  return sendWithEmailProviderFailover({
+    preferredProvider,
+    availableProviders,
+    send: (provider) => sendEmailThroughProvider(payload, type, provider),
+    onFailover: (primary, fallback) => {
+      console.warn(`${primary} rejected an email because of a sending limit; retrying through ${fallback}.`);
+    }
+  });
 };
 
 const supabaseServiceUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const outboxWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && process.env.BREVO_API_KEY);
+const outboxWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && hasEmailProvider());
 const applicationScreenerWorkerEnabled = outboxWorkerEnabled;
 let outboxWorkerBusy = false;
 let applicationScreenerWorkerBusy = false;
@@ -958,7 +1021,7 @@ const processOneProjectEmail = async () => {
     projectLink.searchParams.set('application', job.payload.applicationId);
     projectLink.searchParams.set('accept', '1');
 
-    const result = await sendEmailThroughBrevo({
+    const result = await sendEmailWithFailover({
       ...job.payload,
       actionUrl: projectLink.toString(),
       projectLink: projectLink.toString(),
@@ -1004,7 +1067,7 @@ const processOneApplauseApprovalEmail = async () => {
     }
     const projectLink = new URL(process.env.APP_URL || 'https://connectfy.tech');
     projectLink.searchParams.set('project', job.project_id);
-    const result = await sendEmailThroughBrevo({
+    const result = await sendEmailWithFailover({
       type: 'sheet_project_approved',
       toEmail: job.recipient_email,
       toName: job.recipient_name,
@@ -1063,7 +1126,7 @@ const processOneApplauseConsentReminderEmail = async () => {
     if (!job.id || !job.project_id || !job.recipient_email || !job.recipient_name) {
       throw new Error('Applause consent reminder email has an invalid outbox payload.');
     }
-    const result = await sendEmailThroughBrevo({
+    const result = await sendEmailWithFailover({
       type: 'sheet_consent_pending',
       toEmail: job.recipient_email,
       toName: job.recipient_name,
@@ -2421,8 +2484,8 @@ app.post('/api/project-email', async (req, res) => {
       }
     }
 
-    if (!process.env.BREVO_API_KEY) {
-      return res.status(500).json({ ok: false, message: 'Missing BREVO_API_KEY' });
+    if (!hasEmailProvider()) {
+      return res.status(500).json({ ok: false, message: 'Configure BREVO_API_KEY or both MAILJET_API_KEY and MAILJET_API_SECRET.' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
       return res.status(400).json({ ok: false, message: 'Invalid recipient email' });
@@ -2431,11 +2494,12 @@ app.post('/api/project-email', async (req, res) => {
       return res.status(400).json({ ok: false, message: 'Recipient name is required' });
     }
 
-    const result = await sendEmailThroughBrevo(payload, requestType);
+    const result = await sendEmailWithFailover(payload, requestType);
     return res.json({
       ok: true,
       emailType: requestType,
       subject: result.subject,
+      emailProvider: result.provider,
       ...(contractAttachmentFilename ? { attachmentFilename: contractAttachmentFilename } : {}),
       ...(result.messageId && { messageId: result.messageId })
     });
@@ -2450,7 +2514,7 @@ if (outboxWorkerEnabled) {
   setInterval(() => void pollProjectEmailOutbox(), 5000);
   void pollProjectEmailOutbox();
 } else {
-  console.warn('Project approval email outbox worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BREVO_API_KEY.');
+  console.warn('Project approval email outbox worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and at least one email provider.');
 }
 
 if (applicationScreenerWorkerEnabled) {
@@ -2458,7 +2522,7 @@ if (applicationScreenerWorkerEnabled) {
   void pollApplicationScreenerQueue();
   setInterval(() => void pollApplicationScreenerQueue(), 5000);
 } else {
-  console.warn('Application screener queue worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and BREVO_API_KEY.');
+  console.warn('Application screener queue worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and at least one email provider.');
 }
 
 setInterval(() => void pollPayPalPayouts(), 30000);

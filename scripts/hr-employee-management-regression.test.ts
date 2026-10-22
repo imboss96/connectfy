@@ -9,6 +9,10 @@ import {
 } from '../src/lib/hrEmployeeContract';
 import { getHrJobTitleAdminAccess } from '../src/lib/hrJobTitleAccess';
 import { buildEmployeeContractPdf } from '../src/lib/employeeContractPdf.js';
+import {
+  EmailProviderHttpError,
+  sendWithEmailProviderFailover
+} from '../src/lib/emailProviderFailover.js';
 
 const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220002_hr_employee_management.sql', import.meta.url),
@@ -113,6 +117,11 @@ assert.match(emailBackend, /buildEmployeeContractPdf\(\{ employee, profile: empl
 assert.match(emailBackend, /contentType: 'application\/pdf'/);
 assert.match(emailBackend, /requestPayload\.attachment = payload\.emailAttachments/i);
 assert.match(emailBackend, /contractAttachmentFilename/);
+assert.match(emailBackend, /https:\/\/api\.mailjet\.com\/v3\.1\/send/);
+assert.match(emailBackend, /MAILJET_API_KEY/);
+assert.match(emailBackend, /Base64Content: attachment\.content/);
+assert.match(emailBackend, /ContentType: attachment\.contentType/);
+assert.match(emailBackend, /sendWithEmailProviderFailover/);
 assert.match(emailBackend, /type === 'employee_welcome'[\s\S]*?<!doctype html>[\s\S]*?role="presentation"[\s\S]*?#0B132B[\s\S]*?#00A3E0[\s\S]*?#007AFF/i);
 assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and any revisions are based on your performance/i);
 assert.match(emailBackend, /hr_employees\?profile_id=eq\.\$\{encodeURIComponent\(employeeProfileId\)\}/i);
@@ -142,6 +151,60 @@ assert.match(
 );
 assert.match(appContext, /hasAdminAccess = role === 'admin'[\s\S]*adminAccessLevel === 'project_manager'[\s\S]*adminAccessLevel === 'reviewer'/i);
 assert.match(app, /hasAdminAccess && hasAdminTabAccess/i);
+
+const providerAttempts: string[] = [];
+const failoverResult = await sendWithEmailProviderFailover({
+  preferredProvider: 'brevo',
+  availableProviders: { brevo: true, mailjet: true },
+  send: async (provider: string) => {
+    providerAttempts.push(provider);
+    if (provider === 'brevo') throw new EmailProviderHttpError('brevo', 429, 'Daily sending limit reached');
+    return { provider };
+  }
+});
+assert.deepEqual(providerAttempts, ['brevo', 'mailjet']);
+assert.equal(failoverResult.provider, 'mailjet');
+
+const reverseProviderAttempts: string[] = [];
+const reverseFailoverResult = await sendWithEmailProviderFailover({
+  preferredProvider: 'mailjet',
+  availableProviders: { brevo: true, mailjet: true },
+  send: async (provider: string) => {
+    reverseProviderAttempts.push(provider);
+    if (provider === 'mailjet') throw new EmailProviderHttpError('mailjet', 400, 'Monthly quota exceeded');
+    return { provider };
+  }
+});
+assert.deepEqual(reverseProviderAttempts, ['mailjet', 'brevo']);
+assert.equal(reverseFailoverResult.provider, 'brevo');
+
+const rejectedProviderAttempts: string[] = [];
+await assert.rejects(
+  sendWithEmailProviderFailover({
+    preferredProvider: 'brevo',
+    availableProviders: { brevo: true, mailjet: true },
+    send: async (provider: string) => {
+      rejectedProviderAttempts.push(provider);
+      throw new EmailProviderHttpError('brevo', 401, 'Invalid API key');
+    }
+  }),
+  /HTTP 401/
+);
+assert.deepEqual(rejectedProviderAttempts, ['brevo']);
+
+const ambiguousProviderAttempts: string[] = [];
+await assert.rejects(
+  sendWithEmailProviderFailover({
+    preferredProvider: 'brevo',
+    availableProviders: { brevo: true, mailjet: true },
+    send: async (provider: string) => {
+      ambiguousProviderAttempts.push(provider);
+      throw new TypeError('fetch failed');
+    }
+  }),
+  /fetch failed/
+);
+assert.deepEqual(ambiguousProviderAttempts, ['brevo']);
 
 const currentTerms = buildEmployeeContractTermsSnapshot({
   job_title: 'QA Tester',
