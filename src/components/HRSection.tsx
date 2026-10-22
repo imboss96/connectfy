@@ -2,6 +2,7 @@ import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'rea
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  BarChart3,
   BriefcaseBusiness,
   CalendarDays,
   Check,
@@ -25,7 +26,8 @@ import {
 import { getHrJobTitleAdminAccess } from '../lib/hrJobTitleAccess';
 import { supabase } from '../lib/supabase';
 
-type HrTab = 'overview' | 'onboarding' | 'attendance' | 'leave' | 'payroll' | 'performance';
+type HrTab = 'overview' | 'onboarding' | 'attendance' | 'reports' | 'leave' | 'payroll' | 'performance';
+type HrReportRange = 'current_pay_period' | 'last_30_days' | 'current_month';
 type EmployeeStatus = 'active' | 'on_leave' | 'inactive' | 'terminated';
 type LeaveStatus = 'pending' | 'approved' | 'declined';
 type PayrollStatus = 'planned' | 'paid' | 'void';
@@ -83,6 +85,22 @@ interface AttendanceRecord {
   clocked_out_at: string | null;
 }
 
+interface HrAdjustment {
+  id: string;
+  employee_id: string;
+  adjustment_type: 'time' | 'pay';
+  attendance_record_id: string | null;
+  amount: number | null;
+  currency: string | null;
+  previous_clocked_in_at: string | null;
+  previous_clocked_out_at: string | null;
+  new_clocked_in_at: string | null;
+  new_clocked_out_at: string | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
 interface LeaveRequest {
   id: string;
   employee_id: string;
@@ -124,6 +142,7 @@ const tabs: Array<{ id: HrTab; label: string; icon: React.ComponentType<{ classN
   { id: 'overview', label: 'Overview', icon: BriefcaseBusiness },
   { id: 'onboarding', label: 'Onboarding', icon: CheckCircle2 },
   { id: 'attendance', label: 'Attendance', icon: Clock3 },
+  { id: 'reports', label: 'Hourly reports', icon: BarChart3 },
   { id: 'leave', label: 'Leave', icon: CalendarDays },
   { id: 'payroll', label: 'Payroll', icon: Wallet },
   { id: 'performance', label: 'Performance', icon: Star }
@@ -141,12 +160,57 @@ const toDateLabel = (value: string | null | undefined) => {
     : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(parsed);
 };
 
+const toDateOnlyLabel = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(date);
+};
+
 const toDateTimeLabel = (value: string | null | undefined) => {
   if (!value) return '—';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
     : new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+};
+
+const getCurrentPayPeriod = (employee: HrEmployee, now = new Date()) => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (employee.pay_frequency === 'monthly') {
+    const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const endExclusive = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+    return { start, endExclusive };
+  }
+
+  const periodDays = employee.pay_frequency === 'weekly' ? 7 : 14;
+  const hireDate = Date.parse(`${employee.hire_date}T00:00:00.000Z`);
+  const elapsedDays = Math.max(0, Math.floor((today - hireDate) / dayMs));
+  const start = hireDate + Math.floor(elapsedDays / periodDays) * periodDays * dayMs;
+  return { start, endExclusive: start + periodDays * dayMs };
+};
+
+const getReportPeriod = (employee: HrEmployee, range: HrReportRange, now = new Date()) => {
+  if (range === 'current_pay_period') return getCurrentPayPeriod(employee, now);
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (range === 'last_30_days') {
+    return { start: now.getTime() - 30 * dayMs, endExclusive: now.getTime() };
+  }
+
+  return {
+    start: Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    endExclusive: Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+  };
+};
+
+const toLocalDateTimeInput = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
 };
 
 const formatMoney = (amount: number, currency: string) => {
@@ -459,10 +523,14 @@ export const HRSection: React.FC = () => {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [tasks, setTasks] = useState<OnboardingTask[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [reportAttendance, setReportAttendance] = useState<AttendanceRecord[]>([]);
+  const [reportAdjustments, setReportAdjustments] = useState<HrAdjustment[]>([]);
+  const [isReportLoading, setIsReportLoading] = useState(false);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
   const [activeTab, setActiveTab] = useState<HrTab>('overview');
+  const [reportRange, setReportRange] = useState<HrReportRange>('current_pay_period');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -496,9 +564,21 @@ export const HRSection: React.FC = () => {
   const [reviewSummary, setReviewSummary] = useState('');
   const [reviewStrengths, setReviewStrengths] = useState('');
   const [reviewGoals, setReviewGoals] = useState('');
+  const [adjustmentEmployeeId, setAdjustmentEmployeeId] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'time' | 'pay'>('time');
+  const [adjustmentAttendanceId, setAdjustmentAttendanceId] = useState('');
+  const [adjustmentClockIn, setAdjustmentClockIn] = useState('');
+  const [adjustmentClockOut, setAdjustmentClockOut] = useState('');
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [adjustmentReason, setAdjustmentReason] = useState('');
 
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) || null;
   const selectedProfile = profiles.find((profile) => profile.id === selectedEmployee?.profile_id);
+  const hourlyEmployees = useMemo(
+    () => employees.filter((employee) => employee.compensation_type === 'hourly'),
+    [employees]
+  );
+  const hourlyEmployeeIdsKey = hourlyEmployees.map((employee) => employee.id).join(',');
   const activeDepartmentOptions = hrOptions.filter((option) => option.category === 'department' && option.is_active);
   const activeJobTitleOptions = hrOptions.filter((option) => option.category === 'job_title' && option.is_active);
   const departmentOptions = selectedEmployee?.department && !activeDepartmentOptions.some((option) => option.label === selectedEmployee.department)
@@ -518,6 +598,44 @@ export const HRSection: React.FC = () => {
   const activeClock = attendance.find((record) => !record.clocked_out_at);
   const pendingLeaveCount = leaveRequests.filter((request) => request.status === 'pending').length;
   const completedTasks = tasks.filter((task) => task.status === 'completed').length;
+  const reportRows = useMemo(() => {
+    const now = Date.now();
+    return hourlyEmployees.map((employee) => {
+      const period = getReportPeriod(employee, reportRange, new Date(now));
+      const sessions = reportAttendance.filter((record) => {
+        if (record.employee_id !== employee.id) return false;
+        const clockIn = Date.parse(record.clocked_in_at);
+        const clockOut = record.clocked_out_at ? Date.parse(record.clocked_out_at) : now;
+        return clockIn < period.endExclusive && clockOut > period.start;
+      });
+      const hours = sessions.reduce((total, record) => {
+        const clockIn = Math.max(Date.parse(record.clocked_in_at), period.start);
+        const clockOut = Math.min(
+          record.clocked_out_at ? Date.parse(record.clocked_out_at) : now,
+          period.endExclusive,
+          now
+        );
+        return total + Math.max(0, clockOut - clockIn) / 3600000;
+      }, 0);
+      const adjustments = reportAdjustments.filter((adjustment) => {
+        const createdAt = Date.parse(adjustment.created_at);
+        return adjustment.employee_id === employee.id
+          && createdAt >= period.start
+          && createdAt < period.endExclusive;
+      });
+      const payAdjustments = adjustments
+        .filter((adjustment) => adjustment.adjustment_type === 'pay')
+        .reduce((total, adjustment) => total + (Number(adjustment.amount) || 0), 0);
+      return { employee, period, sessions, hours, adjustments, payAdjustments };
+    });
+  }, [hourlyEmployees, reportAttendance, reportAdjustments, reportRange]);
+  const reportSessionRows = reportRows.flatMap(({ employee, period, sessions }) =>
+    sessions.map((record) => ({ employee, period, record }))
+  );
+  const adjustmentEmployee = hourlyEmployees.find((employee) => employee.id === adjustmentEmployeeId) || null;
+  const adjustmentSessions = reportRows.find((row) => row.employee.id === adjustmentEmployeeId)
+    ?.sessions.filter((record) => record.clocked_out_at) || [];
+  const adjustmentAttendance = adjustmentSessions.find((record) => record.id === adjustmentAttendanceId) || null;
 
   const loadData = useCallback(async () => {
     if (!supabase) {
@@ -565,9 +683,92 @@ export const HRSection: React.FC = () => {
     }
   }, [isHrAdmin]);
 
+  const loadTeamReport = useCallback(async () => {
+    const client = supabase;
+    if (!client || !isHrAdmin || hourlyEmployees.length === 0) {
+      setReportAttendance([]);
+      setReportAdjustments([]);
+      setIsReportLoading(false);
+      return;
+    }
+
+    setIsReportLoading(true);
+    try {
+      const now = new Date();
+      const earliestPeriodStart = Math.min(...hourlyEmployees.map((employee) => getReportPeriod(employee, reportRange, now).start));
+      const employeeIds = hourlyEmployees.map((employee) => employee.id);
+      const fetchAttendance = async () => {
+        const records: AttendanceRecord[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const { data, error: queryError } = await client
+            .from('hr_attendance_records')
+            .select('*')
+            .in('employee_id', employeeIds)
+            .or(`clocked_out_at.is.null,clocked_out_at.gte.${new Date(earliestPeriodStart).toISOString()}`)
+            .lte('clocked_in_at', now.toISOString())
+            .order('clocked_in_at', { ascending: false })
+            .range(offset, offset + 499);
+          if (queryError) throw queryError;
+          const page = (data || []) as AttendanceRecord[];
+          records.push(...page);
+          if (page.length < 500) return records;
+        }
+      };
+      const fetchAdjustments = async () => {
+        const adjustments: HrAdjustment[] = [];
+        for (let offset = 0; ; offset += 500) {
+          const { data, error: queryError } = await client
+            .from('hr_adjustments')
+            .select('*')
+            .in('employee_id', employeeIds)
+            .gte('created_at', new Date(earliestPeriodStart).toISOString())
+            .lte('created_at', now.toISOString())
+            .order('created_at', { ascending: false })
+            .range(offset, offset + 499);
+          if (queryError) throw queryError;
+          const page = (data || []) as HrAdjustment[];
+          adjustments.push(...page);
+          if (page.length < 500) return adjustments;
+        }
+      };
+      const [attendanceRecords, adjustments] = await Promise.all([fetchAttendance(), fetchAdjustments()]);
+      setReportAttendance(attendanceRecords);
+      setReportAdjustments(adjustments);
+    } catch (loadError) {
+      console.error('Unable to load hourly team reports:', loadError);
+      setError(getErrorMessage(loadError, 'Unable to load hourly team reports.'));
+    } finally {
+      setIsReportLoading(false);
+    }
+  }, [hourlyEmployees, isHrAdmin, reportRange]);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (isHrAdmin && activeTab === 'reports') {
+      void loadTeamReport();
+    }
+  }, [activeTab, isHrAdmin, loadTeamReport]);
+
+  useEffect(() => {
+    if (!hourlyEmployees.some((employee) => employee.id === adjustmentEmployeeId)) {
+      setAdjustmentEmployeeId(hourlyEmployees[0]?.id || '');
+    }
+  }, [adjustmentEmployeeId, hourlyEmployees]);
+
+  useEffect(() => {
+    if (!adjustmentSessions.some((record) => record.id === adjustmentAttendanceId)) {
+      setAdjustmentAttendanceId(adjustmentSessions[0]?.id || '');
+    }
+  }, [adjustmentAttendanceId, adjustmentSessions]);
+
+  useEffect(() => {
+    if (!adjustmentAttendance) return;
+    setAdjustmentClockIn(toLocalDateTimeInput(adjustmentAttendance.clocked_in_at));
+    setAdjustmentClockOut(toLocalDateTimeInput(adjustmentAttendance.clocked_out_at || ''));
+  }, [adjustmentAttendance]);
 
   useEffect(() => {
     const client = supabase;
@@ -855,6 +1056,52 @@ export const HRSection: React.FC = () => {
     if (rpcError) throw rpcError;
   }, activeClock ? 'You are clocked out.' : 'You are clocked in.');
 
+  const submitAdjustment = async (event: FormEvent) => {
+    event.preventDefault();
+    const client = supabase;
+    if (!client || !adjustmentEmployee || !adjustmentReason.trim()) {
+      setError('Choose an hourly employee and enter an adjustment reason.');
+      return;
+    }
+
+    const params = {
+      p_employee_id: adjustmentEmployee.id,
+      p_adjustment_type: adjustmentType,
+      p_reason: adjustmentReason.trim(),
+      p_amount: null as number | null,
+      p_attendance_record_id: null as string | null,
+      p_clocked_in_at: null as string | null,
+      p_clocked_out_at: null as string | null
+    };
+    if (adjustmentType === 'pay') {
+      const amount = Number(adjustmentAmount);
+      if (!Number.isFinite(amount) || amount === 0) {
+        setError('Enter a non-zero pay adjustment. Use a positive amount for an addition and a negative amount for a deduction.');
+        return;
+      }
+      params.p_amount = amount;
+    } else {
+      const clockIn = new Date(adjustmentClockIn);
+      const clockOut = new Date(adjustmentClockOut);
+      if (!adjustmentAttendance || Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOut.getTime())
+        || clockOut <= clockIn) {
+        setError('Choose a completed time entry and valid corrected clock-in and clock-out times.');
+        return;
+      }
+      params.p_attendance_record_id = adjustmentAttendance.id;
+      params.p_clocked_in_at = clockIn.toISOString();
+      params.p_clocked_out_at = clockOut.toISOString();
+    }
+
+    const didSave = await runAction(async () => {
+      const { error: rpcError } = await client.rpc('hr_record_adjustment', params);
+      if (rpcError) throw rpcError;
+      setAdjustmentAmount('');
+      setAdjustmentReason('');
+    }, adjustmentType === 'time' ? 'Time correction saved to the adjustment history.' : 'Pay adjustment added to the adjustment history.');
+    if (didSave) await loadTeamReport();
+  };
+
   const submitLeave = async (event: FormEvent) => {
     event.preventDefault();
     const client = supabase;
@@ -986,7 +1233,7 @@ export const HRSection: React.FC = () => {
           <h1 className="mt-1 text-2xl font-black text-slate-900">{isHrAdmin ? 'HR Management' : 'Employee HR'}</h1>
           <p className="mt-1 text-sm text-slate-600">
             {isHrAdmin
-              ? 'Manage employee records, onboarding, attendance, leave, payroll history, and reviews.'
+              ? 'Manage employee records, hourly reports, attendance, adjustments, leave, payroll history, and reviews.'
               : 'View your onboarding, record your working time, request leave, and review your HR records.'}
           </p>
         </div>
@@ -1145,7 +1392,7 @@ export const HRSection: React.FC = () => {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {tabs.map(({ id, label, icon: Icon }) => (
+            {tabs.filter(({ id }) => id !== 'reports' || isHrAdmin).map(({ id, label, icon: Icon }) => (
               <button
                 type="button"
                 key={id}
@@ -1256,6 +1503,168 @@ export const HRSection: React.FC = () => {
                   </div>
                 )}
               </Card>
+            </div>
+          )}
+
+          {activeTab === 'reports' && isHrAdmin && (
+            <div className="space-y-5">
+              {(() => {
+                const totalHours = reportRows.reduce((total, row) => total + row.hours, 0);
+                const loggedEntries = reportRows.reduce((total, row) => total + row.sessions.length, 0);
+                const adjustmentRows = reportRows.flatMap((row) =>
+                  row.adjustments.map((adjustment) => ({ employee: row.employee, adjustment }))
+                );
+                return (
+                  <>
+                    <p className="text-sm text-slate-600">
+                      {reportRange === 'current_pay_period'
+                        ? 'Reports cover each hourly employee’s current pay period. Weekly and biweekly periods follow the employee’s hire-date cycle; monthly periods follow the calendar month.'
+                        : reportRange === 'last_30_days'
+                          ? 'Reports cover the last 30 days, through now.'
+                          : 'Reports cover the current calendar month, through now.'}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        { label: 'Hourly team members', value: hourlyEmployees.length.toString() },
+                        { label: 'Hours in selected range', value: `${totalHours.toFixed(2)} hrs` },
+                        { label: 'Logged sessions', value: loggedEntries.toString() },
+                        { label: 'All adjustments', value: adjustmentRows.length.toString() }
+                      ].map((metric) => (
+                        <div key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-xs font-semibold text-slate-500">{metric.label}</p>
+                          <p className="mt-2 text-2xl font-black text-slate-900">{metric.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Card title="Hourly team summary" action={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select className={`${inputClass} w-auto`} value={reportRange} onChange={(event) => setReportRange(event.target.value as HrReportRange)}>
+                          <option value="current_pay_period">Current pay period</option>
+                          <option value="last_30_days">Last 30 days</option>
+                          <option value="current_month">Current month</option>
+                        </select>
+                        <button type="button" className={secondaryButtonClass} disabled={isReportLoading} onClick={() => void loadTeamReport()}>
+                          <RefreshCw className={`h-4 w-4 ${isReportLoading ? 'animate-spin' : ''}`} /> Refresh report
+                        </button>
+                      </div>
+                    }>
+                      {isReportLoading ? (
+                        <p className="text-sm text-slate-500">Loading hourly reports…</p>
+                      ) : reportRows.length === 0 ? (
+                        <EmptyState message="No employees are currently configured for hourly compensation." />
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-left text-sm">
+                            <thead><tr className="border-b text-xs uppercase text-slate-500">
+                              <th className="py-2 pr-4">Employee</th><th className="py-2 pr-4">Report period</th><th className="py-2 pr-4">Hours</th><th className="py-2 pr-4">Hourly rate</th><th className="py-2 pr-4">Pay adjustments</th><th className="py-2">Status</th>
+                            </tr></thead>
+                            <tbody>{reportRows.map(({ employee, period, hours, payAdjustments }) => {
+                              const profile = profiles.find((item) => item.id === employee.profile_id);
+                              const periodStartLabel = toDateOnlyLabel(new Date(period.start).toISOString().slice(0, 10));
+                              const periodEndLabel = toDateOnlyLabel(new Date(period.endExclusive - 1).toISOString().slice(0, 10));
+                              return (
+                                <tr key={employee.id} className="border-b border-slate-100">
+                                  <td className="py-3 pr-4"><span className="block font-semibold text-slate-900">{profile?.name || profile?.email || 'Employee'}</span><span className="text-xs text-slate-500">{employee.job_title}{employee.department ? ` · ${employee.department}` : ''}</span></td>
+                                  <td className="py-3 pr-4 whitespace-nowrap">{periodStartLabel} – {periodEndLabel}</td>
+                                  <td className="py-3 pr-4 font-semibold">{hours.toFixed(2)}</td>
+                                  <td className="py-3 pr-4 whitespace-nowrap">{formatMoney(employee.compensation_rate, employee.compensation_currency)}/hr</td>
+                                  <td className="py-3 pr-4 whitespace-nowrap">{formatMoney(payAdjustments, employee.compensation_currency)}</td>
+                                  <td className="py-3"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${statusClass(employee.employment_status)}`}>{employee.employment_status.replace('_', ' ')}</span></td>
+                                </tr>
+                              );
+                            })}</tbody>
+                          </table>
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card title="Time entries in selected range">
+                      {reportSessionRows.length === 0 ? <EmptyState message="No time entries have been recorded in the selected range." /> : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-left text-sm">
+                            <thead><tr className="border-b text-xs uppercase text-slate-500"><th className="py-2 pr-4">Employee</th><th className="py-2 pr-4">Clock in</th><th className="py-2 pr-4">Clock out</th><th className="py-2">Duration in period</th></tr></thead>
+                            <tbody>{reportSessionRows.map(({ employee, period, record }) => {
+                              const profile = profiles.find((item) => item.id === employee.profile_id);
+                              const clockIn = Math.max(Date.parse(record.clocked_in_at), period.start);
+                              const clockOut = Math.min(
+                                record.clocked_out_at ? Date.parse(record.clocked_out_at) : Date.now(),
+                                period.endExclusive,
+                                Date.now()
+                              );
+                              const duration = Math.max(0, clockOut - clockIn) / 3600000;
+                              return <tr key={record.id} className="border-b border-slate-100"><td className="py-3 pr-4">{profile?.name || profile?.email || 'Employee'}</td><td className="py-3 pr-4 whitespace-nowrap">{toDateTimeLabel(record.clocked_in_at)}</td><td className="py-3 pr-4 whitespace-nowrap">{toDateTimeLabel(record.clocked_out_at)}</td><td className="py-3">{record.clocked_out_at ? `${duration.toFixed(2)} hours` : `${duration.toFixed(2)} hours · in progress`}</td></tr>;
+                            })}</tbody>
+                          </table>
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card title="Adjustments in selected range">
+                      {adjustmentRows.length === 0 ? <EmptyState message="No time or pay adjustments have been recorded in the selected range." /> : (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-left text-sm">
+                            <thead><tr className="border-b text-xs uppercase text-slate-500"><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Employee</th><th className="py-2 pr-4">Type</th><th className="py-2 pr-4">Change</th><th className="py-2 pr-4">Reason</th><th className="py-2">Recorded by</th></tr></thead>
+                            <tbody>{adjustmentRows.map(({ employee, adjustment }) => {
+                              const profile = profiles.find((item) => item.id === employee.profile_id);
+                              const actor = profiles.find((item) => item.id === adjustment.created_by);
+                              const change = adjustment.adjustment_type === 'pay'
+                                ? formatMoney(Number(adjustment.amount) || 0, adjustment.currency || employee.compensation_currency)
+                                : `${toDateTimeLabel(adjustment.previous_clocked_in_at)} – ${toDateTimeLabel(adjustment.previous_clocked_out_at)} → ${toDateTimeLabel(adjustment.new_clocked_in_at)} – ${toDateTimeLabel(adjustment.new_clocked_out_at)}`;
+                              return <tr key={adjustment.id} className="border-b border-slate-100"><td className="py-3 pr-4 whitespace-nowrap">{toDateTimeLabel(adjustment.created_at)}</td><td className="py-3 pr-4">{profile?.name || profile?.email || 'Employee'}</td><td className="py-3 pr-4 capitalize">{adjustment.adjustment_type === 'time' ? 'Time correction' : 'Pay'}</td><td className="py-3 pr-4">{change}</td><td className="py-3 pr-4">{adjustment.reason}</td><td className="py-3">{actor?.name || actor?.email || 'Super Admin'}</td></tr>;
+                            })}</tbody>
+                          </table>
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card title="Record an adjustment">
+                      <form onSubmit={submitAdjustment} className="grid gap-3 md:grid-cols-2">
+                        <label className="block text-xs font-semibold text-slate-700">Hourly employee
+                          <select className={`${inputClass} mt-1`} value={adjustmentEmployeeId} onChange={(event) => setAdjustmentEmployeeId(event.target.value)} required>
+                            <option value="">Choose an employee</option>
+                            {hourlyEmployees.map((employee) => {
+                              const profile = profiles.find((item) => item.id === employee.profile_id);
+                              return <option key={employee.id} value={employee.id}>{profile?.name || profile?.email || employee.job_title}</option>;
+                            })}
+                          </select>
+                        </label>
+                        <label className="block text-xs font-semibold text-slate-700">Adjustment type
+                          <select className={`${inputClass} mt-1`} value={adjustmentType} onChange={(event) => setAdjustmentType(event.target.value as 'time' | 'pay')}>
+                            <option value="time">Correct a time entry</option><option value="pay">Add a pay adjustment</option>
+                          </select>
+                        </label>
+                        {adjustmentType === 'time' ? (
+                          <>
+                            <label className="block text-xs font-semibold text-slate-700 md:col-span-2">Completed time entry
+                              <select className={`${inputClass} mt-1`} value={adjustmentAttendanceId} onChange={(event) => setAdjustmentAttendanceId(event.target.value)} required>
+                                <option value="">Choose a time entry</option>
+                                {adjustmentSessions.map((record) => <option key={record.id} value={record.id}>{toDateTimeLabel(record.clocked_in_at)} – {toDateTimeLabel(record.clocked_out_at)}</option>)}
+                              </select>
+                            </label>
+                            <label className="block text-xs font-semibold text-slate-700">Corrected clock-in
+                              <input className={`${inputClass} mt-1`} type="datetime-local" value={adjustmentClockIn} onChange={(event) => setAdjustmentClockIn(event.target.value)} required />
+                            </label>
+                            <label className="block text-xs font-semibold text-slate-700">Corrected clock-out
+                              <input className={`${inputClass} mt-1`} type="datetime-local" value={adjustmentClockOut} onChange={(event) => setAdjustmentClockOut(event.target.value)} required />
+                            </label>
+                            {adjustmentSessions.length === 0 && <p className="text-xs text-amber-700 md:col-span-2">No completed time entries are available to correct in this report range.</p>}
+                          </>
+                        ) : (
+                          <label className="block text-xs font-semibold text-slate-700">Pay adjustment ({adjustmentEmployee?.compensation_currency || 'USD'})
+                            <input className={`${inputClass} mt-1`} type="number" step="0.01" value={adjustmentAmount} onChange={(event) => setAdjustmentAmount(event.target.value)} placeholder="Positive addition or negative deduction" required />
+                            <span className="mt-1 block font-normal text-slate-500">Use a positive amount for an addition and a negative amount for a deduction. Tracking only; this does not send payment.</span>
+                          </label>
+                        )}
+                        <label className="block text-xs font-semibold text-slate-700 md:col-span-2">Reason
+                          <textarea className={`${inputClass} mt-1`} rows={2} value={adjustmentReason} onChange={(event) => setAdjustmentReason(event.target.value)} required />
+                        </label>
+                        <div className="md:col-span-2"><button type="submit" className={buttonClass} disabled={isSaving || !adjustmentEmployee || (adjustmentType === 'time' && !adjustmentAttendance)}><Plus className="h-4 w-4" /> Record adjustment</button></div>
+                      </form>
+                    </Card>
+                  </>
+                );
+              })()}
             </div>
           )}
 

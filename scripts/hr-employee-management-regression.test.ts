@@ -18,6 +18,10 @@ const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220002_hr_employee_management.sql', import.meta.url),
   'utf8'
 );
+const hourlyReportMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220013_hr_hourly_team_reports_and_adjustments.sql', import.meta.url),
+  'utf8'
+);
 const catalogMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220004_hr_department_job_title_options.sql', import.meta.url),
   'utf8'
@@ -69,6 +73,16 @@ assert.match(migration, /create or replace function public\.hr_complete_onboardi
 assert.match(migration, /hr_attendance_one_open_clock_per_employee_idx/i);
 assert.match(migration, /public\.is_admin\(\)/i);
 assert.doesNotMatch(migration, /create_payout_request|mpesa|paypal/i);
+
+assert.match(hourlyReportMigration, /create table if not exists public\.hr_adjustments/i);
+assert.match(hourlyReportMigration, /adjustment_type in \('time', 'pay'\)/i);
+assert.match(hourlyReportMigration, /create policy hr_adjustments_read_self_or_admin/i);
+assert.match(hourlyReportMigration, /create or replace function public\.hr_record_adjustment/i);
+assert.match(hourlyReportMigration, /Only a Super Admin can record HR adjustments/i);
+assert.match(hourlyReportMigration, /previous_clocked_in_at[\s\S]*new_clocked_out_at/i);
+assert.match(hourlyReportMigration, /revoke insert, update, delete on public\.hr_attendance_records/i);
+assert.match(hrSection, /Hourly team summary/i);
+assert.match(hrSection, /rpc\('hr_record_adjustment'/i);
 
 assert.match(catalogMigration, /create table if not exists public\.hr_option_catalog/i);
 assert.match(catalogMigration, /category in \('department', 'job_title'\)/i);
