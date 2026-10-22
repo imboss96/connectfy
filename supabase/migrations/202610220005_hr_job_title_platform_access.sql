@@ -72,6 +72,8 @@ begin
 end;
 $$;
 
+drop trigger if exists protect_profile_platform_access on public.profiles;
+
 update public.profiles as profile
 set admin_access_level = case
   when lower(trim(employee.job_title)) = 'project manager' then 'project_manager'
@@ -82,7 +84,6 @@ from public.hr_employees as employee
 where employee.profile_id = profile.id
   and profile.role <> 'admin';
 
-drop trigger if exists protect_profile_platform_access on public.profiles;
 create trigger protect_profile_platform_access
   before update of role, admin_access_level on public.profiles
   for each row

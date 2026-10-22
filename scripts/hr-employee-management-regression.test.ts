@@ -82,7 +82,10 @@ assert.match(accessMigration, /create or replace function public\.can_manage_pro
 assert.match(accessMigration, /create or replace function public\.can_review_submissions\(\)/i);
 assert.match(accessMigration, /protect_profile_platform_access/i);
 assert.match(accessMigration, /Only a Super Admin can change platform roles or access levels/i);
-assert.match(accessMigration, /update public\.profiles as profile[\s\S]*from public\.hr_employees as employee/i);
+assert.match(
+  accessMigration,
+  /drop trigger if exists protect_profile_platform_access on public\.profiles;[\s\S]*update public\.profiles as profile[\s\S]*from public\.hr_employees as employee[\s\S]*create trigger protect_profile_platform_access/i
+);
 assert.match(appContext, /hasAdminAccess = role === 'admin'[\s\S]*adminAccessLevel === 'project_manager'[\s\S]*adminAccessLevel === 'reviewer'/i);
 assert.match(app, /hasAdminAccess && hasAdminTabAccess/i);
 
