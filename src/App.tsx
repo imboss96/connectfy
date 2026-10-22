@@ -810,6 +810,28 @@ const AppExperience: React.FC = () => {
 
       setScreen('app');
       if (session) {
+        const callbackParams = new URLSearchParams(window.location.search);
+        if (callbackParams.get('oauth_signup') === '1') {
+          const referralCode = callbackParams.get('ref')?.trim().toUpperCase();
+          if (referralCode) {
+            const { error: referralError } = await client.rpc('link_google_signup_referral', {
+              p_referral_code: referralCode
+            });
+            if (referralError) {
+              console.error('Unable to record Google signup referral:', referralError);
+            } else {
+              callbackParams.delete('oauth_signup');
+              callbackParams.delete('ref');
+              const query = callbackParams.toString();
+              window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+            }
+          } else {
+            callbackParams.delete('oauth_signup');
+            const query = callbackParams.toString();
+            window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+          }
+        }
+
         const { data: profile, error } = await client.from('profiles').select('role,admin_access_level').eq('id', session.user.id).maybeSingle();
         if (error) {
           console.error('Unable to load access level:', error);
@@ -871,6 +893,27 @@ const AppExperience: React.FC = () => {
     resetLocalUserState();
     setActiveTab('projects');
     setScreen('app');
+  };
+
+  const handleGoogleAuth = async (intent: 'login' | 'signup') => {
+    if (!isSupabaseConfigured || !supabase) throw new Error('Authentication is not configured. Add your Supabase URL and anon key to .env.local.');
+
+    const returnUrl = new URL(appUrl);
+    const currentParams = new URLSearchParams(window.location.search);
+    for (const key of ['project', 'apply', 'ref', 'application', 'accept', 'settings']) {
+      const value = currentParams.get(key);
+      if (value) returnUrl.searchParams.set(key, value);
+    }
+    if (intent === 'signup') returnUrl.searchParams.set('oauth_signup', '1');
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: returnUrl.toString(),
+        queryParams: { access_type: 'offline', prompt: 'select_account' }
+      }
+    });
+    if (error) throw error;
   };
 
   const handleResetPassword = async (email: string) => {
@@ -960,7 +1003,7 @@ const AppExperience: React.FC = () => {
   if (window.location.pathname.replace(/\/+$/, '').toLowerCase() === '/terms') return <TermsAndConditionsPage />;
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
   if (screen === 'landing') return <LandingPage onGetStarted={handleLandingApply} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
-  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onResetPassword={handleResetPassword} onBackToLanding={() => { setScreen('landing'); }} />;
+  if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onGoogleAuth={handleGoogleAuth} onResetPassword={handleResetPassword} onBackToLanding={() => { setScreen('landing'); }} />;
   if (screen === 'reset') return <ResetPasswordPage onSubmit={handleResetPasswordSubmit} onBackToLogin={() => { setScreen('login'); setAuthMode('login'); }} />;
 
   return (

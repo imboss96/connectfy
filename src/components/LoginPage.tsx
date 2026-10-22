@@ -9,12 +9,13 @@ const UTEST_GUIDE_VIDEO_URL = 'https://www.youtube.com/watch?v=F_XmEVQZaHc';
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
   onSignUp: (name: string, email: string, password: string) => Promise<void>;
+  onGoogleAuth: (intent: 'login' | 'signup') => Promise<void>;
   onResetPassword: (email: string) => Promise<void>;
   onBackToLanding: () => void;
   initialMode?: 'login' | 'signup';
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onResetPassword, onBackToLanding, initialMode = 'login' }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onGoogleAuth, onResetPassword, onBackToLanding, initialMode = 'login' }) => {
   const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -98,6 +99,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
     }
   };
 
+  const handleGoogleAuth = async () => {
+    setError('');
+    setMessage('');
+    setIsSubmitting(true);
+    try {
+      await onGoogleAuth(isSignUp ? 'signup' : 'login');
+    } catch (googleError) {
+      setError(googleError instanceof Error ? googleError.message : 'Unable to continue with Google.');
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="login-page min-h-screen">
       <div className="login-panel">
@@ -151,6 +164,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSignUp, onReset
           {!isSignUp && <div className="login-options"><label className="login-checkbox"><input type="checkbox" /> Keep me signed in</label><button type="button" className="login-link" onClick={handleResetPassword}>Forgot password?</button></div>}
           <button type="submit" className="login-submit" disabled={isSubmitting}>{isSubmitting ? 'Please wait...' : isSignUp ? 'Create account' : 'Sign in'} {!isSubmitting && <ArrowRight />}</button>
         </form>
+
+        <div className="my-5 flex items-center gap-3 text-xs text-slate-400" aria-hidden="true">
+          <span className="h-px flex-1 bg-slate-200" />
+          <span>or continue with</span>
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleGoogleAuth()}
+          disabled={isSubmitting}
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" transform="translate(0 4)" />
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.76 7.18l7.73 6C44.42 38.05 46.98 31.89 46.98 24.55Z" />
+            <path fill="#FBBC05" d="M10.53 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.2A23.9 23.9 0 0 0 0 24c0 3.88.93 7.57 2.56 10.78l7.97-6.19Z" transform="translate(0 4)" />
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.14 1.44-4.89 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" transform="translate(0 -4)" />
+          </svg>
+          {isSubmitting ? 'Connecting to Google…' : `${isSignUp ? 'Sign up' : 'Sign in'} with Google`}
+        </button>
 
         <p className="login-signup">{isSignUp ? 'Already have an account?' : 'New to Connectfy?'} <button type="button" onClick={() => { setIsSignUp(!isSignUp); setError(''); }}>{isSignUp ? 'Sign in' : 'Create an account'}</button></p>
         <div className="login-trust"><ShieldCheck /> Secure workspace access for testers, clients, and operations teams.</div>
