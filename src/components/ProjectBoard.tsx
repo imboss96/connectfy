@@ -1401,7 +1401,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                 </h4>
                 <p className="text-xs text-slate-600">
                   {applicationScreenerResult?.queued
-                    ? `${applicationScreenerResult.message} If Applause confirms the response, your application will be approved and an invitation email queued.`
+                    ? `${applicationScreenerResult.message} If Applause confirms the response, your application will be approved. An admin can send the invitation manually.`
                     : applicationScreenerResult?.message || 'Your application has been submitted.'}
                 </p>
                 {applicationScreenerResult && !applicationScreenerResult.queued && !applicationScreenerResult.submitted && (

@@ -85,7 +85,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
 
   const reconcileConfirmedResponse = async (applicationId: string) => {
     if (!window.confirm(
-      'Confirm that you personally verified this applicant’s response in the Google Form response sheet. Connectfy will mark it submitted, approve the application, and queue its invitation without submitting the form again.'
+      'Confirm that you personally verified this applicant’s response in the Google Form response sheet. Connectfy will mark it submitted and approve the application without submitting the form again. An admin can send the invitation manually afterward.'
     )) return;
     if (!supabase) {
       setError('Connectfy database is not configured.');
@@ -213,7 +213,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
           <div>
             <h2 className="text-base font-black text-slate-900">Pending applicant screeners</h2>
             <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
-              The backend automatically queues eligible pending applications under the organization&apos;s hiring authorization. Successful submissions are approved and an invitation email is queued. This list refreshes as the worker reports outcomes.
+              The backend automatically queues eligible pending applications under the organization&apos;s hiring authorization. Successful submissions are approved; invitation emails are sent only when an admin chooses Send Invite. This list refreshes as the worker reports outcomes.
             </p>
           </div>
         </div>
@@ -394,7 +394,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
                         <p className="mt-1 text-slate-500">{submission.screener_device_type} · {submission.screener_os_version}</p>
                       </td>
                       <td className={`px-4 py-3 font-semibold ${submission.screener_submission_error ? 'text-amber-700' : 'text-emerald-700'}`}>
-                        {submission.screener_submission_error || 'Google confirmed; application approved and invitation queued.'}
+                        {submission.screener_submission_error || 'Google confirmed; application approved. An admin can send the invitation manually.'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDateTime(submission.screener_submitted_at)}</td>
                     </tr>

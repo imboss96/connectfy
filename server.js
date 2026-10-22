@@ -18,6 +18,7 @@ import { appendSlackFooterHtml, appendSlackFooterText } from './src/lib/emailSla
 import { getNextPlatformPayDate } from './src/lib/platformPayDate.js';
 import { buildEmployeeContractPdf } from './src/lib/employeeContractPdf.js';
 import { EmailProviderHttpError, sendWithEmailProviderFailover } from './src/lib/emailProviderFailover.js';
+import nodemailer from 'nodemailer';
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '/etc/connectfy-email.env' });
 dotenv.config({ path: '.env.local' });
@@ -523,7 +524,8 @@ const projectEmailSubject = (payload, type) => type === 'invite'
 
 const hasBrevoEmailProvider = () => Boolean(process.env.BREVO_API_KEY);
 const hasMailjetEmailProvider = () => Boolean(process.env.MAILJET_API_KEY && process.env.MAILJET_API_SECRET);
-const hasEmailProvider = () => hasBrevoEmailProvider() || hasMailjetEmailProvider();
+const hasSenderEmailProvider = () => Boolean(process.env.SENDER_SMTP_USER && process.env.SENDER_SMTP_PASSWORD);
+const hasEmailProvider = () => hasBrevoEmailProvider() || hasMailjetEmailProvider() || hasSenderEmailProvider();
 
 const sendEmailThroughProvider = async (payload, type, provider) => {
   let toEmail = String(payload.toEmail || '').trim();
@@ -558,7 +560,7 @@ const sendEmailThroughProvider = async (payload, type, provider) => {
     if (type === 'employee_welcome' && Array.isArray(payload.emailAttachments) && payload.emailAttachments.length) {
       requestPayload.attachment = payload.emailAttachments;
     }
-  } else {
+  } else if (provider === 'mailjet') {
     const mailjetApiKey = process.env.MAILJET_API_KEY;
     const mailjetApiSecret = process.env.MAILJET_API_SECRET;
     if (!mailjetApiKey || !mailjetApiSecret) throw new Error('MAILJET_API_KEY and MAILJET_API_SECRET are required.');
@@ -585,6 +587,54 @@ const sendEmailThroughProvider = async (payload, type, provider) => {
       }));
     }
     requestPayload = { Messages: [message] };
+  } else {
+    const smtpUser = process.env.SENDER_SMTP_USER;
+    const smtpPassword = process.env.SENDER_SMTP_PASSWORD;
+    if (!smtpUser || !smtpPassword) {
+      throw new Error('SENDER_SMTP_USER and SENDER_SMTP_PASSWORD are required.');
+    }
+    const transport = nodemailer.createTransport({
+      host: 'smtp.sender.net',
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      auth: { user: smtpUser, pass: smtpPassword },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000
+    });
+    try {
+      const result = await transport.sendMail({
+        from: {
+          name: process.env.SENDER_SENDER_NAME || 'Connectfy',
+          address: process.env.SENDER_SENDER_EMAIL || process.env.BREVO_SENDER_EMAIL || 'admin@connectfy.tech'
+        },
+        to: { name: toName, address: toEmail },
+        subject,
+        html: htmlContent,
+        text: textContent,
+        attachments: type === 'employee_welcome' && Array.isArray(payload.emailAttachments)
+          ? payload.emailAttachments.map((attachment) => ({
+            filename: attachment.name,
+            content: Buffer.from(attachment.content, 'base64'),
+            contentType: attachment.contentType || 'application/octet-stream'
+          }))
+          : []
+      });
+      if (!Array.isArray(result.accepted) || result.accepted.length === 0) {
+        throw new Error('Sender SMTP did not confirm recipient acceptance.');
+      }
+      return { subject, messageId: result.messageId || null, provider };
+    } catch (error) {
+      const responseCode = Number(error?.responseCode);
+      const responseText = String(error?.response || error?.message || '');
+      if (responseCode >= 400 && responseCode < 600) {
+        throw new EmailProviderHttpError(provider, responseCode, responseText);
+      }
+      throw error;
+    } finally {
+      transport.close();
+    }
   }
 
   const response = await fetch(endpoint, {
@@ -615,10 +665,11 @@ const sendEmailThroughProvider = async (payload, type, provider) => {
 };
 
 const sendEmailWithFailover = async (payload, type) => {
-  const preferredProvider = process.env.EMAIL_PRIMARY_PROVIDER === 'mailjet' ? 'mailjet' : 'brevo';
+  const preferredProvider = process.env.EMAIL_PRIMARY_PROVIDER || 'brevo';
   const availableProviders = {
     brevo: hasBrevoEmailProvider(),
-    mailjet: hasMailjetEmailProvider()
+    mailjet: hasMailjetEmailProvider(),
+    sender: hasSenderEmailProvider()
   };
   return sendWithEmailProviderFailover({
     preferredProvider,
@@ -632,8 +683,9 @@ const sendEmailWithFailover = async (payload, type) => {
 
 const supabaseServiceUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const outboxWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && hasEmailProvider());
-const applicationScreenerWorkerEnabled = outboxWorkerEnabled;
+const outboxWorkerEnabled = process.env.PROJECT_INVITATION_EMAIL_AUTOMATION_ENABLED === 'true'
+  && Boolean(supabaseServiceUrl && supabaseServiceRoleKey && hasEmailProvider());
+const applicationScreenerWorkerEnabled = Boolean(supabaseServiceUrl && supabaseServiceRoleKey && hasEmailProvider());
 let outboxWorkerBusy = false;
 let applicationScreenerWorkerBusy = false;
 let paypalPayoutPollBusy = false;
@@ -1924,7 +1976,7 @@ const processOneApplicationScreenerJob = async () => {
           p_application_id: job.application_id
         });
         await completeApplicationScreenerJob(job.application_id, 'submitted');
-        console.info('Application screener submitted; application approved and invitation queued.', {
+        console.info('Application screener submitted and application approved; invitation email remains manual.', {
           applicationId: job.application_id
         });
       } catch (error) {
@@ -2107,7 +2159,7 @@ app.post('/api/application-screener', async (req, res) => {
         });
         return res.json({
           ok: true,
-          message: 'The external screener was already submitted; the application is approved and its invitation is queued.'
+          message: 'The external screener was already submitted and the application is approved. An admin can send the invitation manually.'
         });
       } catch (error) {
         console.error('Unable to complete automatic application approval after screener confirmation:', error);
@@ -2115,7 +2167,7 @@ app.post('/api/application-screener', async (req, res) => {
           ok: false,
           screenerConfirmed: true,
           retryable: true,
-          message: 'The screener is confirmed, but automatic approval or invitation could not be completed. Retry to finish approval; the screener will not be submitted again.'
+          message: 'The screener is confirmed, but automatic application approval could not be completed. Retry to finish approval; the screener will not be submitted again.'
         });
       }
     }
@@ -2241,12 +2293,12 @@ app.post('/api/application-screener', async (req, res) => {
           ok: false,
           screenerConfirmed: true,
           retryable: true,
-          message: 'The screener is confirmed, but automatic approval or invitation could not be completed. Retry to finish approval; the screener will not be submitted again.'
+          message: 'The screener is confirmed, but automatic application approval could not be completed. Retry to finish approval; the screener will not be submitted again.'
         });
       }
       return res.json({
         ok: true,
-        message: 'The external Applause screener was submitted, the application was approved, and its invitation was queued.'
+        message: 'The external Applause screener was submitted and the application was approved. An admin can send the invitation manually.'
       });
     }
 
@@ -2485,7 +2537,7 @@ app.post('/api/project-email', async (req, res) => {
     }
 
     if (!hasEmailProvider()) {
-      return res.status(500).json({ ok: false, message: 'Configure BREVO_API_KEY or both MAILJET_API_KEY and MAILJET_API_SECRET.' });
+      return res.status(500).json({ ok: false, message: 'Configure BREVO_API_KEY, both MAILJET_API_KEY and MAILJET_API_SECRET, or SENDER_SMTP_USER and SENDER_SMTP_PASSWORD.' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
       return res.status(400).json({ ok: false, message: 'Invalid recipient email' });
@@ -2514,7 +2566,7 @@ if (outboxWorkerEnabled) {
   setInterval(() => void pollProjectEmailOutbox(), 5000);
   void pollProjectEmailOutbox();
 } else {
-  console.warn('Project approval email outbox worker disabled: configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and at least one email provider.');
+  console.info('Automatic project invitation emails are disabled; admins can send invitations manually.');
 }
 
 if (applicationScreenerWorkerEnabled) {

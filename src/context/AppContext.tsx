@@ -1630,21 +1630,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       relatedProjectId: projectId
     });
 
-    if (effectiveTesterEmail) {
-      void triggerProjectEmail('application', projectId, effectiveTesterId, effectiveTesterName, effectiveTesterEmail, newAppId, {
-        ...emailPayloadDetails,
-        applicationReference: newAppId
-      });
-    } else {
-      console.warn('Application submitted without tester email; email trigger skipped.', {
-        projectId,
-        effectiveTesterId,
-        effectiveTesterName,
-        testerProfileEmail: testerProfile.email,
-        authEmail: userContext.email
-      });
-    }
-
     return {
       saved: true,
       applicationId: newAppId,
@@ -1657,17 +1642,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // 2. Approval persists first; the database trigger queues the invitation email transactionally.
+  // 2. Approval persists first; invitation emails are sent only through explicit admin actions.
   const approveApplication = async (appId: string, screenerSubmitted: boolean) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
     if (!project) return;
-    const inviteSentAt = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    const nextHistory = [
-      ...(app.inviteHistory || []),
-      { sentAt: inviteSentAt, type: 'invite' as const, note: 'Approved; invitation queued for email delivery' }
-    ];
+    const inviteHistory = app.inviteHistory || [];
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -1675,13 +1656,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           p_application_id: app.id,
           p_screener_submitted: screenerSubmitted,
           p_screener_form_url: APPLICATION_SCREENER_FORM_URL,
-          p_invite_history: nextHistory
+          p_invite_history: inviteHistory
         });
         if (error) throw error;
       } catch (error) {
-        console.error('Unable to approve application and queue its email in Supabase:', error);
+        console.error('Unable to approve application in Supabase:', error);
         if (typeof window !== 'undefined') {
-          window.alert('The application could not be approved. No invitation email was queued; please try again or contact support.');
+          window.alert('The application could not be approved. Please try again or contact support.');
         }
         return;
       }
@@ -1694,7 +1675,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ...a,
           status: 'approved',
           inviteStatus: 'invited',
-          inviteHistory: nextHistory
+          inviteHistory
         };
       }
       return a;
@@ -1704,15 +1685,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addNotification({
       userId: app.testerId,
       targetRole: 'tester',
-      title: 'Application Approved: Invitation Queued',
-      message: `Congratulations! Your application for "${project?.title}" was approved. Your project invitation is being sent to your email.`,
+      title: 'Application Approved',
+      message: `Congratulations! Your application for "${project?.title}" was approved. A project invitation will be emailed when an admin sends it.`,
       type: 'invite',
       relatedProjectId: app.projectId
     });
 
-    if (!isSupabaseConfigured && project && app.testerEmail) {
-      void triggerProjectEmail('invite', app.projectId, app.testerId, app.testerName, app.testerEmail, app.id);
-    }
   };
 
   const requestUtestAccountUpdate = async (appId: string) => {
@@ -2036,10 +2014,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type: 'status_update',
       relatedProjectId: app.projectId
     });
-
-    if (project && app.testerEmail) {
-      void triggerProjectEmail('accepted', app.projectId, app.testerId, app.testerName, app.testerEmail);
-    }
 
     setActiveWorkspaceProjectId(app.projectId);
     setActiveTab('tasks');

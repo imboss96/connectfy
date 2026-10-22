@@ -121,6 +121,11 @@ assert.match(emailBackend, /https:\/\/api\.mailjet\.com\/v3\.1\/send/);
 assert.match(emailBackend, /MAILJET_API_KEY/);
 assert.match(emailBackend, /Base64Content: attachment\.content/);
 assert.match(emailBackend, /ContentType: attachment\.contentType/);
+assert.match(emailBackend, /host: 'smtp\.sender\.net'/);
+assert.match(emailBackend, /SENDER_SMTP_USER/);
+assert.match(emailBackend, /SENDER_SMTP_PASSWORD/);
+assert.match(emailBackend, /filename: attachment\.name/);
+assert.match(emailBackend, /EMAIL_PRIMARY_PROVIDER \|\| 'brevo'/);
 assert.match(emailBackend, /sendWithEmailProviderFailover/);
 assert.match(emailBackend, /type === 'employee_welcome'[\s\S]*?<!doctype html>[\s\S]*?role="presentation"[\s\S]*?#0B132B[\s\S]*?#00A3E0[\s\S]*?#007AFF/i);
 assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and any revisions are based on your performance/i);
@@ -178,6 +183,33 @@ const reverseFailoverResult = await sendWithEmailProviderFailover({
 assert.deepEqual(reverseProviderAttempts, ['mailjet', 'brevo']);
 assert.equal(reverseFailoverResult.provider, 'brevo');
 
+const threeProviderAttempts: string[] = [];
+const threeProviderResult = await sendWithEmailProviderFailover({
+  preferredProvider: 'brevo',
+  availableProviders: { brevo: true, mailjet: true, sender: true },
+  send: async (provider: string) => {
+    threeProviderAttempts.push(provider);
+    if (provider === 'brevo') throw new EmailProviderHttpError('brevo', 429, 'Daily sending limit reached');
+    if (provider === 'mailjet') throw new EmailProviderHttpError('mailjet', 400, 'Monthly quota exceeded');
+    return { provider };
+  }
+});
+assert.deepEqual(threeProviderAttempts, ['brevo', 'mailjet', 'sender']);
+assert.equal(threeProviderResult.provider, 'sender');
+
+const senderRateLimitAttempts: string[] = [];
+const senderRateLimitResult = await sendWithEmailProviderFailover({
+  preferredProvider: 'sender',
+  availableProviders: { brevo: true, mailjet: true, sender: true },
+  send: async (provider: string) => {
+    senderRateLimitAttempts.push(provider);
+    if (provider === 'sender') throw new EmailProviderHttpError('sender', 452, 'Temporary SMTP rate-limit rejection');
+    return { provider };
+  }
+});
+assert.deepEqual(senderRateLimitAttempts, ['sender', 'brevo']);
+assert.equal(senderRateLimitResult.provider, 'brevo');
+
 const rejectedProviderAttempts: string[] = [];
 await assert.rejects(
   sendWithEmailProviderFailover({
@@ -188,7 +220,7 @@ await assert.rejects(
       throw new EmailProviderHttpError('brevo', 401, 'Invalid API key');
     }
   }),
-  /HTTP 401/
+  /status 401/
 );
 assert.deepEqual(rejectedProviderAttempts, ['brevo']);
 

@@ -915,7 +915,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                           className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow flex items-center space-x-1.5 transition disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Approve & Send Invite</span>
+                          <span>Approve Application</span>
                         </button>
                         <button
                           onClick={() => requestUtestAccountUpdate(app.id)}
@@ -927,7 +927,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                     ) : isApproved ? (
                       <div className="text-right space-y-2">
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Approved / Invited
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Approved
                         </span>
                         <p className="text-[11px] text-slate-500 mt-1">
                           Invite Status: {app.inviteStatus === 'accepted' ? 'Accepted' : app.status === 'approved' ? 'Approved' : 'Pending'}
@@ -937,7 +937,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                           onClick={() => resendInvite(app.id)}
                           className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-semibold rounded-lg border border-slate-700"
                         >
-                          Resend Invite
+                          {app.lastInviteSentAt ? 'Resend Invite' : 'Send Invite'}
                         </button>
                       </div>
                     ) : (

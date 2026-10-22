@@ -78,6 +78,10 @@ assert.match(approvalEmailText, /https:\/\/connectfy\.tech\/\?project=project-1/
 assert.doesNotMatch(buildProjectApprovalEmailHtml({ ...approvalEmailPayload, actionUrl: 'javascript:alert(1)' }), /href="javascript:/);
 
 const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const projectEmailAutomationMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220011_disable_automatic_project_emails.sql', import.meta.url),
+  'utf8'
+);
 const edgeSource = fs.readFileSync(new URL('../supabase/functions/project-email/index.ts', import.meta.url), 'utf8');
 const emailLogMigration = fs.readFileSync(new URL('../supabase/migrations/202610030001_legacy_sheet_email_log.sql', import.meta.url), 'utf8');
 const crmSource = fs.readFileSync(new URL('../src/components/CRMSection.tsx', import.meta.url), 'utf8');
@@ -87,6 +91,10 @@ const onboardingSource = fs.readFileSync(new URL('../src/components/LegacyOnboar
 const legacyResponseMigration = fs.readFileSync(new URL('../supabase/migrations/202610030002_legacy_sheet_responses.sql', import.meta.url), 'utf8');
 const emailServiceSource = fs.readFileSync(new URL('../src/lib/emailService.ts', import.meta.url), 'utf8');
 const appContextSource = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
+const approvalFunctionSource = appContextSource.slice(
+  appContextSource.indexOf('const approveApplication = async'),
+  appContextSource.indexOf('const requestUtestAccountUpdate = async')
+);
 const payoutBackendSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const payoutUiSource = fs.readFileSync(new URL('../src/components/PayoutOperationsSection.tsx', import.meta.url), 'utf8');
 
@@ -118,8 +126,17 @@ assert.match(serverSource, /https:\/\/app\.slack\.com\/client\/T0C8FU34030\/C0C8
 assert.match(serverSource, /For support, find us in Slack/);
 assert.match(serverSource, />Find us in Slack<\/a>/);
 assert.doesNotMatch(serverSource, /wa\.me|WhatsApp support link/);
-assert.match(appContextSource, /Approved; invitation queued for email delivery/);
-assert.match(appContextSource, /if \(!isSupabaseConfigured && project && app\.testerEmail\)/);
+assert.doesNotMatch(appContextSource, /triggerProjectEmail\('application'/);
+assert.doesNotMatch(appContextSource, /triggerProjectEmail\('accepted'/);
+assert.doesNotMatch(approvalFunctionSource, /triggerProjectEmail\(/);
+assert.match(approvalFunctionSource, /const inviteHistory = app\.inviteHistory \|\| \[\]/);
+assert.match(appContextSource, /triggerProjectEmail\('invite', projectId, testerId/);
+assert.match(appContextSource, /triggerProjectEmail\('invite', app\.projectId, app\.testerId/);
+assert.match(serverSource, /PROJECT_INVITATION_EMAIL_AUTOMATION_ENABLED === 'true'/);
+assert.match(projectEmailAutomationMigration, /drop trigger if exists applications_enqueue_project_approval_email/i);
+assert.match(projectEmailAutomationMigration, /where status in \('pending', 'processing'\)/i);
+assert.doesNotMatch(projectEmailAutomationMigration, /invite_history\s*=\s*coalesce/i);
+assert.match(fs.readFileSync(new URL('../src/components/AdminProjectManager.tsx', import.meta.url), 'utf8'), /\{app\.lastInviteSentAt \? 'Resend Invite' : 'Send Invite'\}/);
 assert.match(payoutBackendSource, /\/api\/mpesa\/b2c\/result/);
 assert.match(payoutBackendSource, /\/api\/admin\/payout-requests\/:id\/approve/);
 assert.match(payoutBackendSource, /Safaricom B2C configuration is incomplete/);

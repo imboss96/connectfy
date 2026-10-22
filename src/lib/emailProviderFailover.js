@@ -1,6 +1,6 @@
 export class EmailProviderHttpError extends Error {
   constructor(provider, status, responseBody) {
-    super(`${provider} rejected the email request with HTTP ${status}.`);
+    super(`${provider} rejected the email request with status ${status}.`);
     this.name = 'EmailProviderHttpError';
     this.provider = provider;
     this.status = status;
@@ -11,6 +11,7 @@ export class EmailProviderHttpError extends Error {
 export const isQuotaRejection = (error) => error instanceof EmailProviderHttpError
   && (
     error.status === 429
+    || error.provider === 'sender' && error.status >= 400 && error.status < 500
     || /quota|daily.{0,24}limit|rate.{0,24}limit|too many requests|sending.{0,24}limit/i.test(error.responseBody)
   );
 
@@ -20,27 +21,34 @@ export async function sendWithEmailProviderFailover({
   send,
   onFailover = () => {}
 }) {
-  const preferred = preferredProvider === 'mailjet' ? 'mailjet' : 'brevo';
-  const primaryProvider = availableProviders[preferred]
-    ? preferred
-    : preferred === 'brevo' ? 'mailjet' : 'brevo';
-  const fallbackProvider = primaryProvider === 'brevo' ? 'mailjet' : 'brevo';
-  if (!availableProviders[primaryProvider]) {
-    throw new Error('Configure BREVO_API_KEY or both MAILJET_API_KEY and MAILJET_API_SECRET to send email.');
+  const providerOrder = ['brevo', 'mailjet', 'sender'];
+  const preferred = providerOrder.includes(preferredProvider) ? preferredProvider : 'brevo';
+  const availableOrder = [
+    preferred,
+    ...providerOrder.filter((provider) => provider !== preferred)
+  ].filter((provider) => availableProviders[provider]);
+
+  if (!availableOrder.length) {
+    throw new Error('Configure BREVO_API_KEY, both MAILJET_API_KEY and MAILJET_API_SECRET, or Sender SMTP credentials to send email.');
   }
 
-  try {
-    return await send(primaryProvider);
-  } catch (error) {
-    if (!availableProviders[fallbackProvider] || !isQuotaRejection(error)) throw error;
-    onFailover(primaryProvider, fallbackProvider);
+  let quotaLimitedProvider = null;
+  for (let index = 0; index < availableOrder.length; index += 1) {
+    const provider = availableOrder[index];
     try {
-      return await send(fallbackProvider);
-    } catch (fallbackError) {
-      if (fallbackError instanceof EmailProviderHttpError) {
-        throw new Error(`${primaryProvider} reached its sending limit and ${fallbackProvider} rejected the email with HTTP ${fallbackError.status}.`);
+      return await send(provider);
+    } catch (error) {
+      if (!isQuotaRejection(error) || index === availableOrder.length - 1) {
+        if (!quotaLimitedProvider) throw error;
+        if (error instanceof EmailProviderHttpError) {
+          throw new Error(`${quotaLimitedProvider} reached its sending limit and ${provider} rejected the email with status ${error.status}.`);
+        }
+        throw new Error(`${quotaLimitedProvider} reached its sending limit, and the ${provider} send could not be confirmed.`);
       }
-      throw new Error(`${primaryProvider} reached its sending limit, and the ${fallbackProvider} send could not be confirmed.`);
+      quotaLimitedProvider = provider;
+      onFailover(provider, availableOrder[index + 1]);
     }
   }
+
+  throw new Error('No email provider accepted the message.');
 }

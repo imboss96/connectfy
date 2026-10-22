@@ -38,7 +38,7 @@ assert.match(migration, /drop constraint if exists application_screener_outbox_s
 assert.match(migration, /approval_failed', 'submitted', 'failed', 'ambiguous'/);
 assert.match(migration, /order by application\.applied_at desc\s+limit 1/i);
 
-assert.match(serverSource, /const applicationScreenerWorkerEnabled = outboxWorkerEnabled/);
+assert.match(serverSource, /const applicationScreenerWorkerEnabled = Boolean\(supabaseServiceUrl && supabaseServiceRoleKey && hasEmailProvider\(\)\)/);
 assert.match(serverSource, /claim_application_screener_submission/);
 assert.match(serverSource, /complete_application_screener_submission/);
 assert.match(serverSource, /approve_application_after_screener/);
@@ -51,7 +51,8 @@ assert.match(serverSource, /res\.status\(410\)/);
 
 assert.match(submissionsSource, /Queued for automatic submission/);
 assert.match(submissionsSource, /setInterval\(\(\) => void loadSubmissions\(false\), 10000\)/);
-assert.match(submissionsSource, /Google confirmed; application approved and invitation queued/);
+assert.match(submissionsSource, /Google confirmed; application approved/);
+assert.match(submissionsSource, /An admin can send the invitation manually/);
 assert.match(submissionsSource, /I verified the sheet response/);
 assert.match(submissionsSource, /reconcile-application-screener/);
 assert.doesNotMatch(submissionsSource, /Submit screener/);

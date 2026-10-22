@@ -465,14 +465,14 @@ export const AdminProjectManager: React.FC = () => {
                           onClick={() => void approveApplication(app.id, confirmedScreenerIds.has(app.id))}
                           className="px-3 py-1.5 rounded-lg bg-[#007AFF] text-xs font-bold text-white hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          Approve & Send Invite
+                          Approve Application
                         </button>
                         <button type="button" onClick={() => void requestUtestAccountUpdate(app.id)} className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100">Request New uTest Account & Reapply</button>
                       </>
                     )}
 
                     {(app.status === 'approved' || app.inviteStatus === 'invited' || app.inviteStatus === 'accepted') && (
-                      <button type="button" onClick={() => resendInvite(app.id)} className="px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-700 hover:bg-sky-100">Resend Invite</button>
+                      <button type="button" onClick={() => resendInvite(app.id)} className="px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs font-semibold text-sky-700 hover:bg-sky-100">{app.lastInviteSentAt ? 'Resend Invite' : 'Send Invite'}</button>
                     )}
 
                     {app.status !== 'rejected' && (
