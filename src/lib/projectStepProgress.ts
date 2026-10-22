@@ -2,12 +2,14 @@ import { AttachmentFile } from '../types';
 import { isSupabaseConfigured, supabase } from './supabase';
 
 export type ProjectStepId = 'slack' | 'consent' | 'languageSettings' | 'recordings';
-export type ProjectStepStatus = 'pending' | 'done' | 'failed';
+export type ProjectStepStatus = 'pending' | 'submitted' | 'done' | 'failed';
 export type ProjectStepStatuses = Record<ProjectStepId, ProjectStepStatus>;
+export type ProjectStepReviewNotes = Partial<Record<ProjectStepId, string>>;
 
 export interface ProjectStepProgress {
   statuses: ProjectStepStatuses;
   attachments: AttachmentFile[];
+  reviewNotes: ProjectStepReviewNotes;
 }
 
 const isUuid = (value: string) =>
@@ -44,7 +46,10 @@ export async function fetchProjectStepProgress(projectId: string): Promise<Proje
   const statuses = data.statuses as Partial<ProjectStepStatuses> | null;
   const stepIds: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
   if (!statuses || !stepIds.every((stepId) =>
-    statuses[stepId] === 'pending' || statuses[stepId] === 'done' || statuses[stepId] === 'failed'
+    statuses[stepId] === 'pending'
+      || statuses[stepId] === 'submitted'
+      || statuses[stepId] === 'done'
+      || statuses[stepId] === 'failed'
   )) {
     throw new Error('Saved project checklist progress has an invalid status format.');
   }
@@ -60,25 +65,38 @@ export async function fetchProjectStepProgress(projectId: string): Promise<Proje
     throw new Error('Saved project checklist evidence has an invalid format.');
   }
 
+  const { data: reviewRows, error: reviewError } = await supabase
+    .from('project_step_review_history')
+    .select('step_id,note')
+    .eq('project_id', projectId)
+    .eq('tester_id', testerId)
+    .order('created_at', { ascending: false });
+  if (reviewError) {
+    throw new Error(`Unable to load project step review feedback: ${reviewError.message}`);
+  }
+
+  const reviewNotes: ProjectStepReviewNotes = {};
+  for (const review of reviewRows || []) {
+    const stepId = review.step_id as ProjectStepId;
+    if (reviewNotes[stepId] === undefined && review.note) reviewNotes[stepId] = review.note;
+  }
+
   return {
     statuses: statuses as ProjectStepStatuses,
-    attachments: data.evidence as AttachmentFile[]
+    attachments: data.evidence as AttachmentFile[],
+    reviewNotes
   };
 }
 
 export async function saveProjectStepProgress(projectId: string, progress: ProjectStepProgress): Promise<void> {
   if (!supabase) throw new Error('Supabase is not configured.');
 
-  const testerId = await getAuthenticatedTesterId();
-  const { error } = await supabase
-    .from('project_step_progress')
-    .upsert({
-      project_id: projectId,
-      tester_id: testerId,
-      statuses: progress.statuses,
-      evidence: progress.attachments,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'project_id,tester_id' });
+  await getAuthenticatedTesterId();
+  const { error } = await supabase.rpc('submit_project_step_progress', {
+    p_project_id: projectId,
+    p_statuses: progress.statuses,
+    p_evidence: progress.attachments
+  });
 
   if (error) {
     throw new Error(`Unable to save project checklist progress: ${error.message}`);

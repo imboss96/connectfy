@@ -17,7 +17,8 @@ export type AdminTab =
   | 'service_listings'
   | 'client_applicants'
   | 'client_cycles'
-  | 'hr';
+  | 'hr'
+  | 'step_reviews';
 
 const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
   super_admin: new Set([
@@ -37,7 +38,8 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'client_applicants',
     'client_cycles',
     'application_screener_submissions',
-    'hr'
+    'hr',
+    'step_reviews'
   ]),
   project_manager: new Set([
     'admin_manager',
@@ -51,9 +53,10 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'service_listings',
     'client_applicants',
     'client_cycles',
-    'application_screener_submissions'
+    'application_screener_submissions',
+    'step_reviews'
   ]),
-  reviewer: new Set(['client_submissions', 'profile_settings', 'project_tasks', 'arbeitnow_jobs'])
+  reviewer: new Set(['client_submissions', 'profile_settings', 'project_tasks', 'arbeitnow_jobs', 'step_reviews'])
 };
 
 export const canAccessAdminTab = (level: AdminAccessLevel, tab: string): tab is AdminTab =>

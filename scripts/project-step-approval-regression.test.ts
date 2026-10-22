@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { canAccessAdminTab } from '../src/lib/adminPermissions';
+import type {
+  ProjectStepId,
+  ProjectStepStatuses
+} from '../src/lib/projectStepProgress';
+
+const migration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220003_require_project_step_approval.sql', import.meta.url),
+  'utf8'
+);
+const steps: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
+
+const initialStatuses: ProjectStepStatuses = {
+  slack: 'pending',
+  consent: 'pending',
+  languageSettings: 'pending',
+  recordings: 'pending'
+};
+
+assert.deepEqual(steps, Object.keys(initialStatuses));
+assert.equal(canAccessAdminTab('super_admin', 'step_reviews'), true);
+assert.equal(canAccessAdminTab('project_manager', 'step_reviews'), true);
+assert.equal(canAccessAdminTab('reviewer', 'step_reviews'), true);
+assert.equal(canAccessAdminTab('project_manager', 'hr'), false);
+
+assert.match(migration, /create or replace function public\.submit_project_step_progress/i);
+assert.match(migration, /when entry\.value = '"done"'::jsonb then '"submitted"'/i);
+assert.match(migration, /when entry\.value = '"failed"'::jsonb then '"pending"'/i);
+assert.match(migration, /old_status not in \('pending', 'failed'\) or new_status <> 'submitted'/i);
+assert.match(migration, /previous project step must be approved/i);
+assert.match(migration, /changes_count > 1/i);
+assert.match(migration, /create or replace function public\.review_project_step/i);
+assert.match(migration, /public\.can_review_submissions\(\)/i);
+assert.match(migration, /case when p_approved then 'done' else 'failed' end/i);
+assert.match(migration, /requesting changes\./i);
+assert.match(migration, /drop policy if exists "testers update their project step progress"/i);
+assert.match(migration, /revoke insert, update, delete on public\.project_step_progress/i);
+assert.match(migration, /project_step_review_history/i);
+
+console.log('project step approval regression checks passed');

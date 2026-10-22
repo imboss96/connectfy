@@ -1,11 +1,12 @@
 import React, { ChangeEvent, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, CheckCircle2, Circle, ExternalLink, FileImage, LoaderCircle, Upload, XCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, Circle, ExternalLink, FileImage, LoaderCircle, RefreshCw, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 import { AttachmentFile, Project, TaskSubmission, TesterProfile } from '../types';
 import {
   fetchProjectStepProgress,
   ProjectStepProgress,
+  ProjectStepReviewNotes,
   ProjectStepStatuses,
   ProjectStepStatus,
   saveProjectStepProgress,
@@ -39,6 +40,7 @@ const hasSavedProgress = (progress: SavedProgress) =>
 interface SavedProgress {
   statuses: StepStatuses;
   attachments: AttachmentFile[];
+  reviewNotes: ProjectStepReviewNotes;
 }
 
 interface GuidedProjectStepsProps {
@@ -52,14 +54,14 @@ interface GuidedProjectStepsProps {
 const readSavedProgress = (key: string): SavedProgress => {
   try {
     const saved = localStorage.getItem(key);
-    if (!saved) return { statuses: defaultStatuses, attachments: [] };
+    if (!saved) return { statuses: defaultStatuses, attachments: [], reviewNotes: {} };
 
     const parsed = JSON.parse(saved) as Partial<SavedProgress>;
     const statuses = { ...defaultStatuses };
     if (parsed.statuses && typeof parsed.statuses === 'object') {
       stepIds.forEach((id) => {
         const status = parsed.statuses?.[id];
-        if (status === 'pending' || status === 'done' || status === 'failed') statuses[id] = status;
+        if (status === 'pending' || status === 'submitted' || status === 'done' || status === 'failed') statuses[id] = status;
       });
     }
 
@@ -68,10 +70,11 @@ const readSavedProgress = (key: string): SavedProgress => {
       attachments: Array.isArray(parsed.attachments)
         ? parsed.attachments.filter((attachment: AttachmentFile) =>
           attachment.name.startsWith('screenshot:') || attachment.type.startsWith('image/'))
-        : []
+        : [],
+      reviewNotes: parsed.reviewNotes && typeof parsed.reviewNotes === 'object' ? parsed.reviewNotes : {}
     };
   } catch {
-    return { statuses: defaultStatuses, attachments: [] };
+    return { statuses: defaultStatuses, attachments: [], reviewNotes: {} };
   }
 };
 
@@ -91,6 +94,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
   }, [project.id, storageKey, testerProfile.email, testerProfile.id]);
   const [statuses, setStatuses] = useState<StepStatuses>(initialProgress.statuses);
   const [attachments, setAttachments] = useState<AttachmentFile[]>(initialProgress.attachments);
+  const [reviewNotes, setReviewNotes] = useState<ProjectStepReviewNotes>(initialProgress.reviewNotes);
   const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,15 +106,16 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
   const [reloadProgressKey, setReloadProgressKey] = useState(0);
   const usesRemoteProgress = usesRemoteProjectStepProgress(project.id);
   const saveQueue = React.useRef<Promise<void>>(Promise.resolve());
+  const lastLocalChangeAt = React.useRef(0);
 
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ statuses, attachments }));
+      localStorage.setItem(storageKey, JSON.stringify({ statuses, attachments, reviewNotes }));
     } catch (saveError) {
       console.error('Unable to save project checklist progress:', saveError);
       setProgressError('Progress could not be saved on this device.');
     }
-  }, [attachments, statuses, storageKey]);
+  }, [attachments, reviewNotes, statuses, storageKey]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -118,6 +123,9 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     setRemoteProgressReady(false);
 
     if (!usesRemoteProgress) {
+      setStatuses(defaultStatuses);
+      setAttachments([]);
+      setReviewNotes({});
       setProgressLoaded(true);
       setIsProgressLoading(false);
       return () => {
@@ -132,6 +140,11 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         if (savedProgress) {
           setStatuses(savedProgress.statuses);
           setAttachments(savedProgress.attachments);
+          setReviewNotes(savedProgress.reviewNotes);
+        } else {
+          setStatuses(defaultStatuses);
+          setAttachments([]);
+          setReviewNotes({});
         }
         setProgressError('');
         setRemoteProgressReady(true);
@@ -153,12 +166,42 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
   }, [project.id, reloadProgressKey, usesRemoteProgress]);
 
   useEffect(() => {
+    if (!usesRemoteProgress) return;
+
+    const interval = window.setInterval(() => {
+      if (Date.now() - lastLocalChangeAt.current < 3000) return;
+      void fetchProjectStepProgress(project.id)
+        .then((savedProgress) => {
+          if (!savedProgress) return;
+          setStatuses((current) => JSON.stringify(current) === JSON.stringify(savedProgress.statuses)
+            ? current
+            : savedProgress.statuses);
+          setAttachments((current) => JSON.stringify(current) === JSON.stringify(savedProgress.attachments)
+            ? current
+            : savedProgress.attachments);
+          setReviewNotes((current) => JSON.stringify(current) === JSON.stringify(savedProgress.reviewNotes)
+            ? current
+            : savedProgress.reviewNotes);
+          setProgressError('');
+        })
+        .catch((refreshError: unknown) => {
+          console.error('Unable to refresh project step approval status:', refreshError);
+          setProgressError(refreshError instanceof Error
+            ? refreshError.message
+            : 'Unable to refresh project step approval status.');
+        });
+    }, 15000);
+
+    return () => window.clearInterval(interval);
+  }, [project.id, usesRemoteProgress]);
+
+  useEffect(() => {
     if (!usesRemoteProgress || !remoteProgressReady || !progressLoaded) return;
 
     const hasProgress = stepIds.some((id) => statuses[id] !== 'pending') || attachments.length > 0;
     if (!hasProgress) return;
 
-    const snapshot: ProjectStepProgress = { statuses, attachments };
+    const snapshot: ProjectStepProgress = { statuses, attachments, reviewNotes };
     const timeout = window.setTimeout(() => {
       setIsProgressSaving(true);
       saveQueue.current = saveQueue.current
@@ -173,7 +216,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [attachments, progressLoaded, project.id, remoteProgressReady, statuses, usesRemoteProgress]);
+  }, [attachments, progressLoaded, project.id, remoteProgressReady, reviewNotes, statuses, usesRemoteProgress]);
 
   const screenshot = attachments.find((attachment) => attachment.name.startsWith('screenshot:'));
   const screenshotReady = Boolean(screenshot);
@@ -181,9 +224,12 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
   const canStartLanguageSettings = statuses.slack === 'done' && statuses.consent === 'done';
   const canStartCollection = canStartLanguageSettings && statuses.languageSettings === 'done';
   const completedCount = stepIds.filter((id) => statuses[id] === 'done').length;
+  const awaitingApprovalCount = stepIds.filter((id) => statuses[id] === 'submitted').length;
   const isComplete = completedCount === stepIds.length;
   const updateStatus = (stepId: StepId, status: StepStatus) => {
+    lastLocalChangeAt.current = Date.now();
     setStatuses((previous) => ({ ...previous, [stepId]: status }));
+    setReviewNotes((previous) => ({ ...previous, [stepId]: undefined }));
     setError('');
   };
 
@@ -219,6 +265,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         ...previous.filter((attachment) => !attachment.name.startsWith(`${slot}:`)),
         uploadedFile
       ]);
+      lastLocalChangeAt.current = Date.now();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'The screenshot could not be uploaded.');
     } finally {
@@ -228,7 +275,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
 
   const handleSubmit = async () => {
     if (!isComplete) {
-      setError('Mark all four steps Done before submitting the project for review.');
+      setError('Wait until all four project steps are approved before submitting the project for review.');
       return;
     }
     if (!screenshotReady) {
@@ -292,44 +339,45 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     number: number,
     title: string,
     children: React.ReactNode,
-    canMarkDone = true,
-    canMarkFailed = true
+    canMarkDone = true
   ) => {
     const status = statuses[step];
     return (
-      <article className={`rounded-2xl border bg-white p-5 shadow-sm ${status === 'done' ? 'border-emerald-200' : status === 'failed' ? 'border-rose-200' : 'border-slate-200'}`}>
+      <article className={`rounded-2xl border bg-white p-5 shadow-sm ${status === 'done' ? 'border-emerald-200' : status === 'failed' ? 'border-rose-200' : status === 'submitted' ? 'border-amber-200' : 'border-slate-200'}`}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3">
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${status === 'done' ? 'bg-emerald-100 text-emerald-700' : status === 'failed' ? 'bg-rose-100 text-rose-700' : 'bg-sky-100 text-sky-700'}`}>
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${status === 'done' ? 'bg-emerald-100 text-emerald-700' : status === 'failed' ? 'bg-rose-100 text-rose-700' : status === 'submitted' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-700'}`}>
               {status === 'done' ? <Check className="h-4 w-4" /> : number}
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold text-slate-900">{title}</h3>
                 {status === 'done' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Done</span>}
-                {status === 'failed' && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Failed</span>}
+                {status === 'submitted' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Awaiting approval</span>}
+                {status === 'failed' && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Changes requested</span>}
               </div>
               <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-600">{children}</div>
+              {reviewNotes[step] && status === 'failed' && (
+                <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  Reviewer feedback: {reviewNotes[step]}
+                </p>
+              )}
+              {status === 'submitted' && (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  Your step was submitted. The next step unlocks after a reviewer or project manager approves it.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
             <button
               type="button"
-              onClick={() => updateStatus(step, 'done')}
-              disabled={!canMarkDone || isSubmitting || isProgressLoading}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${status === 'done' ? 'bg-emerald-700 text-white' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+              onClick={() => updateStatus(step, 'submitted')}
+              disabled={!usesRemoteProgress || !remoteProgressReady || Boolean(progressError) || !canMarkDone || status === 'submitted' || status === 'done' || isSubmitting || isProgressLoading || isProgressSaving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Check className="h-3.5 w-3.5" />
-              Done
-            </button>
-            <button
-              type="button"
-              onClick={() => updateStatus(step, 'failed')}
-              disabled={!canMarkFailed || isSubmitting || isProgressLoading}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${status === 'failed' ? 'bg-rose-700 text-white' : 'bg-rose-600 text-white hover:bg-rose-700'}`}
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              Failed
+              {status === 'failed' ? 'Resubmit for approval' : status === 'submitted' ? 'Awaiting approval' : status === 'done' ? 'Approved' : 'Submit for approval'}
             </button>
           </div>
         </div>
@@ -343,14 +391,16 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-sky-800">Project completion checklist</p>
-            <h2 className="mt-1 text-lg font-black text-slate-900">Complete each step to submit your work</h2>
-            <p className="mt-1 text-sm text-slate-600">Join the project Slack first, then complete consent and language setup to unlock the collection tasks. Only the final completion screenshot is required here.</p>
+            <h2 className="mt-1 text-lg font-black text-slate-900">Submit each step and wait for approval</h2>
+            <p className="mt-1 text-sm text-slate-600">A reviewer or project manager must approve each step before the next step unlocks. Only the final completion screenshot is required here.</p>
           </div>
           <div className="flex items-center gap-2 text-sm font-bold text-slate-700" aria-live="polite">
             {stepIds.map((step) => statuses[step] === 'done'
               ? <CheckCircle2 key={step} className="h-5 w-5 text-emerald-600" />
-              : <Circle key={step} className={`h-5 w-5 ${statuses[step] === 'failed' ? 'text-rose-500' : 'text-slate-300'}`} />)}
-            <span>{completedCount} of {stepIds.length} done</span>
+              : statuses[step] === 'submitted'
+                ? <Circle key={step} className="h-5 w-5 text-amber-500" />
+                : <Circle key={step} className={`h-5 w-5 ${statuses[step] === 'failed' ? 'text-rose-500' : 'text-slate-300'}`} />)}
+            <span>{completedCount} of {stepIds.length} approved{awaitingApprovalCount > 0 ? ` · ${awaitingApprovalCount} awaiting review` : ''}</span>
           </div>
         </div>
       </section>
@@ -364,8 +414,8 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
               : isProgressSaving
                 ? 'Saving progress to your account…'
                 : usesRemoteProgress
-                  ? 'Progress syncs to your account across devices.'
-                  : 'Progress is saved on this device only; sign in to Supabase with a saved project to sync across devices.'}
+                  ? 'Progress syncs to your account across devices. Approval status refreshes every 15 seconds.'
+                  : 'Step approval requires a signed-in account and a cloud-backed project. Contact project support if this message persists.'}
         </span>
         {usesRemoteProgress && progressError && (
           <button
@@ -375,6 +425,16 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             className="shrink-0 font-bold underline underline-offset-2 disabled:opacity-50"
           >
             Retry
+          </button>
+        )}
+        {usesRemoteProgress && (
+          <button
+            type="button"
+            onClick={() => setReloadProgressKey((previous) => previous + 1)}
+            disabled={isProgressLoading}
+            className="inline-flex shrink-0 items-center gap-1 font-bold underline underline-offset-2 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isProgressLoading ? 'animate-spin' : ''}`} /> Refresh
           </button>
         )}
       </div>
@@ -422,7 +482,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             Open the project consent form <ExternalLink className="h-4 w-4" />
           </a>
         </>
-      ), canStartConsent, canStartConsent)}
+      ), canStartConsent)}
 
       {stepCard('languageSettings', 3, 'Submit the language settings video', (
         <>
@@ -450,7 +510,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             <p className="mt-1 text-xs">Name, uTest ID (if you have one), Participant Gmail, Date of Birth, and the required Settings Video upload.</p>
           </div>
         </>
-      ), canStartLanguageSettings, canStartLanguageSettings)}
+      ), canStartLanguageSettings)}
 
       {!canStartCollection ? (
         <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5 opacity-80">
@@ -458,7 +518,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-600">4</span>
             <div>
               <h3 className="font-bold text-slate-700">Complete the Google Selfie Collection tasks</h3>
-              <p className="mt-1 text-sm text-slate-600">This step unlocks after Slack, consent, and language settings are marked Done.</p>
+              <p className="mt-1 text-sm text-slate-600">This step unlocks after Slack, consent, and language settings are approved.</p>
             </div>
           </div>
         </article>

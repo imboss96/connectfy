@@ -22,6 +22,7 @@ import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { ApplicationScreenerSubmissions } from './components/ApplicationScreenerSubmissions';
 import { HRSection } from './components/HRSection';
+import { ProjectStepReviews } from './components/ProjectStepReviews';
 import { AmbassadorDashboard } from './components/AmbassadorDashboard';
 import { LandingPage } from './components/LandingPage';
 import { TermsAndConditionsPage } from './components/TermsAndConditionsPage';
@@ -45,7 +46,8 @@ import {
   CalendarClock,
   MailCheck,
   CheckCircle2,
-  UserPlus
+  UserPlus,
+  ClipboardCheck
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -58,6 +60,7 @@ const adminMobileItems = [
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
   { tab: 'project_tasks', label: 'Tasks', icon: FileCheck },
   { tab: 'application_screener_submissions', label: 'Applause', icon: CheckCircle2 },
+  { tab: 'step_reviews', label: 'Step Reviews', icon: ClipboardCheck },
   { tab: 'hr', label: 'HR', icon: Users },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
@@ -163,6 +166,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
           />
         ) : activeTab === 'hr' ? (
           <HRSection />
+        ) : activeTab === 'step_reviews' && role === 'admin' && hasAdminTabAccess ? (
+          <ProjectStepReviews />
         ) : role === 'tester' && activeTab === 'ambassador' ? (
           <AmbassadorDashboard />
         ) : role === 'admin' && !hasAdminTabAccess ? (
