@@ -203,8 +203,10 @@ export async function fetchApplicationsFromSupabase() {
       .eq('id', authData.user.id)
       .maybeSingle();
     if (profileError) throw profileError;
-    if (profile?.role === 'admin'
-      && (profile.admin_access_level === 'project_manager' || profile.admin_access_level === 'super_admin')) {
+    if (
+      (profile?.role === 'admin' && profile.admin_access_level === 'super_admin')
+      || profile?.admin_access_level === 'project_manager'
+    ) {
       const { data, error } = await supabase.rpc('fetch_project_manager_applications');
       if (error) throw error;
       return data || [];

@@ -16,6 +16,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { getHrJobTitleAdminAccess } from '../lib/hrJobTitleAccess';
 import { supabase } from '../lib/supabase';
 
 type HrTab = 'overview' | 'onboarding' | 'attendance' | 'leave' | 'payroll' | 'performance';
@@ -42,6 +43,17 @@ interface PlatformProfile {
   name: string;
   email: string;
   role: string;
+  admin_access_level: string | null;
+}
+
+type HrOptionCategory = 'department' | 'job_title';
+
+interface HrOption {
+  id: string;
+  category: HrOptionCategory;
+  label: string;
+  is_active: boolean;
+  sort_order: number;
 }
 
 interface OnboardingTask {
@@ -326,6 +338,99 @@ const AccountPicker: React.FC<{
   );
 };
 
+const HrOptionManager: React.FC<{
+  options: HrOption[];
+  isSaving: boolean;
+  onAdd: (category: HrOptionCategory, label: string) => Promise<boolean>;
+  onUpdate: (option: HrOption, label: string) => Promise<boolean>;
+  onToggle: (option: HrOption) => Promise<boolean>;
+}> = ({ options, isSaving, onAdd, onUpdate, onToggle }) => {
+  const [newDepartment, setNewDepartment] = useState('');
+  const [newJobTitle, setNewJobTitle] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const categories: Array<{ id: HrOptionCategory; label: string }> = [
+    { id: 'department', label: 'Departments' },
+    { id: 'job_title', label: 'Job titles' }
+  ];
+
+  const submitNewOption = async (event: FormEvent, category: HrOptionCategory) => {
+    event.preventDefault();
+    const value = category === 'department' ? newDepartment : newJobTitle;
+    if (!value.trim()) return;
+    if (await onAdd(category, value.trim())) {
+      if (category === 'department') setNewDepartment('');
+      else setNewJobTitle('');
+    }
+  };
+
+  return (
+    <Card title="Manage department and job title options">
+      <p className="mb-4 text-xs text-slate-500">
+        Project Manager titles add Project Manager access; Reviewer and Project Reviewer titles add Reviewer access.
+        Other titles add no admin access. Super Admin access is assigned separately in Admin Management.
+      </p>
+      <div className="grid gap-5 md:grid-cols-2">
+        {categories.map(({ id, label }) => {
+          const categoryOptions = options.filter((option) => option.category === id);
+          const value = id === 'department' ? newDepartment : newJobTitle;
+          return (
+            <section key={id} className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-900">{label}</h3>
+              <form className="flex gap-2" onSubmit={(event) => void submitNewOption(event, id)}>
+                <input
+                  className={inputClass}
+                  value={value}
+                  onChange={(event) => id === 'department'
+                    ? setNewDepartment(event.target.value)
+                    : setNewJobTitle(event.target.value)}
+                  placeholder={`Add ${id === 'department' ? 'department' : 'job title'}`}
+                  aria-label={`Add ${id === 'department' ? 'department' : 'job title'}`}
+                  maxLength={80}
+                />
+                <button type="submit" className={buttonClass} disabled={isSaving || !value.trim()}>
+                  <Plus className="h-4 w-4" /> Add
+                </button>
+              </form>
+              <div className="space-y-2">
+                {categoryOptions.map((option) => (
+                  <div key={option.id} className="flex items-center gap-2">
+                    <input
+                      className={inputClass}
+                      value={drafts[option.id] ?? option.label}
+                      onChange={(event) => setDrafts((current) => ({ ...current, [option.id]: event.target.value }))}
+                      aria-label={`Edit ${option.label}`}
+                      maxLength={80}
+                    />
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      disabled={isSaving || !(drafts[option.id] ?? option.label).trim()
+                        || (drafts[option.id] ?? option.label).trim() === option.label}
+                      onClick={() => void onUpdate(option, (drafts[option.id] ?? option.label).trim())}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      disabled={isSaving}
+                      onClick={() => void onToggle(option)}
+                    >
+                      {option.is_active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                    {!option.is_active && <span className="text-[10px] font-semibold text-slate-500">Inactive</span>}
+                  </div>
+                ))}
+                {categoryOptions.length === 0 && <p className="text-xs text-slate-500">No options yet.</p>}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </Card>
+  );
+};
+
 export const HRSection: React.FC = () => {
   const { role, adminAccessLevel, isOrganizationEmployee, testerProfile, clientProfile } = useApp();
   const isHrAdmin = role === 'admin' && adminAccessLevel === 'super_admin';
@@ -333,6 +438,7 @@ export const HRSection: React.FC = () => {
   const currentName = testerProfile.name || clientProfile.name || 'Employee';
   const [employees, setEmployees] = useState<HrEmployee[]>([]);
   const [profiles, setProfiles] = useState<PlatformProfile[]>([]);
+  const [hrOptions, setHrOptions] = useState<HrOption[]>([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [tasks, setTasks] = useState<OnboardingTask[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -376,6 +482,14 @@ export const HRSection: React.FC = () => {
 
   const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId) || null;
   const selectedProfile = profiles.find((profile) => profile.id === selectedEmployee?.profile_id);
+  const activeDepartmentOptions = hrOptions.filter((option) => option.category === 'department' && option.is_active);
+  const activeJobTitleOptions = hrOptions.filter((option) => option.category === 'job_title' && option.is_active);
+  const departmentOptions = selectedEmployee?.department && !activeDepartmentOptions.some((option) => option.label === selectedEmployee.department)
+    ? [{ id: `legacy-${selectedEmployee.department}`, label: selectedEmployee.department }, ...activeDepartmentOptions]
+    : activeDepartmentOptions;
+  const jobTitleOptions = selectedEmployee?.job_title && !activeJobTitleOptions.some((option) => option.label === selectedEmployee.job_title)
+    ? [{ id: `legacy-${selectedEmployee.job_title}`, label: selectedEmployee.job_title }, ...activeJobTitleOptions]
+    : activeJobTitleOptions;
   const availableProfiles = profiles.filter((profile) =>
     !employees.some((employee) => employee.profile_id === profile.id)
   );
@@ -408,12 +522,15 @@ export const HRSection: React.FC = () => {
       const loadedEmployees = (employeeRows || []) as HrEmployee[];
       setEmployees(loadedEmployees);
       if (isHrAdmin) {
-        const { data: profileRows, error: profileError } = await supabase
-          .from('profiles')
-          .select('id,name,email,role')
-          .order('name');
+        const [profileResult, optionsResult] = await Promise.all([
+          supabase.from('profiles').select('id,name,email,role,admin_access_level').order('name'),
+          supabase.from('hr_option_catalog').select('*').order('category').order('sort_order').order('label')
+        ]);
+        const { data: profileRows, error: profileError } = profileResult;
         if (profileError) throw profileError;
+        if (optionsResult.error) throw optionsResult.error;
         setProfiles((profileRows || []) as PlatformProfile[]);
+        setHrOptions((optionsResult.data || []) as HrOption[]);
         setSelectedEmployeeId((currentId) => {
           if (loadedEmployees.some((employee) => employee.id === currentId)) return currentId;
           return loadedEmployees[0]?.id || '';
@@ -489,7 +606,7 @@ export const HRSection: React.FC = () => {
     setPayFrequency(selectedEmployee.pay_frequency);
   }, [selectedEmployee]);
 
-  const runAction = async (action: () => Promise<void>, successMessage: string) => {
+  const runAction = async (action: () => Promise<void>, successMessage: string): Promise<boolean> => {
     setIsSaving(true);
     setError('');
     setNotice('');
@@ -498,9 +615,11 @@ export const HRSection: React.FC = () => {
       setNotice(successMessage);
       await loadData();
       await loadCurrentEmployeeRecords();
+      return true;
     } catch (actionError) {
       console.error('HR action failed:', actionError);
       setError(actionError instanceof Error ? actionError.message : 'The HR action could not be completed.');
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -552,6 +671,12 @@ export const HRSection: React.FC = () => {
       pay_frequency: payFrequency,
       updated_by: currentProfileId
     };
+    const targetProfileId = selectedEmployee?.profile_id || profileId;
+    const targetProfile = profiles.find((profile) => profile.id === targetProfileId);
+    if (!targetProfile) {
+      setError('Select a valid existing Connectfy account before saving the employee profile.');
+      return;
+    }
     await runAction(async () => {
       if (selectedEmployee) {
         const { error: updateError } = await client
@@ -570,8 +695,69 @@ export const HRSection: React.FC = () => {
         setSelectedEmployeeId(data.id);
         setProfileId('');
       }
+      if (targetProfile.role !== 'admin') {
+        const { data: accessProfile, error: accessError } = await client
+          .from('profiles')
+          .update({ admin_access_level: getHrJobTitleAdminAccess(jobTitle) })
+          .eq('id', targetProfileId)
+          .select('id')
+          .single();
+        if (accessError) {
+          await loadData();
+          throw accessError;
+        }
+        if (!accessProfile) {
+          await loadData();
+          throw new Error('Employee details were saved, but platform access could not be updated.');
+        }
+      }
     }, selectedEmployee ? 'Employee profile updated.' : 'Employee profile created.');
   };
+
+  const addHrOption = (category: HrOptionCategory, label: string) => runAction(async () => {
+    const client = supabase;
+    if (!client || !currentProfileId) throw new Error('Your HR admin session is unavailable.');
+    const sortOrder = Math.max(0, ...hrOptions.filter((option) => option.category === category).map((option) => option.sort_order)) + 10;
+    const { error: insertError } = await client.from('hr_option_catalog').insert({
+      category,
+      label,
+      sort_order: sortOrder,
+      created_by: currentProfileId,
+      updated_by: currentProfileId,
+      updated_at: new Date().toISOString()
+    });
+    if (insertError) throw insertError;
+  }, `${category === 'department' ? 'Department' : 'Job title'} added.`);
+
+  const updateHrOption = (option: HrOption, label: string) => runAction(async () => {
+    const client = supabase;
+    if (!client || !currentProfileId) throw new Error('Your HR admin session is unavailable.');
+    const { data, error: updateError } = await client
+      .from('hr_option_catalog')
+      .update({ label, updated_by: currentProfileId, updated_at: new Date().toISOString() })
+      .eq('id', option.id)
+      .select('id')
+      .single();
+    if (updateError) throw updateError;
+    if (!data) throw new Error('The dropdown option could not be updated.');
+  }, 'Dropdown option updated.');
+
+  const toggleHrOption = (option: HrOption) => runAction(async () => {
+    const client = supabase;
+    if (!client || !currentProfileId) throw new Error('Your HR admin session is unavailable.');
+    const { data, error: updateError } = await client
+      .from('hr_option_catalog')
+      .update({
+        is_active: !option.is_active,
+        updated_by: currentProfileId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', option.id)
+      .select('id')
+      .single();
+    if (updateError) throw updateError;
+    if (!data) throw new Error('The dropdown option status could not be updated.');
+  }, option.is_active ? 'Dropdown option deactivated.' : 'Dropdown option reactivated.');
 
   const submitTask = async (event: FormEvent) => {
     event.preventDefault();
@@ -819,8 +1005,23 @@ export const HRSection: React.FC = () => {
                   </div>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-semibold text-slate-700">Job title<input className={`${inputClass} mt-1`} value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} required /></label>
-                  <label className="text-xs font-semibold text-slate-700">Department<input className={`${inputClass} mt-1`} value={department} onChange={(event) => setDepartment(event.target.value)} /></label>
+                  <label className="text-xs font-semibold text-slate-700">Job title
+                    <select className={`${inputClass} mt-1`} value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} required>
+                      <option value="">Choose a job title</option>
+                      {jobTitleOptions.map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-700">Department
+                    <select className={`${inputClass} mt-1`} value={department} onChange={(event) => setDepartment(event.target.value)}>
+                      <option value="">No department</option>
+                      {departmentOptions.map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Saving this title updates supplemental platform access. Existing Admin accounts keep their access level; HR titles never grant Super Admin.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-xs font-semibold text-slate-700">Employment type
                     <select className={`${inputClass} mt-1`} value={employmentType} onChange={(event) => setEmploymentType(event.target.value as HrEmployee['employment_type'])}>
                       <option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="intern">Intern</option>
@@ -852,6 +1053,15 @@ export const HRSection: React.FC = () => {
               </form>
             )}
           </Card>
+          <div className="xl:col-span-2">
+            <HrOptionManager
+              options={hrOptions}
+              isSaving={isSaving}
+              onAdd={addHrOption}
+              onUpdate={updateHrOption}
+              onToggle={toggleHrOption}
+            />
+          </div>
         </div>
       )}
 

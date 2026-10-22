@@ -43,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
   const {
     role,
     adminAccessLevel,
+    hasAdminAccess,
     isOrganizationEmployee,
     testerProfile,
     clientProfile,
@@ -74,7 +75,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
   }, []);
 
   const unreadCount = notifications.filter(
-    notification => (notification.targetRole === role || notification.targetRole === 'tester') && !notification.read
+    notification => (
+      notification.targetRole === role
+      || notification.targetRole === 'tester'
+      || (hasAdminAccess && notification.targetRole === 'admin')
+    ) && !notification.read
   ).length;
 
   const navigateTo = (tab: string) => {
@@ -95,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
     }
   };
 
-  const navItems: NavItem[] = (role === 'tester'
+  const userNavItems: NavItem[] = role === 'tester'
     ? [
         { label: 'Browse Projects', tab: 'projects', icon: Bug },
         { label: 'My Pipeline', tab: 'tasks', icon: Layers },
@@ -104,25 +109,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders },
         ...(isOrganizationEmployee ? [{ label: 'Employee HR', tab: 'hr', icon: Users }] : [])
       ]
-    : role === 'admin'
-      ? [
-          { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase, section: 'Services' },
-          { label: 'Service Listings', tab: 'service_listings', icon: Briefcase, section: 'Services' },
-          { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck, section: 'Operations' },
-          { label: adminAccessLevel === 'super_admin' ? 'Team Activity' : 'My Tasks', tab: 'project_tasks', icon: ClipboardList, section: 'Operations' },
-          { label: 'Applause Submissions', tab: 'application_screener_submissions', icon: CheckCircle2, section: 'Operations' },
-          { label: 'Project Step Reviews', tab: 'step_reviews', icon: ClipboardCheck, section: 'Operations' },
-          { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
-          { label: 'CRM & Members', tab: 'crm', icon: Users, section: 'Operations' },
-          { label: 'Project Operations', tab: 'project_operations', icon: Briefcase, section: 'Operations' },
-          { label: 'Referrals', tab: 'referral_operations', icon: UserPlus, section: 'Operations' },
-          { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck, section: 'Operations' },
-          { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
-          { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },
-          { label: 'Approval Email Log', tab: 'approval_emails', icon: MailCheck, section: 'Finance' },
-          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' },
-          { label: 'HR Management', tab: 'hr', icon: Users, section: 'People' }
-        ]
       : [
           { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
           { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
@@ -130,11 +116,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
           { label: 'Organization', tab: 'profile_settings', icon: Sliders },
           ...(isOrganizationEmployee ? [{ label: 'Employee HR', tab: 'hr', icon: Users }] : [])
-        ]).filter(({ tab }) => role !== 'admin' || canAccessAdminTab(adminAccessLevel, tab));
+        ];
+  const adminNavItems: NavItem[] = [
+    { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase, section: 'Services' },
+    { label: 'Service Listings', tab: 'service_listings', icon: Briefcase, section: 'Services' },
+    { label: 'PM Operations', tab: 'admin_manager', icon: ShieldCheck, section: 'Operations' },
+    { label: adminAccessLevel === 'super_admin' ? 'Team Activity' : 'My Tasks', tab: 'project_tasks', icon: ClipboardList, section: 'Operations' },
+    { label: 'Applause Submissions', tab: 'application_screener_submissions', icon: CheckCircle2, section: 'Operations' },
+    { label: 'Project Step Reviews', tab: 'step_reviews', icon: ClipboardCheck, section: 'Operations' },
+    { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
+    { label: 'CRM & Members', tab: 'crm', icon: Users, section: 'Operations' },
+    { label: 'Project Operations', tab: 'project_operations', icon: Briefcase, section: 'Operations' },
+    { label: 'Referrals', tab: 'referral_operations', icon: UserPlus, section: 'Operations' },
+    { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck, section: 'Operations' },
+    { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
+    { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },
+    { label: 'Approval Email Log', tab: 'approval_emails', icon: MailCheck, section: 'Finance' },
+    { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' },
+    { label: 'HR Management', tab: 'hr', icon: Users, section: 'People' }
+  ].filter(({ tab }) => canAccessAdminTab(adminAccessLevel, tab));
+  const primaryTabs = new Set(userNavItems.map(({ tab }) => tab));
+  const navItems = role === 'admin'
+    ? adminNavItems
+    : [
+        ...userNavItems,
+        ...(hasAdminAccess ? adminNavItems.filter(({ tab }) => !primaryTabs.has(tab)) : [])
+      ];
 
   const personName = role === 'tester' || role === 'admin' ? (testerProfile.name || clientProfile.name) : clientProfile.name;
   const personSubtitle = role === 'tester'
-    ? `${testerProfile.tier} QA Tester`
+    ? `${testerProfile.tier} QA Tester${hasAdminAccess ? ` · ${adminAccessLevel === 'project_manager' ? 'Project Manager' : 'Reviewer'}` : ''}`
+    : role === 'client' && hasAdminAccess
+      ? `${clientProfile.company || 'Client'} · ${adminAccessLevel === 'project_manager' ? 'Project Manager' : 'Reviewer'}`
     : role === 'admin'
         ? adminAccessLevel === 'super_admin'
           ? 'Super Admin'
@@ -148,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
 
   const renderNavItems = () => (
     <nav className="min-h-0 space-y-1 overflow-y-auto" aria-label="Primary navigation">
-      {role !== 'admin' && <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>}
+      {!hasAdminAccess && <span className="block px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Workspace</span>}
       {navItems.map(({ label, tab, icon: Icon, section }, index) => (
         <React.Fragment key={tab}>
           {section && navItems[index - 1]?.section !== section && (
@@ -199,7 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         <div className="flex h-14 items-center justify-between gap-3 px-3 sm:h-16 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2">
             <button onClick={handleLogoTap} className="md:hidden"><ConnectfyLogo size="sm" showSubtitle={false} /></button>
-            <div className="hidden min-w-0 sm:block"><p className="text-xs font-semibold text-slate-400">{role === 'tester' ? 'Tester workspace' : role === 'admin' ? 'Operations workspace' : 'Client workspace'}</p><p className="truncate text-sm font-bold text-white">{activeTab === 'profile_settings' ? 'Account settings' : 'Manage your testing workflow'}</p></div>
+            <div className="hidden min-w-0 sm:block"><p className="text-xs font-semibold text-slate-400">{role === 'tester' ? (hasAdminAccess ? 'Tester & operations workspace' : 'Tester workspace') : role === 'admin' ? 'Operations workspace' : hasAdminAccess ? 'Client & operations workspace' : 'Client workspace'}</p><p className="truncate text-sm font-bold text-white">{activeTab === 'profile_settings' ? 'Account settings' : 'Manage your testing workflow'}</p></div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {role === 'tester' && <button onClick={onOpenWallet} className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-black text-emerald-400 transition hover:bg-emerald-500/20" title="Open payout wallet"><Wallet className="h-3.5 w-3.5" />${testerProfile.availableBalance.toFixed(0)}</button>}

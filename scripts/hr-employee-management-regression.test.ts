@@ -3,11 +3,23 @@ import fs from 'node:fs';
 import {
   canAccessAdminTab
 } from '../src/lib/adminPermissions';
+import { getHrJobTitleAdminAccess } from '../src/lib/hrJobTitleAccess';
 
 const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220002_hr_employee_management.sql', import.meta.url),
   'utf8'
 );
+const catalogMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220004_hr_department_job_title_options.sql', import.meta.url),
+  'utf8'
+);
+const accessMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220005_hr_job_title_platform_access.sql', import.meta.url),
+  'utf8'
+);
+const hrSection = fs.readFileSync(new URL('../src/components/HRSection.tsx', import.meta.url), 'utf8');
+const appContext = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
+const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 assert.equal(canAccessAdminTab('super_admin', 'hr'), true);
 assert.equal(canAccessAdminTab('project_manager', 'hr'), false);
@@ -33,5 +45,45 @@ assert.match(migration, /create or replace function public\.hr_complete_onboardi
 assert.match(migration, /hr_attendance_one_open_clock_per_employee_idx/i);
 assert.match(migration, /public\.is_admin\(\)/i);
 assert.doesNotMatch(migration, /create_payout_request|mpesa|paypal/i);
+
+assert.match(catalogMigration, /create table if not exists public\.hr_option_catalog/i);
+assert.match(catalogMigration, /category in \('department', 'job_title'\)/i);
+assert.match(catalogMigration, /create unique index if not exists hr_option_catalog_category_label_idx/i);
+assert.match(catalogMigration, /alter table public\.hr_option_catalog enable row level security/i);
+assert.match(catalogMigration, /using \(public\.is_admin\(\)\)\s+with check \(public\.is_admin\(\)\)/i);
+for (const label of [
+  'QA/Testing',
+  'Project Management',
+  'Finance',
+  'Operations',
+  'QA Tester',
+  'Team Leader',
+  'Project Reviewer',
+  'Moderator'
+]) {
+  assert.ok(catalogMigration.includes(label), `Expected seeded HR option ${label}`);
+}
+assert.match(hrSection, /Manage department and job title options/i);
+assert.match(hrSection, /Project Manager titles add Project Manager access/i);
+assert.match(hrSection, /<select[^>]*value=\{jobTitle\}/i);
+assert.match(hrSection, /<select[^>]*value=\{department\}/i);
+assert.match(hrSection, /from\('hr_option_catalog'\)/i);
+assert.doesNotMatch(hrSection, /admin_access_level\s*:\s*jobTitle/i);
+assert.equal(getHrJobTitleAdminAccess('Project Manager'), 'project_manager');
+assert.equal(getHrJobTitleAdminAccess('Reviewer'), 'reviewer');
+assert.equal(getHrJobTitleAdminAccess('Project Reviewer'), 'reviewer');
+assert.equal(getHrJobTitleAdminAccess('HR Manager'), null);
+assert.equal(getHrJobTitleAdminAccess('Moderator'), null);
+assert.equal(canAccessAdminTab('project_manager', 'step_reviews'), true);
+assert.equal(canAccessAdminTab('reviewer', 'step_reviews'), true);
+assert.equal(canAccessAdminTab('project_manager', 'payments'), false);
+assert.match(accessMigration, /role <> 'admin'[\s\S]*admin_access_level in \('project_manager', 'reviewer'\)/i);
+assert.match(accessMigration, /create or replace function public\.can_manage_projects\(\)/i);
+assert.match(accessMigration, /create or replace function public\.can_review_submissions\(\)/i);
+assert.match(accessMigration, /protect_profile_platform_access/i);
+assert.match(accessMigration, /Only a Super Admin can change platform roles or access levels/i);
+assert.match(accessMigration, /update public\.profiles as profile[\s\S]*from public\.hr_employees as employee/i);
+assert.match(appContext, /hasAdminAccess = role === 'admin'[\s\S]*adminAccessLevel === 'project_manager'[\s\S]*adminAccessLevel === 'reviewer'/i);
+assert.match(app, /hasAdminAccess && hasAdminTabAccess/i);
 
 console.log('HR employee management regression checks passed');

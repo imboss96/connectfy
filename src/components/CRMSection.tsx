@@ -1503,7 +1503,7 @@ export const CRMSection: React.FC<{
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{member.name || 'Unnamed member'}</h3>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-700 border-slate-200">{roleTag}</span>
-                          {isSuperAdmin && member.role === 'admin' && (
+                          {isSuperAdmin && member.admin_access_level && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
                               {member.admin_access_level === 'super_admin'
                                 ? 'Super Admin'

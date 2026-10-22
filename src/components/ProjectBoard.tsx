@@ -165,7 +165,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     deleteApplicationDraft,
     acceptInvite,
     addTesterDevice,
-    role
+    role,
+    adminAccessLevel
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -1314,7 +1315,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               <span className="text-xs text-slate-600">
                 Total Project Budget: ${viewingProject.totalBudget.toLocaleString()}
               </span>
-              {role === 'admin' ? (
+              {(role === 'admin' || adminAccessLevel === 'project_manager') && adminAccessLevel !== 'reviewer' ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="text-[11px] font-semibold text-slate-600">Admin task controls</span>
                   <button

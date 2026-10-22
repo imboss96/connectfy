@@ -111,7 +111,7 @@ const formatKes = (amount: number) => `KSh ${new Intl.NumberFormat('en-KE', {
 
 export const ProjectOperationsSection: React.FC = () => {
   const { projects, activeAdminProjectId, setActiveAdminProjectId, setActiveTab, role, adminAccessLevel } = useApp();
-  const isProjectManager = role === 'admin' && adminAccessLevel === 'project_manager';
+  const isProjectManager = adminAccessLevel === 'project_manager';
   const isSuperAdmin = role === 'admin' && adminAccessLevel === 'super_admin';
   const [activeSection, setActiveSection] = useState<OperationsTab>(() => isProjectManager ? 'completion' : 'overview');
   const [settings, setSettings] = useState<ProjectSettings | null>(null);

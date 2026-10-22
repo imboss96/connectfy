@@ -75,11 +75,29 @@ const adminMobileItems = [
   { tab: 'client_cycles', label: 'Projects', icon: Briefcase },
   { tab: 'profile_settings', label: 'Settings', icon: Sliders }
 ] as const;
+const adminWorkspaceTabs = new Set<string>([
+  'admin_manager',
+  'mass_invites',
+  'crm',
+  'project_operations',
+  'client_submissions',
+  'project_tasks',
+  'payments',
+  'approval_emails',
+  'payout_operations',
+  'referral_operations',
+  'application_screener_submissions',
+  'service_listings',
+  'client_applicants',
+  'client_cycles',
+  'step_reviews'
+]);
 
 const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAccess }) => {
   const {
     role,
     adminAccessLevel,
+    hasAdminAccess,
     isOrganizationEmployee,
     activeTab,
     setActiveTab,
@@ -93,11 +111,18 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const applicationUtestUpdateId = new URLSearchParams(window.location.search).get('applicationUtestUpdate');
-  const hasAdminTabAccess = role !== 'admin' || canAccessAdminTab(adminAccessLevel, activeTab);
+  const isPrimaryClientTab = role === 'client'
+    && ['client_submissions', 'client_applicants', 'client_cycles'].includes(activeTab);
+  const hasAdminTabAccess = !adminWorkspaceTabs.has(activeTab)
+    || isPrimaryClientTab
+    || (hasAdminAccess && canAccessAdminTab(adminAccessLevel, activeTab));
 
   useEffect(() => {
-    if (role === 'admin' && !hasAdminTabAccess) setActiveTab(getDefaultAdminTab(adminAccessLevel));
-  }, [adminAccessLevel, hasAdminTabAccess, role, setActiveTab]);
+    if ((role === 'admin' && !canAccessAdminTab(adminAccessLevel, activeTab))
+      || (hasAdminAccess && adminWorkspaceTabs.has(activeTab) && !hasAdminTabAccess)) {
+      setActiveTab(getDefaultAdminTab(adminAccessLevel));
+    }
+  }, [activeTab, adminAccessLevel, hasAdminAccess, hasAdminTabAccess, role, setActiveTab]);
 
   const handleMobileNav = (tab: any) => {
     setActiveWorkspaceProjectId(null);
@@ -166,15 +191,19 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
           />
         ) : activeTab === 'hr' ? (
           <HRSection />
-        ) : activeTab === 'step_reviews' && role === 'admin' && hasAdminTabAccess ? (
+        ) : activeTab === 'step_reviews' && hasAdminAccess && hasAdminTabAccess ? (
           <ProjectStepReviews />
         ) : role === 'tester' && activeTab === 'ambassador' ? (
           <AmbassadorDashboard />
-        ) : role === 'admin' && !hasAdminTabAccess ? (
+        ) : role === 'admin' && !canAccessAdminTab(adminAccessLevel, activeTab) ? (
           <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer'} />
+        ) : hasAdminAccess && hasAdminTabAccess
+          && ['client_submissions', 'client_applicants', 'client_cycles'].includes(activeTab) ? (
+          <ClientDashboard reviewOnly={adminAccessLevel === 'reviewer' && activeTab === 'client_submissions'} />
         ) : activeTab === 'arbeitnow_jobs' ? (
           <ArbeitnowJobsBoard />
-        ) : activeTab === 'admin_manager' || role === 'admin' ? (
+        ) : (activeTab === 'admin_manager' || role === 'admin')
+          && (role === 'admin' || hasAdminAccess) ? (
           activeTab === 'crm' ? (
             <CRMSection />
           ) : activeTab === 'project_operations' ? (
@@ -225,7 +254,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
 
       {/* Dedicated Mobile Bottom Navigation Bar (md:hidden) */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0B132B]/95 backdrop-blur-lg border-t border-[#1E2E4E] px-2 py-1 shadow-2xl">
-        <div className={role === 'admin'
+        <div className={hasAdminAccess
           ? 'flex items-center justify-start gap-1 overflow-x-auto [&>button]:min-w-[4.5rem] [&>button]:shrink-0'
           : 'flex items-center justify-around'}>
           {role === 'tester' ? (
@@ -314,6 +343,27 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
                   <span className="text-[10px] mt-0.5">HR</span>
                 </button>
               )}
+              {hasAdminAccess && adminMobileItems
+                .filter(({ tab }) =>
+                  canAccessAdminTab(adminAccessLevel, tab)
+                  && !['arbeitnow_jobs', 'profile_settings', 'client_submissions', 'client_applicants', 'client_cycles'].includes(tab)
+                )
+                .map(({ tab, label, icon: Icon }) => (
+                  <button
+                    key={`additional-${tab}`}
+                    onClick={() => handleMobileNav(tab)}
+                    className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                      activeTab === tab
+                        ? 'text-[#00A3E0] font-bold'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="text-[10px] mt-0.5">
+                      {tab === 'project_tasks' && adminAccessLevel === 'super_admin' ? 'Team Activity' : label}
+                    </span>
+                  </button>
+                ))}
             </>
           ) : role === 'admin' ? (
             adminMobileItems
@@ -767,9 +817,9 @@ const AppExperience: React.FC = () => {
           return;
         }
         const isAdmin = profile?.role === 'admin';
-        setRole(isAdmin ? 'admin' : 'tester');
+        setRole(profile?.role === 'client' || isAdmin ? profile.role : 'tester');
         setAdminAccessLevel(
-          isAdmin && (profile.admin_access_level === 'project_manager' || profile.admin_access_level === 'reviewer')
+          profile?.admin_access_level === 'project_manager' || profile?.admin_access_level === 'reviewer'
             ? profile.admin_access_level
             : 'super_admin'
         );

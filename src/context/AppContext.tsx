@@ -64,6 +64,7 @@ interface AppContextType {
   setRole: (role: UserRole) => void;
   adminAccessLevel: AdminAccessLevel;
   setAdminAccessLevel: (level: AdminAccessLevel) => void;
+  hasAdminAccess: boolean;
   isOrganizationEmployee: boolean;
   projects: Project[];
   applications: ProjectApplication[];
@@ -762,13 +763,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (!profile || !mounted) return;
         const accessLevel = profile.admin_access_level;
         setAdminAccessLevelState(
-          profile.role === 'admin' && (accessLevel === 'project_manager' || accessLevel === 'reviewer')
+          accessLevel === 'project_manager' || accessLevel === 'reviewer'
             ? accessLevel
             : 'super_admin'
         );
         localStorage.setItem(
           STORAGE_PREFIX + 'adminAccessLevel',
-          profile.role === 'admin' && (accessLevel === 'project_manager' || accessLevel === 'reviewer')
+          accessLevel === 'project_manager' || accessLevel === 'reviewer'
             ? accessLevel
             : 'super_admin'
         );
@@ -2914,6 +2915,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const hasAdminAccess = role === 'admin'
+    || adminAccessLevel === 'project_manager'
+    || adminAccessLevel === 'reviewer';
+
   return (
     <AppContext.Provider
       value={{
@@ -2921,6 +2926,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setRole,
         adminAccessLevel,
         setAdminAccessLevel,
+        hasAdminAccess,
         isOrganizationEmployee,
         projects,
         applications,
