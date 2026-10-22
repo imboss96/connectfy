@@ -111,6 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Mass Invitations', tab: 'mass_invites', icon: Send, section: 'Operations' },
           { label: 'CRM & Members', tab: 'crm', icon: Users, section: 'Operations' },
           { label: 'Project Operations', tab: 'project_operations', icon: Briefcase, section: 'Operations' },
+          { label: 'Referrals', tab: 'referral_operations', icon: UserPlus, section: 'Operations' },
           { label: 'Submission Reviews', tab: 'client_submissions', icon: FileCheck, section: 'Operations' },
           { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
           { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },

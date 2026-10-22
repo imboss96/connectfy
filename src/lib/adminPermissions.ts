@@ -11,6 +11,7 @@ export type AdminTab =
   | 'payments'
   | 'approval_emails'
   | 'payout_operations'
+  | 'referral_operations'
   | 'application_screener_submissions'
   | 'arbeitnow_jobs'
   | 'service_listings'
@@ -29,6 +30,7 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'payments',
     'approval_emails',
     'payout_operations',
+    'referral_operations',
     'arbeitnow_jobs',
     'service_listings',
     'client_applicants',

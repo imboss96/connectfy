@@ -15,6 +15,7 @@ import { MassInviteSection } from './components/MassInviteSection';
 import { CRMSection } from './components/CRMSection';
 import { ProjectOperationsSection } from './components/ProjectOperationsSection';
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
+import { AdminReferralOperationsSection } from './components/AdminReferralOperationsSection';
 import { PaymentsSection } from './components/PaymentsSection';
 import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { ProjectManagerActivity } from './components/ProjectManagerActivity';
@@ -62,6 +63,7 @@ const adminMobileItems = [
   { tab: 'payments', label: 'Payments', icon: CalendarClock },
   { tab: 'approval_emails', label: 'Email Log', icon: MailCheck },
   { tab: 'payout_operations', label: 'Payouts', icon: DollarSign },
+  { tab: 'referral_operations', label: 'Referrals', icon: UserPlus },
   { tab: 'service_listings', label: 'Listings', icon: Briefcase },
   { tab: 'client_submissions', label: 'Reviews', icon: FileCheck },
   { tab: 'client_applicants', label: 'Applicants', icon: Users },
@@ -175,6 +177,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <MassInviteSection />
           ) : activeTab === 'payout_operations' ? (
             <PayoutOperationsSection />
+          ) : activeTab === 'referral_operations' ? (
+            <AdminReferralOperationsSection />
           ) : activeTab === 'payments' ? (
             <PaymentsSection />
           ) : activeTab === 'approval_emails' ? (
