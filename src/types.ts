@@ -71,6 +71,7 @@ export interface ProjectResource {
 
 export interface BugReport {
   id: string;
+  resubmissionOfId?: string;
   projectId: string;
   testCycleId: string;
   testerId: string;
@@ -149,6 +150,7 @@ export interface DeliverablesGuide {
 
 export interface TaskSubmission {
   id: string;
+  resubmissionOfId?: string;
   projectId: string;
   testerId: string;
   testerName: string;

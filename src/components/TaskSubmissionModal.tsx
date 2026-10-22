@@ -23,12 +23,14 @@ import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 
 interface TaskSubmissionModalProps {
   project: Project;
+  resubmissionOfId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
   project,
+  resubmissionOfId,
   onClose,
   onSuccess
 }) => {
@@ -146,7 +148,8 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
         title: title.trim(),
         details: details.trim(),
         metadata,
-        attachments
+        attachments,
+        resubmissionOfId
       });
 
       onSuccess();
@@ -177,7 +180,9 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
               {!isAudioTrack && !isAiTrack && !isFieldTrack && !isUxTrack && <Sparkles className="w-5 h-5" />}
             </span>
             <div>
-              <h3 className="font-bold text-slate-900 text-base">Submit Task Deliverable</h3>
+              <h3 className="font-bold text-slate-900 text-base">
+                {resubmissionOfId ? 'Resubmit Task Deliverable' : 'Submit Task Deliverable'}
+              </h3>
               <p className="text-xs text-slate-600">
                 {project.title} • <span className="text-emerald-600 font-semibold">${project.taskRate?.toFixed(2) || '40.00'} Slot Payout</span>
               </p>
@@ -193,6 +198,11 @@ export const TaskSubmissionModal: React.FC<TaskSubmissionModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
+          {resubmissionOfId && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs">
+              This creates a new submission linked to the item that needs changes. Its review history will remain available.
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />

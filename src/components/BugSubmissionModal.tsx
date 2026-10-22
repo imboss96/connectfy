@@ -18,6 +18,7 @@ import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 
 interface BugSubmissionModalProps {
   project: Project;
+  resubmissionOfId?: string;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -25,6 +26,7 @@ interface BugSubmissionModalProps {
 
 export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
   project,
+  resubmissionOfId,
   isOpen,
   onClose,
   onSuccess
@@ -146,7 +148,8 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
         stepsToReproduce: steps,
         expectedResult,
         actualResult,
-        attachments
+        attachments,
+        resubmissionOfId
       });
       onSuccess();
       onClose();
@@ -168,7 +171,9 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-base sm:text-lg font-bold text-white">Log Defect / Bug Report</h2>
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  {resubmissionOfId ? 'Resubmit Defect / Bug Report' : 'Log Defect / Bug Report'}
+                </h2>
                 <span className="text-[11px] font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-full">
                   {project.company}
                 </span>
@@ -188,6 +193,11 @@ export const BugSubmissionModal: React.FC<BugSubmissionModalProps> = ({
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {resubmissionOfId && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+              This creates a new report linked to the item that needs changes. Its review history will remain available.
+            </p>
+          )}
           {error && (
             <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center space-x-2 text-xs text-rose-300">
               <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />

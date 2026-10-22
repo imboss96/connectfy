@@ -34,6 +34,7 @@ import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 import evidenceImage from '../../evidence.png';
+import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
 
 type ApplicationDraft = {
   projectId: string;
@@ -154,6 +155,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const {
     projects,
     applications,
+    bugReports,
+    taskSubmissions,
     testerProfile,
     applyToProject,
     updateTesterProfile,
@@ -206,6 +209,26 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     isp: ''
   });
   const [deviceFormError, setDeviceFormError] = useState('');
+  const applicationSubmissions = [...bugReports, ...taskSubmissions].map((submission) => ({
+    id: submission.id,
+    projectId: submission.projectId,
+    testerId: submission.testerId,
+    status: submission.status,
+    resubmissionOfId: submission.resubmissionOfId
+  }));
+  const getApplicationBlocker = (targetProjectId?: string) => getBlockingProjectApplication(
+    applications,
+    applicationSubmissions,
+    testerProfile.id,
+    targetProjectId
+  );
+  const globalApplicationBlocker = role === 'tester' ? getApplicationBlocker() : null;
+  const globalBlockingProject = globalApplicationBlocker
+    ? projects.find((project) => project.id === globalApplicationBlocker.projectId)
+    : undefined;
+  const globalApplicationLockMessage = globalApplicationBlocker
+    ? getProjectApplicationLockMessage(globalApplicationBlocker, globalBlockingProject?.title || 'your current project')
+    : '';
 
   const tracks: { id: string; label: string; icon: any }[] = [
     { id: 'all', label: 'All Opportunities', icon: Layers },
@@ -265,6 +288,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const featuredNeedsUtestUpdate = featuredProject
     ? applications.some((application) => application.projectId === featuredProject.id && application.testerId === testerProfile.id && application.status === 'needs_utest_update')
     : false;
+  const featuredApplicationBlocker = featuredProject && role === 'tester'
+    ? getApplicationBlocker(featuredProject.id)
+    : null;
 
   const getApplicationForProject = (projectId: string) => {
     return applications.find(
@@ -294,6 +320,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   };
 
   const handleOpenApplyModal = (project: Project) => {
+    const blockingApplication = role === 'tester' ? getApplicationBlocker(project.id) : null;
+    if (blockingApplication) {
+      const blockingProject = projects.find((item) => item.id === blockingApplication.projectId);
+      setApplyError(getProjectApplicationLockMessage(
+        blockingApplication,
+        blockingProject?.title || 'your current project'
+      ));
+      return;
+    }
+
     const canReapplyForExistingSlot = getApplicationForProject(project.id)?.status === 'needs_utest_update';
     if (!isProjectOpenForApplications(project) && !canReapplyForExistingSlot) {
       setApplyError('This project is no longer accepting applications.');
@@ -614,7 +650,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
           }, 1800);
         }
       } else {
-        setApplyError('You may already have applied, or the project has filled its remaining slots.');
+        setApplyError(result.error || 'You may already have applied, or the project has filled its remaining slots.');
       }
     } catch (error) {
       console.error('Unable to submit the project application:', error);
@@ -817,6 +853,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         </div>
       </div>
 
+      {globalApplicationBlocker && (
+        <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <div>
+            <p className="font-bold">Finish your current project before applying to another</p>
+            <p className="mt-1 text-sm">{globalApplicationLockMessage}</p>
+          </div>
+        </div>
+      )}
+
       {shareFeedback && (
         <div role={shareFeedback.error ? 'alert' : 'status'} className={`rounded-xl border p-3 text-xs ${shareFeedback.error ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
           <p className="font-semibold">
@@ -882,6 +928,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
               </button>
               {role === 'tester' && featuredApplication?.status === 'pending' ? (
                 <span className="text-xs font-semibold text-amber-700">Application pending · screener handled automatically</span>
+              ) : featuredApplicationBlocker ? (
+                <span className="max-w-52 text-xs font-semibold text-amber-800">
+                  {globalBlockingProject?.title || 'Current project'} must be completed first
+                </span>
               ) : (
                 <button
                   onClick={() => handleOpenApplyModal(featuredProject)}
@@ -908,6 +958,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
           const isAccepted = app?.inviteStatus === 'accepted';
           const isRejected = app?.status === 'rejected';
           const requiresNewUtestAccount = app?.status === 'needs_utest_update';
+          const applicationBlocker = role === 'tester' ? getApplicationBlocker(project.id) : null;
 
           const isQA = !project.projectTrack || project.projectTrack === 'qa_functional';
 
@@ -1080,6 +1131,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       <span className="block text-[11px] font-semibold text-sky-200">Screener handled automatically</span>
                     )}
                   </div>
+                ) : applicationBlocker ? (
+                  <span className="text-xs font-semibold text-amber-300">
+                    Complete {globalBlockingProject?.title || 'your current project'} before applying
+                  </span>
                 ) : !isProjectOpenForApplications(project) ? (
                   <span className="px-4 py-2.5 text-xs font-bold text-slate-400 text-center">
                     {getProjectAvailabilityLabel(project.status, project.startsAt, project.slotsFilled, project.slotsTotal)}
@@ -1294,6 +1349,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   </button>
                   {role === 'tester' && getApplicationForProject(viewingProject.id)?.status === 'pending' ? (
                     <span className="text-xs font-semibold text-amber-700">Application pending · screener handled automatically</span>
+                  ) : role === 'tester' && getApplicationBlocker(viewingProject.id) ? (
+                    <span className="text-xs font-semibold text-amber-800">
+                      Complete {globalBlockingProject?.title || 'your current project'} before applying
+                    </span>
                   ) : (
                     <button
                       onClick={() => {

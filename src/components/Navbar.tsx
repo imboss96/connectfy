@@ -42,6 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
   const {
     role,
     adminAccessLevel,
+    isOrganizationEmployee,
     testerProfile,
     clientProfile,
     activeTab,
@@ -99,7 +100,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
         { label: 'My Pipeline', tab: 'tasks', icon: Layers },
         { label: 'Browse Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
         { label: 'Refer & Earn', tab: 'ambassador', icon: UserPlus },
-        { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders }
+        { label: 'Profile & Fleet', tab: 'profile_settings', icon: Sliders },
+        ...(isOrganizationEmployee ? [{ label: 'Employee HR', tab: 'hr', icon: Users }] : [])
       ]
     : role === 'admin'
       ? [
@@ -116,14 +118,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           { label: 'Settings', tab: 'profile_settings', icon: Sliders, section: 'Operations' },
           { label: 'Payments & Schedules', tab: 'payments', icon: CalendarClock, section: 'Finance' },
           { label: 'Approval Email Log', tab: 'approval_emails', icon: MailCheck, section: 'Finance' },
-          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' }
+          { label: 'Payout Review', tab: 'payout_operations', icon: Banknote, section: 'Finance' },
+          { label: 'HR Management', tab: 'hr', icon: Users, section: 'People' }
         ]
       : [
           { label: 'Freelance Jobs', tab: 'arbeitnow_jobs', icon: Briefcase },
           { label: 'Cycles & Budgets', tab: 'client_cycles', icon: Briefcase },
           { label: 'Freelancer Fleet', tab: 'client_applicants', icon: Users },
           { label: 'Review Submissions', tab: 'client_submissions', icon: FileCheck },
-          { label: 'Organization', tab: 'profile_settings', icon: Sliders }
+          { label: 'Organization', tab: 'profile_settings', icon: Sliders },
+          ...(isOrganizationEmployee ? [{ label: 'Employee HR', tab: 'hr', icon: Users }] : [])
         ]).filter(({ tab }) => role !== 'admin' || canAccessAdminTab(adminAccessLevel, tab));
 
   const personName = role === 'tester' || role === 'admin' ? (testerProfile.name || clientProfile.name) : clientProfile.name;

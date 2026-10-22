@@ -16,7 +16,8 @@ export type AdminTab =
   | 'arbeitnow_jobs'
   | 'service_listings'
   | 'client_applicants'
-  | 'client_cycles';
+  | 'client_cycles'
+  | 'hr';
 
 const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
   super_admin: new Set([
@@ -35,7 +36,8 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'service_listings',
     'client_applicants',
     'client_cycles',
-    'application_screener_submissions'
+    'application_screener_submissions',
+    'hr'
   ]),
   project_manager: new Set([
     'admin_manager',

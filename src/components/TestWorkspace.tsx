@@ -23,7 +23,8 @@ import {
   Play,
   Volume2,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  RotateCcw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { ProjectIcon } from './ProjectIcon';
@@ -49,6 +50,7 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
   const [isBugModalOpen, setIsBugModalOpen] = useState(false);
   const [isDeliverableModalOpen, setIsDeliverableModalOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentFile | null>(null);
+  const [resubmissionSourceId, setResubmissionSourceId] = useState<string | null>(null);
 
   if (!project) return null;
 
@@ -58,6 +60,11 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
   const earnedFromBugs = approvedBugs.reduce((acc, b) => acc + b.bountyEarned, 0);
 
   const projectDeliverables = taskSubmissions.filter((s) => s.projectId === projectId);
+  const resubmittedSubmissionIds = new Set(
+    [...projectBugs, ...projectDeliverables]
+      .map((submission) => submission.resubmissionOfId)
+      .filter((id): id is string => Boolean(id))
+  );
   const approvedDeliverables = projectDeliverables.filter((s) => s.status === 'approved');
   const earnedFromDeliverables = approvedDeliverables.reduce((acc, s) => acc + s.bountyEarned, 0);
 
@@ -124,7 +131,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
             </button>
             {isQA ? (
               <button
-                onClick={() => setIsBugModalOpen(true)}
+                onClick={() => {
+                  setResubmissionSourceId(null);
+                  setIsBugModalOpen(true);
+                }}
                 className="w-full sm:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl flex items-center justify-center space-x-2 transition shadow-lg shadow-rose-900/30"
               >
                 <Bug className="w-4 h-4" />
@@ -242,7 +252,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               </p>
             </div>
             <button
-              onClick={() => setIsDeliverableModalOpen(true)}
+              onClick={() => {
+                setResubmissionSourceId(null);
+                setIsDeliverableModalOpen(true);
+              }}
               className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition"
             >
               <Upload className="w-3.5 h-3.5" />
@@ -258,7 +271,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                 Review the deliverable instructions in the Scope tab, record or assemble your data batch, and submit for client validation.
               </p>
               <button
-                onClick={() => setIsDeliverableModalOpen(true)}
+                onClick={() => {
+                  setResubmissionSourceId(null);
+                  setIsDeliverableModalOpen(true);
+                }}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow"
               >
                 Submit First Batch
@@ -314,6 +330,23 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                       )}
                     </div>
                   </div>
+
+                  {(sub.status === 'rejected' || sub.status === 'changes_requested')
+                    && !resubmittedSubmissionIds.has(sub.id) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResubmissionSourceId(sub.id);
+                        setIsDeliverableModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Resubmit this deliverable
+                    </button>
+                  )}
+                  {resubmittedSubmissionIds.has(sub.id) && (
+                    <p className="text-xs font-semibold text-slate-500">A replacement submission is linked to this review.</p>
+                  )}
 
                   <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
                     {sub.details}
@@ -418,7 +451,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
               </p>
             </div>
             <button
-              onClick={() => setIsBugModalOpen(true)}
+              onClick={() => {
+                setResubmissionSourceId(null);
+                setIsBugModalOpen(true);
+              }}
               className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition"
             >
               <Bug className="w-3.5 h-3.5" />
@@ -434,7 +470,10 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                 Begin exploratory testing on your registered hardware. When you discover unexpected behavior or a crash, log it with reproducible steps.
               </p>
               <button
-                onClick={() => setIsBugModalOpen(true)}
+                onClick={() => {
+                  setResubmissionSourceId(null);
+                  setIsBugModalOpen(true);
+                }}
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow"
               >
                 Log First Defect
@@ -502,6 +541,23 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
                       )}
                     </div>
                   </div>
+
+                  {(bug.status === 'rejected' || bug.status === 'changes_requested')
+                    && !resubmittedSubmissionIds.has(bug.id) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResubmissionSourceId(bug.id);
+                        setIsBugModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Resubmit this defect
+                    </button>
+                  )}
+                  {resubmittedSubmissionIds.has(bug.id) && (
+                    <p className="text-xs font-semibold text-slate-500">A replacement submission is linked to this review.</p>
+                  )}
 
                   {/* Steps */}
                   <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1.5">
@@ -664,16 +720,30 @@ export const TestWorkspace: React.FC<TestWorkspaceProps> = ({ projectId, onBack 
         <BugSubmissionModal
           project={project}
           isOpen={isBugModalOpen}
-          onClose={() => setIsBugModalOpen(false)}
-          onSuccess={() => setIsBugModalOpen(false)}
+          resubmissionOfId={resubmissionSourceId || undefined}
+          onClose={() => {
+            setIsBugModalOpen(false);
+            setResubmissionSourceId(null);
+          }}
+          onSuccess={() => {
+            setIsBugModalOpen(false);
+            setResubmissionSourceId(null);
+          }}
         />
       )}
 
       {!isQA && isDeliverableModalOpen && (
         <TaskSubmissionModal
           project={project}
-          onClose={() => setIsDeliverableModalOpen(false)}
-          onSuccess={() => setIsDeliverableModalOpen(false)}
+          resubmissionOfId={resubmissionSourceId || undefined}
+          onClose={() => {
+            setIsDeliverableModalOpen(false);
+            setResubmissionSourceId(null);
+          }}
+          onSuccess={() => {
+            setIsDeliverableModalOpen(false);
+            setResubmissionSourceId(null);
+          }}
         />
       )}
 

@@ -271,6 +271,7 @@ export async function fetchSubmissionsFromSupabase() {
 
 type SubmissionPersistenceInput = {
   id: string;
+  resubmissionOfId?: string;
   projectId: string;
   testerId: string;
   kind: 'bug' | 'task';
@@ -290,6 +291,7 @@ export async function createSubmissionInSupabase(submission: SubmissionPersisten
     .from('submissions')
     .insert({
       id: submission.id,
+      resubmission_of: submission.resubmissionOfId || null,
       project_id: submission.projectId,
       tester_id: submission.testerId,
       kind: submission.kind,

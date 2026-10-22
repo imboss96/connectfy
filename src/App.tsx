@@ -21,6 +21,7 @@ import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { ApplicationScreenerSubmissions } from './components/ApplicationScreenerSubmissions';
+import { HRSection } from './components/HRSection';
 import { AmbassadorDashboard } from './components/AmbassadorDashboard';
 import { LandingPage } from './components/LandingPage';
 import { TermsAndConditionsPage } from './components/TermsAndConditionsPage';
@@ -57,6 +58,7 @@ const adminMobileItems = [
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
   { tab: 'project_tasks', label: 'Tasks', icon: FileCheck },
   { tab: 'application_screener_submissions', label: 'Applause', icon: CheckCircle2 },
+  { tab: 'hr', label: 'HR', icon: Users },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
   { tab: 'project_operations', label: 'Project Ops', icon: Briefcase },
@@ -75,6 +77,7 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
   const {
     role,
     adminAccessLevel,
+    isOrganizationEmployee,
     activeTab,
     setActiveTab,
     activeWorkspaceProjectId,
@@ -158,6 +161,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
               else setActiveTab('client_submissions');
             }}
           />
+        ) : activeTab === 'hr' ? (
+          <HRSection />
         ) : role === 'tester' && activeTab === 'ambassador' ? (
           <AmbassadorDashboard />
         ) : role === 'admin' && !hasAdminTabAccess ? (
@@ -293,6 +298,17 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
                 <Sliders className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Profile</span>
               </button>
+              {isOrganizationEmployee && (
+                <button
+                  onClick={() => handleMobileNav('hr')}
+                  className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                    activeTab === 'hr' ? 'text-[#00A3E0] font-bold' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Users className="w-5 h-5" />
+                  <span className="text-[10px] mt-0.5">HR</span>
+                </button>
+              )}
             </>
           ) : role === 'admin' ? (
             adminMobileItems
@@ -378,6 +394,17 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
                 <Sliders className="w-5 h-5" />
                 <span className="text-[10px] mt-0.5">Org</span>
               </button>
+              {isOrganizationEmployee && (
+                <button
+                  onClick={() => handleMobileNav('hr')}
+                  className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] rounded-xl transition ${
+                    activeTab === 'hr' ? 'text-[#00A3E0] font-bold' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Users className="w-5 h-5" />
+                  <span className="text-[10px] mt-0.5">HR</span>
+                </button>
+              )}
             </>
           )}
         </div>

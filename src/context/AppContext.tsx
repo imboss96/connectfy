@@ -22,6 +22,7 @@ import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
 import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
 import { calculateTesterRanking } from '../lib/testerRanking';
+import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -63,6 +64,7 @@ interface AppContextType {
   setRole: (role: UserRole) => void;
   adminAccessLevel: AdminAccessLevel;
   setAdminAccessLevel: (level: AdminAccessLevel) => void;
+  isOrganizationEmployee: boolean;
   projects: Project[];
   applications: ProjectApplication[];
   bugReports: BugReport[];
@@ -96,7 +98,7 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => Promise<{ saved: boolean; applicationId?: string; screener?: ApplicationScreenerResult }>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => Promise<{ saved: boolean; applicationId?: string; screener?: ApplicationScreenerResult; error?: string }>;
   approveApplication: (appId: string, screenerSubmitted: boolean) => Promise<void>;
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => Promise<void>;
@@ -104,7 +106,7 @@ interface AppContextType {
   inviteTesterToProject: (projectId: string, testerId: string, testerName: string, testerEmail: string) => Promise<void>;
   acceptInvite: (appId: string) => Promise<boolean>;
   completeInviteAcceptance: (appId: string, details: InviteProfileDetails) => Promise<void>;
-  declineInvite: (appId: string) => void;
+  declineInvite: (appId: string) => Promise<void>;
   submitBugReport: (bugData: Omit<BugReport, 'id' | 'testerId' | 'testerName' | 'status' | 'bountyEarned' | 'submittedAt'>) => Promise<BugReport>;
   approveBugReport: (bugId: string, customBounty?: number, feedback?: string, rating?: number) => Promise<{ emailSent: boolean; emailError?: string }>;
   rejectBugReport: (bugId: string, feedback: string) => void;
@@ -125,7 +127,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_PREFIX = 'utest_crowdqa_';
-const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'ambassador', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations', 'referral_operations', 'application_screener_submissions'] as const;
+const ACTIVE_TABS = ['projects', 'tasks', 'arbeitnow_jobs', 'wallet', 'ambassador', 'client_cycles', 'client_applicants', 'client_submissions', 'profile_settings', 'admin_manager', 'service_listings', 'mass_invites', 'crm', 'project_operations', 'project_tasks', 'payments', 'approval_emails', 'payout_operations', 'referral_operations', 'application_screener_submissions', 'hr'] as const;
 type ActiveTab = typeof ACTIVE_TABS[number];
 
 const isActiveTab = (value: string | null): value is ActiveTab =>
@@ -471,6 +473,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [isOrganizationEmployee, setIsOrganizationEmployee] = useState(false);
 
   const getActiveUserContext = async () => {
     if (!isSupabaseConfigured || !supabase) return { userId: testerProfile.id || '', email: testerProfile.email || '' };
@@ -731,7 +734,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const syncAuthProfile = async (userId: string) => {
       setCurrentUserId(userId);
+      setIsOrganizationEmployee(false);
       try {
+        const { data: employeeRecord, error: employeeError } = await client
+          .from('hr_employees')
+          .select('id')
+          .eq('profile_id', userId)
+          .maybeSingle();
+        if (employeeError) {
+          console.error('Unable to load employee HR access:', employeeError);
+        } else if (mounted) {
+          setIsOrganizationEmployee(Boolean(employeeRecord));
+        }
+
         const savedTester = localStorage.getItem(STORAGE_PREFIX + 'testerProfile');
         const savedClient = localStorage.getItem(STORAGE_PREFIX + 'clientProfile');
         const persistedTesterProfile = savedTester ? JSON.parse(savedTester) : null;
@@ -960,6 +975,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
           const common = {
             id: row.id,
+            resubmissionOfId: row.resubmission_of || undefined,
             projectId: row.project_id,
             testerId: row.tester_id,
             testerName: payload.testerName || 'Tester',
@@ -1123,6 +1139,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }, 0);
       } else if (_event === 'SIGNED_OUT') {
         setCurrentUserId('');
+        setIsOrganizationEmployee(false);
         setNotifications([]);
         setProjects([]);
         setApplications([]);
@@ -1475,6 +1492,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const project = projects.find(p => p.id === projectId);
     if (!existing && !isProjectOpenForApplications(project)) return { saved: false };
+    const blockingApplication = getBlockingProjectApplication(
+      applications,
+      [...bugReports, ...taskSubmissions].map((submission) => ({
+        id: submission.id,
+        projectId: submission.projectId,
+        testerId: submission.testerId,
+        status: submission.status,
+        resubmissionOfId: submission.resubmissionOfId
+      })),
+      effectiveTesterId,
+      projectId
+    );
+    if (blockingApplication) {
+      const blockingProject = projects.find((item) => item.id === blockingApplication.projectId);
+      return {
+        saved: false,
+        error: getProjectApplicationLockMessage(
+          blockingApplication,
+          blockingProject?.title || 'your current project'
+        )
+      };
+    }
+
     const newAppId = existing?.id || createApplicationId();
     const newApp: ProjectApplication = {
       id: newAppId,
@@ -1548,7 +1588,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       } catch (error) {
         console.error('Unable to save application details to Supabase:', error);
-        return { saved: false };
+        return {
+          saved: false,
+          error: error instanceof Error ? error.message : 'Unable to submit your application. Please try again.'
+        };
       }
     }
 
@@ -2062,10 +2105,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const dismissInviteAcceptance = () => setPendingInviteAcceptanceId(null);
 
-  const declineInvite = (appId: string) => {
+  const declineInvite = async (appId: string) => {
     const app = applications.find(a => a.id === appId);
     if (!app) return;
     const project = projects.find(p => p.id === app.projectId);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await updateApplicationInSupabase(app.id, {
+          invite_status: 'declined',
+          updated_at: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Unable to decline project invitation in Supabase:', error);
+        if (typeof window !== 'undefined') {
+          window.alert(error instanceof Error ? error.message : 'Unable to decline this project invitation. Please try again.');
+        }
+        return;
+      }
+    }
 
     setApplications(prev => prev.map(a => {
       if (a.id === appId) {
@@ -2104,6 +2162,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isSupabaseConfigured && isUuid(newBug.projectId) && isUuid(newBug.testerId)) {
       await createSubmissionInSupabase({
         id: newBug.id,
+        resubmissionOfId: newBug.resubmissionOfId,
         projectId: newBug.projectId,
         testerId: newBug.testerId,
         kind: 'bug',
@@ -2324,6 +2383,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isSupabaseConfigured && isUuid(newSubmission.projectId) && isUuid(newSubmission.testerId)) {
       await createSubmissionInSupabase({
         id: newSubmission.id,
+        resubmissionOfId: newSubmission.resubmissionOfId,
         projectId: newSubmission.projectId,
         testerId: newSubmission.testerId,
         kind: 'task',
@@ -2861,6 +2921,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setRole,
         adminAccessLevel,
         setAdminAccessLevel,
+        isOrganizationEmployee,
         projects,
         applications,
         bugReports,
