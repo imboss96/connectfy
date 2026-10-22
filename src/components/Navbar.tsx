@@ -140,7 +140,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
   ].filter(({ tab }) => canAccessAdminTab(adminAccessLevel, tab));
   const primaryTabs = new Set(userNavItems.map(({ tab }) => tab));
   const navItems = role === 'admin'
-    ? adminNavItems
+    ? [
+        ...adminNavItems,
+        ...(isOrganizationEmployee && adminAccessLevel !== 'super_admin'
+          ? [{ label: 'Employee HR', tab: 'hr', icon: Users, section: 'People' }]
+          : [])
+      ]
     : [
         ...userNavItems,
         ...(hasAdminAccess ? adminNavItems.filter(({ tab }) => !primaryTabs.has(tab)) : [])

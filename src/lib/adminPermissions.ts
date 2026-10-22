@@ -1,4 +1,4 @@
-import { AdminAccessLevel } from '../types';
+import { AdminAccessLevel, UserRole } from '../types';
 
 export type AdminTab =
   | 'admin_manager'
@@ -64,3 +64,13 @@ export const canAccessAdminTab = (level: AdminAccessLevel, tab: string): tab is 
 
 export const getDefaultAdminTab = (level: AdminAccessLevel): AdminTab =>
   level === 'super_admin' || level === 'project_manager' ? 'admin_manager' : 'client_submissions';
+
+export const getWorkspaceRoleForAuthenticatedAccount = (
+  authenticatedRole: UserRole,
+  savedAccountRole: string | null,
+  savedWorkspaceRole: string | null
+): UserRole => {
+  if (savedAccountRole !== authenticatedRole) return authenticatedRole;
+  if (authenticatedRole === 'admin' && savedWorkspaceRole === 'tester') return 'tester';
+  return authenticatedRole;
+};

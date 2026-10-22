@@ -44,6 +44,8 @@ interface HrEmployee {
   compensation_rate: number;
   compensation_currency: string;
   pay_frequency: 'weekly' | 'biweekly' | 'monthly';
+  previous_platform_role: 'tester' | 'client' | null;
+  hr_platform_access_level: 'super_admin' | 'project_manager' | 'reviewer' | null;
   welcome_email_sent_at: string | null;
   employment_contract_sent_at: string | null;
   employment_contract_terms: EmployeeContractTermsSnapshot | null;
@@ -447,8 +449,8 @@ const HrOptionManager: React.FC<{
   return (
     <Card title="Manage department and job title options">
       <p className="mb-4 text-xs text-slate-500">
-        Project Manager titles add Project Manager access; Reviewer and Project Reviewer titles add Reviewer access.
-        Other titles add no admin access. Super Admin access is assigned separately in Admin Management.
+        Super Admin, Project Manager, Reviewer, and Project Reviewer titles grant the matching operations workspace.
+        Only a Super Admin can assign these titles. Accounts already managed in Admin Management keep their separately assigned access.
       </p>
       <div className="grid gap-5 md:grid-cols-2">
         {categories.map(({ id, label }) => {
@@ -895,6 +897,12 @@ export const HRSection: React.FC = () => {
       setError('Select a valid existing Connectfy account before saving the employee profile.');
       return;
     }
+    const hrAccessLevel = getHrJobTitleAdminAccess(jobTitle);
+    const isHrManagedAccess = targetProfile.role !== 'admin' || Boolean(selectedEmployee?.previous_platform_role);
+    if (hrAccessLevel === 'super_admin' && isHrManagedAccess
+      && !window.confirm('This grants full Super Admin access to the selected account, including user, payment, HR, and platform administration. Continue?')) {
+      return;
+    }
     let sentEmployeeEmailPurpose: 'welcome' | 'contract' | 'contract_update' | null = null;
     const contractTerms = buildEmployeeContractTermsSnapshot(values);
     const shouldSendEmployeeEmail = !selectedEmployee
@@ -920,11 +928,11 @@ export const HRSection: React.FC = () => {
         setProfileId('');
       }
       let platformAccessError: unknown;
-      if (targetProfile.role !== 'admin') {
+      if (isHrManagedAccess) {
         try {
           const { data: accessProfile, error: accessError } = await client.rpc('hr_update_employee_platform_access', {
             p_profile_id: targetProfileId,
-            p_admin_access_level: getHrJobTitleAdminAccess(jobTitle)
+            p_admin_access_level: hrAccessLevel
           });
           if (accessError) throw accessError;
           if (!accessProfile) throw new Error('Employee details were saved, but platform access could not be updated.');
@@ -1329,7 +1337,7 @@ export const HRSection: React.FC = () => {
                   </label>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Saving this title updates supplemental platform access. Existing Admin accounts keep their access level; HR titles never grant Super Admin.
+                  Super Admin, Project Manager, Reviewer, and Project Reviewer titles promote this account into its matching operations workspace. A Super Admin can later restore the account’s original Tester or Client role by changing the title to one without platform access. Newly assigned Super Admin access requires confirmation.
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-xs font-semibold text-slate-700">Employment type

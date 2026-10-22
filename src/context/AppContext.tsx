@@ -23,7 +23,7 @@ import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/project
 import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
 import { calculateTesterRanking } from '../lib/testerRanking';
 import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
-import { getDefaultAdminTab } from '../lib/adminPermissions';
+import { getDefaultAdminTab, getWorkspaceRoleForAuthenticatedAccount } from '../lib/adminPermissions';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -771,6 +771,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (error) throw error;
         if (!profile || !mounted) return;
+        if (profile.role !== 'admin' && profile.role !== 'client' && profile.role !== 'tester') {
+          throw new Error(`The authenticated profile has an unsupported role: ${profile.role}`);
+        }
+        const storedAccountRole = localStorage.getItem(STORAGE_PREFIX + 'accountRole');
+        const storedWorkspaceRole = localStorage.getItem(STORAGE_PREFIX + 'role');
+        const workspaceRole = getWorkspaceRoleForAuthenticatedAccount(
+          profile.role,
+          storedAccountRole,
+          storedWorkspaceRole
+        );
+        setAccountRoleState(profile.role);
+        setRoleState(workspaceRole);
+        localStorage.setItem(STORAGE_PREFIX + 'accountRole', profile.role);
+        localStorage.setItem(STORAGE_PREFIX + 'role', workspaceRole);
+
         const accessLevel = profile.admin_access_level;
         setAdminAccessLevelState(
           accessLevel === 'project_manager' || accessLevel === 'reviewer'

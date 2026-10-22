@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  canAccessAdminTab
+  canAccessAdminTab,
+  getWorkspaceRoleForAuthenticatedAccount
 } from '../src/lib/adminPermissions';
 import {
   buildEmployeeContractTermsSnapshot,
@@ -34,6 +35,10 @@ const platformAccessRpcMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220008_hr_employee_platform_access_rpc.sql', import.meta.url),
   'utf8'
 );
+const hrAdminRolesMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610230001_hr_admin_roles_from_hr.sql', import.meta.url),
+  'utf8'
+);
 const welcomeEmailTrackingMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220009_hr_employee_welcome_email_tracking.sql', import.meta.url),
   'utf8'
@@ -43,6 +48,7 @@ const contractEmailTrackingMigration = fs.readFileSync(
   'utf8'
 );
 const hrSection = fs.readFileSync(new URL('../src/components/HRSection.tsx', import.meta.url), 'utf8');
+const navbar = fs.readFileSync(new URL('../src/components/Navbar.tsx', import.meta.url), 'utf8');
 const appContext = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const emailService = fs.readFileSync(new URL('../src/lib/emailService.ts', import.meta.url), 'utf8');
@@ -102,7 +108,8 @@ for (const label of [
   assert.ok(catalogMigration.includes(label), `Expected seeded HR option ${label}`);
 }
 assert.match(hrSection, /Manage department and job title options/i);
-assert.match(hrSection, /Project Manager titles add Project Manager access/i);
+assert.match(hrSection, /Super Admin, Project Manager, Reviewer, and Project Reviewer titles promote/i);
+assert.match(hrSection, /const isHrManagedAccess = targetProfile\.role !== 'admin' \|\| Boolean\(selectedEmployee\?\.previous_platform_role\)/i);
 assert.match(hrSection, /<select[^>]*value=\{jobTitle\}/i);
 assert.match(hrSection, /<select[^>]*value=\{department\}/i);
 assert.match(hrSection, /from\('hr_option_catalog'\)/i);
@@ -163,6 +170,18 @@ assert.match(platformAccessRpcMigration, /create or replace function public\.hr_
 assert.match(platformAccessRpcMigration, /if not public\.is_admin\(\) then/i);
 assert.match(platformAccessRpcMigration, /p_admin_access_level not in \('project_manager', 'reviewer'\)/i);
 assert.match(platformAccessRpcMigration, /where id = p_profile_id\s+and role <> 'admin'/i);
+assert.equal(getHrJobTitleAdminAccess('Super Admin'), 'super_admin');
+assert.equal(getWorkspaceRoleForAuthenticatedAccount('admin', 'tester', 'tester'), 'admin');
+assert.equal(getWorkspaceRoleForAuthenticatedAccount('admin', 'admin', 'tester'), 'tester');
+assert.equal(getWorkspaceRoleForAuthenticatedAccount('tester', 'tester', 'tester'), 'tester');
+assert.match(hrAdminRolesMigration, /add column if not exists previous_platform_role/i);
+assert.match(hrAdminRolesMigration, /add column if not exists hr_platform_access_level/i);
+assert.match(hrAdminRolesMigration, /p_admin_access_level not in \('super_admin', 'project_manager', 'reviewer'\)/i);
+assert.match(hrAdminRolesMigration, /set role = 'admin',\s+admin_access_level = p_admin_access_level/i);
+assert.match(hrAdminRolesMigration, /Only a Super Admin can update employee platform access/i);
+assert.match(hrSection, /This grants full Super Admin access to the selected account/i);
+assert.match(navbar, /isOrganizationEmployee && adminAccessLevel !== 'super_admin'[\s\S]*?Employee HR/i);
+assert.match(appContext, /getWorkspaceRoleForAuthenticatedAccount\([\s\S]*?profile\.role,[\s\S]*?storedAccountRole,[\s\S]*?storedWorkspaceRole/i);
 assert.match(platformAccessRpcMigration, /grant execute on function public\.hr_update_employee_platform_access\(uuid, text\) to authenticated/i);
 assert.match(
   accessMigration,
