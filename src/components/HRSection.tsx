@@ -1,4 +1,5 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   BriefcaseBusiness,
@@ -8,6 +9,7 @@ import {
   Clock3,
   Plus,
   RefreshCw,
+  Search,
   Star,
   UserRound,
   Users,
@@ -166,6 +168,163 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
     {message}
   </div>
 );
+
+const AccountPicker: React.FC<{
+  profiles: PlatformProfile[];
+  value: string;
+  onChange: (profileId: string) => void;
+}> = ({ profiles, value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [position, setPosition] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const selectedProfile = profiles.find((profile) => profile.id === value);
+  const selectedLabel = selectedProfile
+    ? `${selectedProfile.name || selectedProfile.email} · ${selectedProfile.email}`
+    : '';
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filteredProfiles = profiles.filter((profile) =>
+    !normalizedSearch
+    || profile.name.toLocaleLowerCase().includes(normalizedSearch)
+    || profile.email.toLocaleLowerCase().includes(normalizedSearch)
+    || profile.role.toLocaleLowerCase().includes(normalizedSearch)
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const updatePosition = () => {
+      const anchor = inputRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+
+      const gap = 6;
+      const edgePadding = 8;
+      const desiredHeight = Math.min(320, Math.max(112, window.innerHeight * 0.45));
+      const spaceBelow = window.innerHeight - anchor.bottom - gap - edgePadding;
+      const spaceAbove = anchor.top - gap - edgePadding;
+      const openAbove = spaceBelow < Math.min(220, desiredHeight) && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(88, Math.min(desiredHeight, openAbove ? spaceAbove : spaceBelow));
+      const width = Math.min(anchor.width, window.innerWidth - edgePadding * 2);
+      const left = Math.max(edgePadding, Math.min(anchor.left, window.innerWidth - width - edgePadding));
+      const top = openAbove
+        ? Math.max(edgePadding, anchor.top - gap - maxHeight)
+        : Math.min(window.innerHeight - maxHeight - edgePadding, anchor.bottom + gap);
+
+      setPosition({ left, top, width, maxHeight });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen, filteredProfiles.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!inputRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        setSearch('');
+        inputRef.current?.blur();
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
+
+  const openPicker = () => {
+    setSearch('');
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative mt-1">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <input
+        ref={inputRef}
+        className={`${inputClass} pl-9`}
+        role="combobox"
+        aria-label="Search existing Connectfy accounts"
+        aria-autocomplete="list"
+        aria-expanded={isOpen}
+        aria-controls="hr-account-picker-options"
+        aria-required="true"
+        autoComplete="off"
+        placeholder="Search by name, email, or role…"
+        value={isOpen ? search : selectedLabel}
+        onFocus={openPicker}
+        onClick={() => {
+          if (!isOpen) openPicker();
+        }}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setIsOpen(true);
+        }}
+      />
+      {isOpen && position && createPortal(
+        <div
+          ref={dropdownRef}
+          id="hr-account-picker-options"
+          role="listbox"
+          aria-label="Matching Connectfy accounts"
+          className="fixed z-[100] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+          style={{
+            left: position.left,
+            top: position.top,
+            width: position.width,
+            maxHeight: position.maxHeight
+          }}
+        >
+          {filteredProfiles.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-slate-500">No accounts match that search.</p>
+          ) : filteredProfiles.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              role="option"
+              aria-selected={profile.id === value}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(profile.id);
+                setSearch('');
+                setIsOpen(false);
+              }}
+              className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 ${
+                profile.id === value ? 'bg-blue-50' : ''
+              }`}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-slate-900">
+                  {profile.name || profile.email}
+                </span>
+                <span className="block truncate text-xs text-slate-500">{profile.email}</span>
+              </span>
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold capitalize text-slate-600">
+                {profile.role.replace('_', ' ')}
+              </span>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
 
 export const HRSection: React.FC = () => {
   const { role, adminAccessLevel, isOrganizationEmployee, testerProfile, clientProfile } = useApp();
@@ -650,12 +809,7 @@ export const HRSection: React.FC = () => {
                 {!selectedEmployee && (
                   <label className="block text-xs font-semibold text-slate-700">
                     Existing Connectfy account
-                    <select className={`${inputClass} mt-1`} value={profileId} onChange={(event) => setProfileId(event.target.value)} required>
-                      <option value="">Choose an account…</option>
-                      {availableProfiles.map((profile) => (
-                        <option key={profile.id} value={profile.id}>{profile.name || profile.email} · {profile.email} ({profile.role})</option>
-                      ))}
-                    </select>
+                    <AccountPicker profiles={availableProfiles} value={profileId} onChange={setProfileId} />
                   </label>
                 )}
                 {selectedEmployee && (
