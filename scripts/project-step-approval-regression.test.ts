@@ -10,6 +10,10 @@ const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220003_require_project_step_approval.sql', import.meta.url),
   'utf8'
 );
+const reviewInterface = fs.readFileSync(
+  new URL('../src/components/ProjectStepReviews.tsx', import.meta.url),
+  'utf8'
+);
 const steps: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
 
 const initialStatuses: ProjectStepStatuses = {
@@ -38,5 +42,14 @@ assert.match(migration, /requesting changes\./i);
 assert.match(migration, /drop policy if exists "testers update their project step progress"/i);
 assert.match(migration, /revoke insert, update, delete on public\.project_step_progress/i);
 assert.match(migration, /project_step_review_history/i);
+assert.match(reviewInterface, /Search tester name or Gmail/i);
+assert.match(reviewInterface, /review\.tester_name[\s\S]*review\.tester_email/i);
+assert.match(reviewInterface, /Filter by project/i);
+assert.match(reviewInterface, /groupedReviews\.map/i);
+assert.match(reviewInterface, /review\.project_id === projectFilter/i);
+assert.match(reviewInterface, /Select all \{filteredReviews\.length\}/i);
+assert.match(reviewInterface, /Approve selected \(\$\{visibleSelectedCount\}\)/i);
+assert.match(reviewInterface, /for \(const review of selectedReviews\)/i);
+assert.match(reviewInterface, /review_project_step/i);
 
 console.log('project step approval regression checks passed');
