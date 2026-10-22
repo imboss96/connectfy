@@ -20,6 +20,8 @@ const accessMigration = fs.readFileSync(
 const hrSection = fs.readFileSync(new URL('../src/components/HRSection.tsx', import.meta.url), 'utf8');
 const appContext = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const emailService = fs.readFileSync(new URL('../src/lib/emailService.ts', import.meta.url), 'utf8');
+const emailBackend = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 
 assert.equal(canAccessAdminTab('super_admin', 'hr'), true);
 assert.equal(canAccessAdminTab('project_manager', 'hr'), false);
@@ -69,6 +71,15 @@ assert.match(hrSection, /<select[^>]*value=\{jobTitle\}/i);
 assert.match(hrSection, /<select[^>]*value=\{department\}/i);
 assert.match(hrSection, /from\('hr_option_catalog'\)/i);
 assert.doesNotMatch(hrSection, /admin_access_level\s*:\s*jobTitle/i);
+assert.match(hrSection, /if \(!selectedEmployee\) \{[\s\S]*?sendProjectEmail\(\{[\s\S]*?type: 'employee_welcome'[\s\S]*?employeeProfileId: targetProfileId/i);
+assert.match(hrSection, /employee profile was created, but the welcome email could not be sent/i);
+assert.match(emailService, /'employee_welcome'/);
+assert.match(emailService, /employee_welcome[\s\S]*?requiresAdminSession/i);
+assert.match(emailBackend, /Only Super Admins can send employee welcome emails/i);
+assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and revisions are based on your performance/i);
+assert.match(emailBackend, /type === 'employee_welcome'[\s\S]*?<!doctype html>[\s\S]*?role="presentation"[\s\S]*?#0B132B[\s\S]*?#00A3E0[\s\S]*?#007AFF/i);
+assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and any revisions are based on your performance/i);
+assert.match(emailBackend, /hr_employees\?profile_id=eq\.\$\{encodeURIComponent\(employeeProfileId\)\}/i);
 assert.equal(getHrJobTitleAdminAccess('Project Manager'), 'project_manager');
 assert.equal(getHrJobTitleAdminAccess('Reviewer'), 'reviewer');
 assert.equal(getHrJobTitleAdminAccess('Project Reviewer'), 'reviewer');

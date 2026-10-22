@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up';
+export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -37,6 +37,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'application_utest_details_request';
     case 'applause_follow_up':
       return 'applause_follow_up';
+    case 'employee_welcome':
+      return 'employee_welcome';
     case 'application':
     default:
       return 'application';
@@ -78,7 +80,12 @@ export interface ProjectEmailPayload {
   applauseFollowUpKind?: 'settings_video' | 'project_completion' | 'consent_signature';
 }
 
-export async function sendProjectEmail(payload: ProjectEmailPayload): Promise<boolean> {
+export interface EmployeeWelcomeEmailPayload {
+  type: 'employee_welcome';
+  employeeProfileId: string;
+}
+
+export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWelcomeEmailPayload): Promise<boolean> {
   try {
     const safePayload = {
       ...payload,

@@ -25,7 +25,7 @@ const app = express();
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
-const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up']);
+const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome']);
 const APPLAUSE_SUPPORT_SLACK_LINK = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
 const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
 const SLACK_DOWNLOAD_URL = 'https://slack.com/downloads';
@@ -49,6 +49,59 @@ const allowedOrigins = [
 
 const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'employee_welcome') {
+    const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Welcome to Connectfy</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#0B132B;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Welcome to the Connectfy team. Here is how your pay rate is reviewed.</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f6fa;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background-color:#ffffff;border:1px solid #dce5ef;border-radius:12px;overflow:hidden;">
+            <tr>
+              <td style="padding:22px 28px;background-color:#0B132B;border-bottom:4px solid #00A3E0;">
+                <span style="font-size:22px;line-height:28px;font-weight:700;letter-spacing:.2px;color:#ffffff;">Connectfy</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 20px;">
+                <p style="margin:0 0 12px;font-size:16px;line-height:24px;color:#334155;">Hello ${escapeHtml(payload.toName || 'there')},</p>
+                <h1 style="margin:0 0 18px;font-size:26px;line-height:34px;color:#0B132B;">Welcome to the team</h1>
+                <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#334155;">We’re glad to have you working with Connectfy. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance. We’ll communicate any changes to you.</p>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;background-color:#E3F4F5;border-left:4px solid #00A3E0;border-radius:6px;">
+                  <tr>
+                    <td style="padding:14px 16px;font-size:14px;line-height:22px;color:#0B132B;"><strong style="color:#0056D6;">Pay review schedule</strong><br>Your set pay rate is reviewed fortnightly (every two weeks) based on performance.</td>
+                  </tr>
+                </table>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;">
+                  <tr>
+                    <td align="center" style="border-radius:7px;background-color:#007AFF;">
+                      <a href="${safeLink}" style="display:inline-block;padding:13px 20px;border:1px solid #007AFF;border-radius:7px;font-size:15px;line-height:20px;font-weight:700;color:#ffffff;text-decoration:none;">Open Connectfy</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0;font-size:14px;line-height:22px;color:#475569;">If you have questions, contact <a href="mailto:support@connectfy.tech" style="color:#0056D6;text-decoration:underline;">support@connectfy.tech</a>.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;line-height:19px;color:#64748b;">Best regards,<br><strong style="color:#0B132B;">Connectfy Team</strong></p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  }
   if (payload.type === 'applause_follow_up') {
     const messages = {
       settings_video: {
@@ -190,6 +243,20 @@ const buildHtml = (payload) => {
 
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'employee_welcome') {
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      'Welcome to the Connectfy team.',
+      'Your set pay rate is reviewed every two weeks, and revisions are based on your performance. Any changes will be communicated to you.',
+      '',
+      `Open Connectfy: ${projectLink}`,
+      'If you have questions, contact support@connectfy.tech.',
+      '',
+      'Best regards,',
+      'Connectfy Team'
+    ].join('\n');
+  }
   if (payload.type === 'applause_follow_up') {
     const messages = {
       settings_video: {
@@ -368,6 +435,8 @@ const buildText = (payload) => {
 
 const projectEmailSubject = (payload, type) => type === 'invite'
   ? buildProjectApprovalEmailSubject(payload.projectTitle)
+  : type === 'employee_welcome'
+    ? 'Welcome to the Connectfy team'
   : type === 'application'
     ? `Application received: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'applause_follow_up'
@@ -2097,11 +2166,11 @@ app.post('/api/project-email', async (req, res) => {
     const payload = req.body || {};
 
     const type = payload.type || 'application';
-    const toEmail = String(payload.toEmail || '').trim();
-    const toName = String(payload.toName || '').trim();
+    let toEmail = String(payload.toEmail || '').trim();
+    let toName = String(payload.toName || '').trim();
 
     const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
-    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up'];
+    const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
 
     if (!supportedTypes.includes(requestType)) {
       return res.status(400).json({ ok: false, message: `Unsupported email type: ${requestType}` });
@@ -2152,7 +2221,38 @@ app.post('/api/project-email', async (req, res) => {
         return res.status(403).json({ ok: false, message: 'Unable to verify your account access.' });
       }
 
-      if (requestType === 'applause_follow_up') {
+      if (requestType === 'employee_welcome') {
+        const requester = profiles[0];
+        if (requester.role !== 'admin' || requester.admin_access_level !== 'super_admin') {
+          return res.status(403).json({ ok: false, message: 'Only Super Admins can send employee welcome emails.' });
+        }
+
+        const employeeProfileId = String(payload.employeeProfileId || '').trim();
+        if (!employeeProfileId) {
+          return res.status(400).json({ ok: false, message: 'The employee account is required.' });
+        }
+        const restBase = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
+        const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization };
+        const [employeeResponse, employeeProfileResponse] = await Promise.all([
+          fetch(`${restBase}/hr_employees?profile_id=eq.${encodeURIComponent(employeeProfileId)}&select=profile_id`, { headers: restHeaders }),
+          fetch(`${restBase}/profiles?id=eq.${encodeURIComponent(employeeProfileId)}&select=id,name,email`, { headers: restHeaders })
+        ]);
+        if (!employeeResponse.ok || !employeeProfileResponse.ok) {
+          return res.status(403).json({ ok: false, message: 'Unable to verify the HR employee account.' });
+        }
+        const [employeeRows, employeeProfiles] = await Promise.all([
+          employeeResponse.json(), employeeProfileResponse.json()
+        ]);
+        const employeeProfile = employeeProfiles[0];
+        if (!Array.isArray(employeeRows) || !employeeRows.some((employee) => employee.profile_id === employeeProfileId)
+          || !employeeProfile || !employeeProfile.email) {
+          return res.status(404).json({ ok: false, message: 'The linked employee account or email could not be found.' });
+        }
+        payload.toEmail = employeeProfile.email;
+        payload.toName = employeeProfile.name || employeeProfile.email.split('@')[0];
+        toEmail = payload.toEmail;
+        toName = payload.toName;
+      } else if (requestType === 'applause_follow_up') {
         const requester = profiles[0];
         if (requester.role !== 'admin'
           || !['super_admin', 'project_manager'].includes(requester.admin_access_level)) {
@@ -2221,7 +2321,7 @@ app.post('/api/project-email', async (req, res) => {
         if (requester.role !== 'admin' && !isProjectOwner) {
           return res.status(403).json({ ok: false, message: 'Only the project owner or an administrator can send this approval email.' });
         }
-        if (!project || !submission || !tester || tester.role !== 'tester' || !tester.email) {
+        if (!project || !submission || !tester || !['tester', 'admin'].includes(tester.role) || !tester.email) {
           return res.status(404).json({ ok: false, message: 'The approved submission or tester email could not be found.' });
         }
 

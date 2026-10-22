@@ -10,6 +10,10 @@ const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220003_require_project_step_approval.sql', import.meta.url),
   'utf8'
 );
+const jsonbFixMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220006_fix_project_step_jsonb_object_count.sql', import.meta.url),
+  'utf8'
+);
 const reviewInterface = fs.readFileSync(
   new URL('../src/components/ProjectStepReviews.tsx', import.meta.url),
   'utf8'
@@ -42,6 +46,11 @@ assert.match(migration, /requesting changes\./i);
 assert.match(migration, /drop policy if exists "testers update their project step progress"/i);
 assert.match(migration, /revoke insert, update, delete on public\.project_step_progress/i);
 assert.match(migration, /project_step_review_history/i);
+assert.match(jsonbFixMigration, /create or replace function public\.submit_project_step_progress/i);
+assert.match(jsonbFixMigration, /select count\(\*\) into status_key_count[\s\S]*from jsonb_object_keys\(p_statuses\)/i);
+assert.match(jsonbFixMigration, /coalesce\(jsonb_typeof\(p_statuses\), ''\) <> 'object'[\s\S]*coalesce\(jsonb_typeof\(p_evidence\), ''\) <> 'array'/i);
+assert.doesNotMatch(jsonbFixMigration, /or case/i);
+assert.doesNotMatch(jsonbFixMigration, /jsonb_object_length/i);
 assert.match(reviewInterface, /Search tester name or Gmail/i);
 assert.match(reviewInterface, /review\.tester_name[\s\S]*review\.tester_email/i);
 assert.match(reviewInterface, /Filter by project/i);

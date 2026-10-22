@@ -19,7 +19,8 @@ import {
   CheckCircle2,
   UserPlus,
   X,
-  LogOut
+  LogOut,
+  ArrowRightLeft
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { NotificationCenter } from './NotificationCenter';
@@ -42,6 +43,8 @@ type NavItem = {
 export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onRequestAdminAccess }) => {
   const {
     role,
+    accountRole,
+    toggleAdminTesterMode,
     adminAccessLevel,
     hasAdminAccess,
     isOrganizationEmployee,
@@ -216,6 +219,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenWallet, onLogout, onReques
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {role === 'tester' && <button onClick={onOpenWallet} className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-black text-emerald-400 transition hover:bg-emerald-500/20" title="Open payout wallet"><Wallet className="h-3.5 w-3.5" />${testerProfile.availableBalance.toFixed(0)}</button>}
+            {accountRole === 'admin' && (
+              <button
+                type="button"
+                onClick={toggleAdminTesterMode}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#00A3E0]/40 bg-[#00A3E0]/10 px-2.5 text-xs font-semibold text-[#38BDF8] transition hover:bg-[#00A3E0]/20 sm:px-3"
+                title={`Switch to ${role === 'admin' ? 'Tester' : 'Admin'} workspace`}
+                aria-label={`Switch to ${role === 'admin' ? 'Tester' : 'Admin'} workspace`}
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{role === 'admin' ? 'Tester mode' : 'Admin mode'}</span>
+              </button>
+            )}
             <div className="relative" ref={notifRef}>
               <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#1E2E4E] bg-[#131E35] text-slate-300 transition hover:text-white" title="Notifications"><Bell className="h-4 w-4" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">{unreadCount}</span>}</button>
               <NotificationCenter isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} onActionClick={() => setIsNotifOpen(false)} />

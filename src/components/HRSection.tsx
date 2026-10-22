@@ -16,6 +16,7 @@ import {
   Wallet
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { sendProjectEmail } from '../lib/emailService';
 import { getHrJobTitleAdminAccess } from '../lib/hrJobTitleAccess';
 import { supabase } from '../lib/supabase';
 
@@ -709,6 +710,18 @@ export const HRSection: React.FC = () => {
         if (!accessProfile) {
           await loadData();
           throw new Error('Employee details were saved, but platform access could not be updated.');
+        }
+      }
+      if (!selectedEmployee) {
+        try {
+          await sendProjectEmail({
+            type: 'employee_welcome',
+            employeeProfileId: targetProfileId
+          });
+        } catch (emailError) {
+          await loadData();
+          const message = emailError instanceof Error ? emailError.message : 'Unknown email delivery error.';
+          throw new Error(`The employee profile was created, but the welcome email could not be sent: ${message}`);
         }
       }
     }, selectedEmployee ? 'Employee profile updated.' : 'Employee profile created.');

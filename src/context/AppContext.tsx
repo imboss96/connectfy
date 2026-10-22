@@ -23,6 +23,7 @@ import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/project
 import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
 import { calculateTesterRanking } from '../lib/testerRanking';
 import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
+import { getDefaultAdminTab } from '../lib/adminPermissions';
 
 export interface InviteProfileDetails {
   uTestId: string;
@@ -61,7 +62,9 @@ const isInviteProfileComplete = (profile: TesterProfile) => {
 
 interface AppContextType {
   role: UserRole;
+  accountRole: UserRole;
   setRole: (role: UserRole) => void;
+  toggleAdminTesterMode: () => void;
   adminAccessLevel: AdminAccessLevel;
   setAdminAccessLevel: (level: AdminAccessLevel) => void;
   hasAdminAccess: boolean;
@@ -424,6 +427,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [role, setRoleState] = useState<UserRole>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
     return (saved === 'client' || saved === 'tester' || saved === 'admin') ? (saved as UserRole) : 'tester';
+  });
+  const [accountRole, setAccountRoleState] = useState<UserRole>(() => {
+    const savedAccountRole = localStorage.getItem(STORAGE_PREFIX + 'accountRole');
+    if (savedAccountRole === 'client' || savedAccountRole === 'tester' || savedAccountRole === 'admin') {
+      return savedAccountRole;
+    }
+    return role;
   });
   const [adminAccessLevel, setAdminAccessLevelState] = useState<AdminAccessLevel>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'adminAccessLevel');
@@ -1197,9 +1207,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [currentUserId]);
 
   const setRole = (newRole: UserRole) => {
-    setRoleState(newRole);
-    localStorage.setItem(STORAGE_PREFIX + 'role', newRole);
+    const preserveTesterWorkspace = newRole === 'admin' && accountRole === 'admin' && role === 'tester';
+    const workspaceRole = preserveTesterWorkspace ? 'tester' : newRole;
+    setAccountRoleState(newRole);
+    localStorage.setItem(STORAGE_PREFIX + 'accountRole', newRole);
+    setRoleState(workspaceRole);
+    localStorage.setItem(STORAGE_PREFIX + 'role', workspaceRole);
     if (newRole !== 'admin') setAdminAccessLevel('super_admin');
+  };
+
+  const toggleAdminTesterMode = () => {
+    if (accountRole !== 'admin') return;
+    const workspaceRole = role === 'admin' ? 'tester' : 'admin';
+    setRoleState(workspaceRole);
+    localStorage.setItem(STORAGE_PREFIX + 'role', workspaceRole);
+    setActiveWorkspaceProjectId(null);
+    setActiveTab(workspaceRole === 'tester' ? 'projects' : getDefaultAdminTab(adminAccessLevel));
   };
 
   const setAdminAccessLevel = (level: AdminAccessLevel) => {
@@ -2916,14 +2939,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const hasAdminAccess = role === 'admin'
-    || adminAccessLevel === 'project_manager'
-    || adminAccessLevel === 'reviewer';
+    || (accountRole !== 'admin'
+      && (adminAccessLevel === 'project_manager' || adminAccessLevel === 'reviewer'));
 
   return (
     <AppContext.Provider
       value={{
         role,
+        accountRole,
         setRole,
+        toggleAdminTesterMode,
         adminAccessLevel,
         setAdminAccessLevel,
         hasAdminAccess,

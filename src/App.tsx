@@ -840,6 +840,7 @@ const AppExperience: React.FC = () => {
 
   const resetLocalUserState = () => {
     localStorage.removeItem('utest_crowdqa_role');
+    localStorage.removeItem('utest_crowdqa_accountRole');
     localStorage.removeItem('utest_crowdqa_adminAccessLevel');
     localStorage.removeItem('utest_crowdqa_testerProfile');
     localStorage.removeItem('utest_crowdqa_clientProfile');
