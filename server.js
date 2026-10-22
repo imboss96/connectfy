@@ -16,6 +16,7 @@ import {
 } from './src/lib/projectApprovalEmail.js';
 import { appendSlackFooterHtml, appendSlackFooterText } from './src/lib/emailSlackFooter.js';
 import { getNextPlatformPayDate } from './src/lib/platformPayDate.js';
+import { buildEmployeeContractPdf } from './src/lib/employeeContractPdf.js';
 
 dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || '/etc/connectfy-email.env' });
 dotenv.config({ path: '.env.local' });
@@ -51,12 +52,21 @@ const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'employee_welcome') {
     const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
-    const isPayUpdate = payload.employeeEmailPurpose === 'pay_update';
-    const heading = isPayUpdate ? 'Your pay details were updated' : 'Welcome to the team';
-    const body = isPayUpdate
+    const isContract = ['contract', 'contract_update'].includes(payload.employeeEmailPurpose);
+    const isContractUpdate = payload.employeeEmailPurpose === 'contract_update';
+    const isPayUpdate = payload.employeeEmailPurpose === 'pay_update' || isContractUpdate;
+    const hasContractAttachment = Boolean(payload.contractPdfAttached);
+    const heading = isContract
+      ? isContractUpdate ? 'Your draft employment terms were updated' : 'Your draft employment terms'
+      : isPayUpdate ? 'Your pay details were updated' : 'Welcome to the team';
+    const body = isContract
+      ? 'Your draft employment terms are attached as a PDF for your records and legal review. The document is not a signed or final employment agreement.'
+      : isPayUpdate
       ? 'Your job title or compensation settings have changed. Sign in to Connectfy to review your current employee details. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance.'
       : 'We’re glad to have you working with Connectfy. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance. We’ll communicate any changes to you.';
-    const preview = isPayUpdate ? 'Your Connectfy employee pay details were updated.' : 'Welcome to the Connectfy team. Here is how your pay rate is reviewed.';
+    const preview = isContract
+      ? 'Your draft employment terms PDF is attached for legal review.'
+      : isPayUpdate ? 'Your Connectfy employee pay details were updated.' : 'Welcome to the Connectfy team. Here is how your pay rate is reviewed.';
     return `<!doctype html>
 <html lang="en">
   <head>
@@ -81,6 +91,7 @@ const buildHtml = (payload) => {
                 <p style="margin:0 0 12px;font-size:16px;line-height:24px;color:#334155;">Hello ${escapeHtml(payload.toName || 'there')},</p>
                 <h1 style="margin:0 0 18px;font-size:26px;line-height:34px;color:#0B132B;">${heading}</h1>
                 <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#334155;">${body}</p>
+                ${hasContractAttachment && !isContract ? '<p style="margin:0 0 22px;font-size:15px;line-height:24px;color:#334155;">A draft copy of your employment terms is attached for legal review. It is not a signed agreement.</p>' : ''}
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;background-color:#E3F4F5;border-left:4px solid #00A3E0;border-radius:6px;">
                   <tr>
                     <td style="padding:14px 16px;font-size:14px;line-height:22px;color:#0B132B;"><strong style="color:#0056D6;">Pay review schedule</strong><br>Your set pay rate is reviewed fortnightly (every two weeks) based on performance.</td>
@@ -250,6 +261,21 @@ const buildHtml = (payload) => {
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'employee_welcome') {
+    if (['contract', 'contract_update'].includes(payload.employeeEmailPurpose)) {
+      return [
+        `Hello ${payload.toName || 'there'},`,
+        '',
+        'Your draft employment terms are attached as a PDF for your records and legal review.',
+        'The document is a draft only. It is not a signed or final employment agreement.',
+        'Your set pay rate is reviewed every two weeks, and any revisions are based on your performance.',
+        '',
+        `Open Connectfy: ${projectLink}`,
+        'If you have questions, contact support@connectfy.tech.',
+        '',
+        'Best regards,',
+        'Connectfy Team'
+      ].join('\n');
+    }
     if (payload.employeeEmailPurpose === 'pay_update') {
       return [
         `Hello ${payload.toName || 'there'},`,
@@ -268,6 +294,9 @@ const buildText = (payload) => {
       `Hello ${payload.toName || 'there'},`,
       '',
       'Welcome to the Connectfy team.',
+      ...(payload.contractPdfAttached
+        ? ['', 'A draft copy of your employment terms is attached for legal review. It is not a signed agreement.']
+        : []),
       'Your set pay rate is reviewed every two weeks, and revisions are based on your performance. Any changes will be communicated to you.',
       '',
       `Open Connectfy: ${projectLink}`,
@@ -456,9 +485,13 @@ const buildText = (payload) => {
 const projectEmailSubject = (payload, type) => type === 'invite'
   ? buildProjectApprovalEmailSubject(payload.projectTitle)
   : type === 'employee_welcome'
-    ? payload.employeeEmailPurpose === 'pay_update'
-      ? 'Your Connectfy pay details were updated'
-      : 'Welcome to the Connectfy team'
+    ? payload.employeeEmailPurpose === 'contract_update'
+      ? 'Your updated draft employment terms from Connectfy'
+      : payload.employeeEmailPurpose === 'contract'
+        ? 'Your draft employment terms from Connectfy'
+        : payload.employeeEmailPurpose === 'pay_update'
+          ? 'Your Connectfy pay details were updated'
+          : 'Welcome to the Connectfy team'
   : type === 'application'
     ? `Application received: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'applause_follow_up'
@@ -505,6 +538,9 @@ const sendEmailThroughBrevo = async (payload, type) => {
     htmlContent: appendSlackFooterHtml(buildHtml({ ...payload, type, projectLink })),
     textContent: appendSlackFooterText(buildText({ ...payload, type, projectLink }))
   };
+  if (type === 'employee_welcome' && Array.isArray(payload.emailAttachments) && payload.emailAttachments.length) {
+    requestPayload.attachment = payload.emailAttachments;
+  }
 
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -2186,10 +2222,14 @@ app.post('/api/application-screener', async (req, res) => {
 app.post('/api/project-email', async (req, res) => {
   try {
     const payload = req.body || {};
+    delete payload.emailAttachments;
+    delete payload.contractAttachmentFilename;
+    delete payload.contractPdfAttached;
 
     const type = payload.type || 'application';
     let toEmail = String(payload.toEmail || '').trim();
     let toName = String(payload.toName || '').trim();
+    let contractAttachmentFilename;
 
     const requestType = type === 'utest_update_required' ? 'utest_update_required' : type;
     const supportedTypes = ['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
@@ -2254,13 +2294,13 @@ app.post('/api/project-email', async (req, res) => {
           return res.status(400).json({ ok: false, message: 'The employee account is required.' });
         }
         if (payload.employeeEmailPurpose !== undefined
-          && !['welcome', 'pay_update'].includes(payload.employeeEmailPurpose)) {
+          && !['welcome', 'pay_update', 'contract', 'contract_update'].includes(payload.employeeEmailPurpose)) {
           return res.status(400).json({ ok: false, message: 'Choose a supported employee email purpose.' });
         }
         const restBase = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
         const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization };
         const [employeeResponse, employeeProfileResponse] = await Promise.all([
-          fetch(`${restBase}/hr_employees?profile_id=eq.${encodeURIComponent(employeeProfileId)}&select=profile_id`, { headers: restHeaders }),
+          fetch(`${restBase}/hr_employees?profile_id=eq.${encodeURIComponent(employeeProfileId)}&select=profile_id,job_title,department,employment_type,employment_status,hire_date,compensation_type,compensation_rate,compensation_currency,pay_frequency`, { headers: restHeaders }),
           fetch(`${restBase}/profiles?id=eq.${encodeURIComponent(employeeProfileId)}&select=id,name,email`, { headers: restHeaders })
         ]);
         if (!employeeResponse.ok || !employeeProfileResponse.ok) {
@@ -2269,8 +2309,11 @@ app.post('/api/project-email', async (req, res) => {
         const [employeeRows, employeeProfiles] = await Promise.all([
           employeeResponse.json(), employeeProfileResponse.json()
         ]);
+        const employee = Array.isArray(employeeRows)
+          ? employeeRows.find((row) => row.profile_id === employeeProfileId)
+          : null;
         const employeeProfile = employeeProfiles[0];
-        if (!Array.isArray(employeeRows) || !employeeRows.some((employee) => employee.profile_id === employeeProfileId)
+        if (!employee
           || !employeeProfile || !employeeProfile.email) {
           return res.status(404).json({ ok: false, message: 'The linked employee account or email could not be found.' });
         }
@@ -2278,6 +2321,21 @@ app.post('/api/project-email', async (req, res) => {
         payload.toName = employeeProfile.name || employeeProfile.email.split('@')[0];
         toEmail = payload.toEmail;
         toName = payload.toName;
+        if (['welcome', 'contract', 'contract_update'].includes(payload.employeeEmailPurpose)) {
+          const pdf = await buildEmployeeContractPdf({ employee, profile: employeeProfile });
+          const safeName = String(employeeProfile.name || 'employee')
+            .normalize('NFKD')
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase() || 'employee';
+          contractAttachmentFilename = `connectfy-draft-employment-terms-${safeName}.pdf`;
+          payload.emailAttachments = [{
+            name: contractAttachmentFilename,
+            content: pdf.toString('base64'),
+            contentType: 'application/pdf'
+          }];
+          payload.contractPdfAttached = true;
+        }
       } else if (requestType === 'applause_follow_up') {
         const requester = profiles[0];
         if (requester.role !== 'admin'
@@ -2378,6 +2436,7 @@ app.post('/api/project-email', async (req, res) => {
       ok: true,
       emailType: requestType,
       subject: result.subject,
+      ...(contractAttachmentFilename ? { attachmentFilename: contractAttachmentFilename } : {}),
       ...(result.messageId && { messageId: result.messageId })
     });
   } catch (error) {

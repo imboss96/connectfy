@@ -3,7 +3,12 @@ import fs from 'node:fs';
 import {
   canAccessAdminTab
 } from '../src/lib/adminPermissions';
+import {
+  buildEmployeeContractTermsSnapshot,
+  employeeContractTermsChanged
+} from '../src/lib/hrEmployeeContract';
 import { getHrJobTitleAdminAccess } from '../src/lib/hrJobTitleAccess';
+import { buildEmployeeContractPdf } from '../src/lib/employeeContractPdf.js';
 
 const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220002_hr_employee_management.sql', import.meta.url),
@@ -25,11 +30,16 @@ const welcomeEmailTrackingMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220009_hr_employee_welcome_email_tracking.sql', import.meta.url),
   'utf8'
 );
+const contractEmailTrackingMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220010_hr_employee_contract_email_tracking.sql', import.meta.url),
+  'utf8'
+);
 const hrSection = fs.readFileSync(new URL('../src/components/HRSection.tsx', import.meta.url), 'utf8');
 const appContext = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const emailService = fs.readFileSync(new URL('../src/lib/emailService.ts', import.meta.url), 'utf8');
 const emailBackend = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+const contractPdfSource = fs.readFileSync(new URL('../src/lib/employeeContractPdf.js', import.meta.url), 'utf8');
 
 assert.equal(canAccessAdminTab('super_admin', 'hr'), true);
 assert.equal(canAccessAdminTab('project_manager', 'hr'), false);
@@ -81,20 +91,28 @@ assert.match(hrSection, /from\('hr_option_catalog'\)/i);
 assert.match(hrSection, /rpc\('hr_update_employee_platform_access'/i);
 assert.match(hrSection, /const getErrorMessage = \(error: unknown, fallback: string\)/i);
 assert.doesNotMatch(hrSection, /admin_access_level\s*:\s*jobTitle/i);
-assert.match(hrSection, /const shouldSendEmployeeEmail = !selectedEmployee\?\.welcome_email_sent_at \|\| payDetailsChanged/i);
+assert.match(hrSection, /const shouldSendEmployeeEmail = !selectedEmployee\s*\|\|\s*employeeContractTermsChanged/i);
 assert.match(hrSection, /if \(shouldSendEmployeeEmail\) \{[\s\S]*?sendProjectEmail\(\{[\s\S]*?type: 'employee_welcome'[\s\S]*?employeeProfileId: targetProfileId[\s\S]*?welcome_email_sent_at/i);
 assert.match(hrSection, /follow-up actions need attention/i);
 assert.match(hrSection, /Platform access: \$\{getErrorMessage\(platformAccessError/);
-assert.match(hrSection, /selectedEmployee\.job_title !== values\.job_title[\s\S]*selectedEmployee\.compensation_rate[\s\S]*pay_frequency !== values\.pay_frequency/i);
 assert.match(hrSection, /employeeEmailPurpose: sentEmployeeEmailPurpose/);
-assert.match(hrSection, /pay-change email accepted by the email service/i);
+assert.match(hrSection, /employment_contract_terms: contractTerms/i);
+assert.match(hrSection, /draft contract PDF accepted by the email service/i);
 assert.match(welcomeEmailTrackingMigration, /add column if not exists welcome_email_sent_at timestamptz/i);
+assert.match(contractEmailTrackingMigration, /add column if not exists employment_contract_sent_at timestamptz/i);
+assert.match(contractEmailTrackingMigration, /add column if not exists employment_contract_terms jsonb/i);
 assert.match(emailService, /'employee_welcome'/);
 assert.match(emailService, /employee_welcome[\s\S]*?requiresAdminSession/i);
+assert.match(emailService, /'contract' \| 'contract_update'/);
+assert.match(emailService, /!result\.attachmentFilename/i);
 assert.match(emailBackend, /Only Super Admins can send employee welcome emails/i);
 assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and revisions are based on your performance/i);
 assert.match(emailBackend, /Your job title or compensation settings have changed/i);
 assert.match(emailBackend, /payload\.employeeEmailPurpose === 'pay_update'/);
+assert.match(emailBackend, /buildEmployeeContractPdf\(\{ employee, profile: employeeProfile \}\)/);
+assert.match(emailBackend, /contentType: 'application\/pdf'/);
+assert.match(emailBackend, /requestPayload\.attachment = payload\.emailAttachments/i);
+assert.match(emailBackend, /contractAttachmentFilename/);
 assert.match(emailBackend, /type === 'employee_welcome'[\s\S]*?<!doctype html>[\s\S]*?role="presentation"[\s\S]*?#0B132B[\s\S]*?#00A3E0[\s\S]*?#007AFF/i);
 assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and any revisions are based on your performance/i);
 assert.match(emailBackend, /hr_employees\?profile_id=eq\.\$\{encodeURIComponent\(employeeProfileId\)\}/i);
@@ -124,5 +142,35 @@ assert.match(
 );
 assert.match(appContext, /hasAdminAccess = role === 'admin'[\s\S]*adminAccessLevel === 'project_manager'[\s\S]*adminAccessLevel === 'reviewer'/i);
 assert.match(app, /hasAdminAccess && hasAdminTabAccess/i);
+
+const currentTerms = buildEmployeeContractTermsSnapshot({
+  job_title: 'QA Tester',
+  compensation_type: 'hourly',
+  compensation_rate: 25,
+  compensation_currency: 'USD',
+  pay_frequency: 'biweekly'
+});
+assert.equal(employeeContractTermsChanged(currentTerms, { ...currentTerms }), false);
+assert.equal(employeeContractTermsChanged(currentTerms, { ...currentTerms, job_title: 'Senior QA Tester' }), true);
+assert.equal(employeeContractTermsChanged(currentTerms, { ...currentTerms, compensation_rate: 26 }), true);
+const contractPdf = await buildEmployeeContractPdf({
+  employee: {
+    job_title: 'QA Tester',
+    department: 'QA/Testing',
+    employment_type: 'full_time',
+    employment_status: 'active',
+    hire_date: '2026-01-15',
+    compensation_type: 'hourly',
+    compensation_rate: 25,
+    compensation_currency: 'USD',
+    pay_frequency: 'biweekly'
+  },
+  profile: { name: 'Test Employee', email: 'employee@example.com' }
+});
+assert.ok(contractPdf.subarray(0, 5).equals(Buffer.from('%PDF-')));
+assert.ok(contractPdf.length > 1000);
+assert.match(contractPdfSource, /DRAFT - FOR LEGAL REVIEW - NOT A SIGNED AGREEMENT/);
+assert.match(contractPdfSource, /employee\.compensation_rate/);
+assert.match(contractPdfSource, /profile\.email/);
 
 console.log('HR employee management regression checks passed');

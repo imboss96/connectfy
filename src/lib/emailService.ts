@@ -83,7 +83,7 @@ export interface ProjectEmailPayload {
 export interface EmployeeWelcomeEmailPayload {
   type: 'employee_welcome';
   employeeProfileId: string;
-  employeeEmailPurpose?: 'welcome' | 'pay_update';
+  employeeEmailPurpose?: 'welcome' | 'pay_update' | 'contract' | 'contract_update';
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWelcomeEmailPayload): Promise<boolean> {
@@ -159,7 +159,7 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
       }
     }
     if (safePayload.type === 'employee_welcome') {
-      let result: { ok?: boolean; emailType?: string; subject?: string };
+      let result: { ok?: boolean; emailType?: string; subject?: string; attachmentFilename?: string };
       try {
         result = await response.json();
       } catch {
@@ -167,6 +167,13 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
       }
       if (result.ok !== true || result.emailType !== safePayload.type || !result.subject) {
         throw new Error('The email backend did not confirm employee email acceptance. Verify the deployed backend version before retrying.');
+      }
+      if ('employeeEmailPurpose' in payload
+        && (payload.employeeEmailPurpose === 'welcome'
+          || payload.employeeEmailPurpose === 'contract'
+          || payload.employeeEmailPurpose === 'contract_update')
+        && !result.attachmentFilename) {
+        throw new Error('The email backend may have accepted the message without a confirmed contract PDF attachment. Verify the deployed backend version before retrying.');
       }
     }
 

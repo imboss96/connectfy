@@ -17,6 +17,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { sendProjectEmail } from '../lib/emailService';
+import {
+  buildEmployeeContractTermsSnapshot,
+  employeeContractTermsChanged,
+  EmployeeContractTermsSnapshot
+} from '../lib/hrEmployeeContract';
 import { getHrJobTitleAdminAccess } from '../lib/hrJobTitleAccess';
 import { supabase } from '../lib/supabase';
 
@@ -38,6 +43,8 @@ interface HrEmployee {
   compensation_currency: string;
   pay_frequency: 'weekly' | 'biweekly' | 'monthly';
   welcome_email_sent_at: string | null;
+  employment_contract_sent_at: string | null;
+  employment_contract_terms: EmployeeContractTermsSnapshot | null;
 }
 
 interface PlatformProfile {
@@ -687,15 +694,10 @@ export const HRSection: React.FC = () => {
       setError('Select a valid existing Connectfy account before saving the employee profile.');
       return;
     }
-    let sentEmployeeEmailPurpose: 'welcome' | 'pay_update' | null = null;
-    const payDetailsChanged = Boolean(selectedEmployee && (
-      selectedEmployee.job_title !== values.job_title
-      || selectedEmployee.compensation_type !== values.compensation_type
-      || Number(selectedEmployee.compensation_rate) !== values.compensation_rate
-      || selectedEmployee.compensation_currency !== values.compensation_currency
-      || selectedEmployee.pay_frequency !== values.pay_frequency
-    ));
-    const shouldSendEmployeeEmail = !selectedEmployee?.welcome_email_sent_at || payDetailsChanged;
+    let sentEmployeeEmailPurpose: 'welcome' | 'contract' | 'contract_update' | null = null;
+    const contractTerms = buildEmployeeContractTermsSnapshot(values);
+    const shouldSendEmployeeEmail = !selectedEmployee
+      || employeeContractTermsChanged(selectedEmployee.employment_contract_terms, contractTerms);
     const actionSucceeded = await runAction(async () => {
       let employeeId = selectedEmployee?.id || '';
       if (selectedEmployee) {
@@ -730,9 +732,11 @@ export const HRSection: React.FC = () => {
           await loadData();
         }
       }
-      let welcomeEmailError: unknown;
+      let employeeEmailError: unknown;
       if (shouldSendEmployeeEmail) {
-        sentEmployeeEmailPurpose = selectedEmployee?.welcome_email_sent_at ? 'pay_update' : 'welcome';
+        sentEmployeeEmailPurpose = !selectedEmployee
+          ? 'welcome'
+          : selectedEmployee.employment_contract_sent_at ? 'contract_update' : 'contract';
         try {
           await sendProjectEmail({
             type: 'employee_welcome',
@@ -741,28 +745,35 @@ export const HRSection: React.FC = () => {
           });
           const { error: emailTrackingError } = await client
             .from('hr_employees')
-            .update({ welcome_email_sent_at: new Date().toISOString(), updated_by: currentProfileId })
+            .update({
+              welcome_email_sent_at: new Date().toISOString(),
+              employment_contract_sent_at: new Date().toISOString(),
+              employment_contract_terms: contractTerms,
+              updated_by: currentProfileId
+            })
             .eq('id', employeeId);
           if (emailTrackingError) {
-            throw new Error(`The welcome email was accepted, but its delivery status could not be saved: ${emailTrackingError.message}`);
+            throw new Error(`The employee email and contract PDF were accepted, but delivery status could not be saved: ${emailTrackingError.message}`);
           }
         } catch (emailError) {
-          welcomeEmailError = emailError;
+          employeeEmailError = emailError;
           await loadData();
         }
       }
-      if (platformAccessError || welcomeEmailError) {
+      if (platformAccessError || employeeEmailError) {
         const errors = [
           platformAccessError ? `Platform access: ${getErrorMessage(platformAccessError, 'The update failed.')}` : '',
-          welcomeEmailError ? `Welcome email: ${getErrorMessage(welcomeEmailError, 'The email could not be sent.')}` : ''
+          employeeEmailError ? `Employee email and contract PDF: ${getErrorMessage(employeeEmailError, 'The email could not be sent.')}` : ''
         ].filter(Boolean);
         throw new Error(`Employee details were saved, but follow-up actions need attention. ${errors.join(' ')}`);
       }
     }, selectedEmployee ? 'Employee profile updated.' : 'Employee profile created.');
     if (actionSucceeded && sentEmployeeEmailPurpose) {
       setNotice(sentEmployeeEmailPurpose === 'welcome'
-        ? 'Employee profile created and welcome email accepted by the email service.'
-        : 'Employee profile updated and pay-change email accepted by the email service.');
+        ? 'Employee profile created and welcome email with draft contract PDF accepted by the email service.'
+        : sentEmployeeEmailPurpose === 'contract'
+          ? 'Employee profile saved and first draft contract PDF accepted by the email service.'
+          : 'Employee terms updated and revised draft contract PDF accepted by the email service.');
     }
   };
 
