@@ -83,6 +83,7 @@ export interface ProjectEmailPayload {
 export interface EmployeeWelcomeEmailPayload {
   type: 'employee_welcome';
   employeeProfileId: string;
+  employeeEmailPurpose?: 'welcome' | 'pay_update';
 }
 
 export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWelcomeEmailPayload): Promise<boolean> {
@@ -155,6 +156,17 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
       }
       if (result.emailType !== safePayload.type || result.subject !== LEGACY_SHEET_EMAIL_SUBJECT) {
         throw new EmailTemplateMismatchError();
+      }
+    }
+    if (safePayload.type === 'employee_welcome') {
+      let result: { ok?: boolean; emailType?: string; subject?: string };
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error('The email backend did not confirm employee email acceptance. Verify the deployed backend version before retrying.');
+      }
+      if (result.ok !== true || result.emailType !== safePayload.type || !result.subject) {
+        throw new Error('The email backend did not confirm employee email acceptance. Verify the deployed backend version before retrying.');
       }
     }
 

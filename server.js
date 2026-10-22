@@ -51,16 +51,22 @@ const buildHtml = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'employee_welcome') {
     const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    const isPayUpdate = payload.employeeEmailPurpose === 'pay_update';
+    const heading = isPayUpdate ? 'Your pay details were updated' : 'Welcome to the team';
+    const body = isPayUpdate
+      ? 'Your job title or compensation settings have changed. Sign in to Connectfy to review your current employee details. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance.'
+      : 'We’re glad to have you working with Connectfy. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance. We’ll communicate any changes to you.';
+    const preview = isPayUpdate ? 'Your Connectfy employee pay details were updated.' : 'Welcome to the Connectfy team. Here is how your pay rate is reviewed.';
     return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <title>Welcome to Connectfy</title>
+    <title>${heading}</title>
   </head>
   <body style="margin:0;padding:0;background-color:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#0B132B;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Welcome to the Connectfy team. Here is how your pay rate is reviewed.</div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preview}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f6fa;">
       <tr>
         <td align="center" style="padding:32px 16px;">
@@ -73,8 +79,8 @@ const buildHtml = (payload) => {
             <tr>
               <td style="padding:32px 28px 20px;">
                 <p style="margin:0 0 12px;font-size:16px;line-height:24px;color:#334155;">Hello ${escapeHtml(payload.toName || 'there')},</p>
-                <h1 style="margin:0 0 18px;font-size:26px;line-height:34px;color:#0B132B;">Welcome to the team</h1>
-                <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#334155;">We’re glad to have you working with Connectfy. Your set pay rate is reviewed every two weeks, and any revisions are based on your performance. We’ll communicate any changes to you.</p>
+                <h1 style="margin:0 0 18px;font-size:26px;line-height:34px;color:#0B132B;">${heading}</h1>
+                <p style="margin:0 0 22px;font-size:16px;line-height:26px;color:#334155;">${body}</p>
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;background-color:#E3F4F5;border-left:4px solid #00A3E0;border-radius:6px;">
                   <tr>
                     <td style="padding:14px 16px;font-size:14px;line-height:22px;color:#0B132B;"><strong style="color:#0056D6;">Pay review schedule</strong><br>Your set pay rate is reviewed fortnightly (every two weeks) based on performance.</td>
@@ -244,6 +250,20 @@ const buildHtml = (payload) => {
 const buildText = (payload) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
   if (payload.type === 'employee_welcome') {
+    if (payload.employeeEmailPurpose === 'pay_update') {
+      return [
+        `Hello ${payload.toName || 'there'},`,
+        '',
+        'Your job title or compensation settings have changed. Sign in to Connectfy to review your current employee details.',
+        'Your set pay rate is reviewed every two weeks, and any revisions are based on your performance.',
+        '',
+        `Open Connectfy: ${projectLink}`,
+        'If you have questions, contact support@connectfy.tech.',
+        '',
+        'Best regards,',
+        'Connectfy Team'
+      ].join('\n');
+    }
     return [
       `Hello ${payload.toName || 'there'},`,
       '',
@@ -436,7 +456,9 @@ const buildText = (payload) => {
 const projectEmailSubject = (payload, type) => type === 'invite'
   ? buildProjectApprovalEmailSubject(payload.projectTitle)
   : type === 'employee_welcome'
-    ? 'Welcome to the Connectfy team'
+    ? payload.employeeEmailPurpose === 'pay_update'
+      ? 'Your Connectfy pay details were updated'
+      : 'Welcome to the Connectfy team'
   : type === 'application'
     ? `Application received: ${payload.projectTitle || 'Connectfy project'}`
   : type === 'applause_follow_up'
@@ -2231,6 +2253,10 @@ app.post('/api/project-email', async (req, res) => {
         if (!employeeProfileId) {
           return res.status(400).json({ ok: false, message: 'The employee account is required.' });
         }
+        if (payload.employeeEmailPurpose !== undefined
+          && !['welcome', 'pay_update'].includes(payload.employeeEmailPurpose)) {
+          return res.status(400).json({ ok: false, message: 'Choose a supported employee email purpose.' });
+        }
         const restBase = `${supabaseUrl.replace(/\/$/, '')}/rest/v1`;
         const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization };
         const [employeeResponse, employeeProfileResponse] = await Promise.all([
@@ -2348,7 +2374,12 @@ app.post('/api/project-email', async (req, res) => {
     }
 
     const result = await sendEmailThroughBrevo(payload, requestType);
-    return res.json({ ok: true, emailType: requestType, subject: result.subject });
+    return res.json({
+      ok: true,
+      emailType: requestType,
+      subject: result.subject,
+      ...(result.messageId && { messageId: result.messageId })
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return res.status(500).json({ ok: false, message });

@@ -687,7 +687,16 @@ export const HRSection: React.FC = () => {
       setError('Select a valid existing Connectfy account before saving the employee profile.');
       return;
     }
-    await runAction(async () => {
+    let sentEmployeeEmailPurpose: 'welcome' | 'pay_update' | null = null;
+    const payDetailsChanged = Boolean(selectedEmployee && (
+      selectedEmployee.job_title !== values.job_title
+      || selectedEmployee.compensation_type !== values.compensation_type
+      || Number(selectedEmployee.compensation_rate) !== values.compensation_rate
+      || selectedEmployee.compensation_currency !== values.compensation_currency
+      || selectedEmployee.pay_frequency !== values.pay_frequency
+    ));
+    const shouldSendEmployeeEmail = !selectedEmployee?.welcome_email_sent_at || payDetailsChanged;
+    const actionSucceeded = await runAction(async () => {
       let employeeId = selectedEmployee?.id || '';
       if (selectedEmployee) {
         const { error: updateError } = await client
@@ -722,11 +731,13 @@ export const HRSection: React.FC = () => {
         }
       }
       let welcomeEmailError: unknown;
-      if (!selectedEmployee?.welcome_email_sent_at) {
+      if (shouldSendEmployeeEmail) {
+        sentEmployeeEmailPurpose = selectedEmployee?.welcome_email_sent_at ? 'pay_update' : 'welcome';
         try {
           await sendProjectEmail({
             type: 'employee_welcome',
-            employeeProfileId: targetProfileId
+            employeeProfileId: targetProfileId,
+            employeeEmailPurpose: sentEmployeeEmailPurpose
           });
           const { error: emailTrackingError } = await client
             .from('hr_employees')
@@ -748,6 +759,11 @@ export const HRSection: React.FC = () => {
         throw new Error(`Employee details were saved, but follow-up actions need attention. ${errors.join(' ')}`);
       }
     }, selectedEmployee ? 'Employee profile updated.' : 'Employee profile created.');
+    if (actionSucceeded && sentEmployeeEmailPurpose) {
+      setNotice(sentEmployeeEmailPurpose === 'welcome'
+        ? 'Employee profile created and welcome email accepted by the email service.'
+        : 'Employee profile updated and pay-change email accepted by the email service.');
+    }
   };
 
   const addHrOption = (category: HrOptionCategory, label: string) => runAction(async () => {
