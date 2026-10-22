@@ -26,6 +26,7 @@ import { ProjectStepReviews } from './components/ProjectStepReviews';
 import { AmbassadorDashboard } from './components/AmbassadorDashboard';
 import { LandingPage } from './components/LandingPage';
 import { TermsAndConditionsPage } from './components/TermsAndConditionsPage';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { LoginPage } from './components/LoginPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { AdminAuthModal } from './components/AdminAuthModal';
@@ -1000,7 +1001,9 @@ const AppExperience: React.FC = () => {
     setIsAdminAuthOpen(false);
   };
 
-  if (window.location.pathname.replace(/\/+$/, '').toLowerCase() === '/terms') return <TermsAndConditionsPage />;
+  const publicPath = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+  if (publicPath === '/terms') return <TermsAndConditionsPage />;
+  if (publicPath === '/privacy') return <PrivacyPolicyPage />;
   if (isAuthLoading) return <div className="login-loading">Connecting securely to Connectfy...</div>;
   if (screen === 'landing') return <LandingPage onGetStarted={handleLandingApply} onLogin={() => { setAuthMode('login'); setScreen('login'); }} />;
   if (screen === 'login') return <LoginPage initialMode={authMode} onLogin={handleLogin} onSignUp={handleSignUp} onGoogleAuth={handleGoogleAuth} onResetPassword={handleResetPassword} onBackToLanding={() => { setScreen('landing'); }} />;

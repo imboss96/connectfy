@@ -248,6 +248,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin 
               <button onClick={() => jumpTo('specialties')}>Project types</button>
               <button onClick={() => onGetStarted()}>Join</button>
               <a href="/terms" className="text-[13px] text-[#e7eef4] hover:text-white">Terms &amp; Conditions</a>
+              <a href="/privacy" className="text-[13px] text-[#e7eef4] hover:text-white">Privacy Policy</a>
             </div>
           </div>
         </div>
