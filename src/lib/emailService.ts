@@ -139,6 +139,10 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
         && /^Unsupported email type:\s*applause_follow_up$/i.test(message.trim())) {
         message = 'The email backend is running an older version that does not support Applause follow-ups. Restart the local email server or redeploy the email backend with the current server.js, then try again.';
       }
+      if (safePayload.type === 'employee_welcome'
+        && /^Unsupported email type:\s*employee_welcome$/i.test(message.trim())) {
+        message = 'The email backend is running an older version that does not support employee welcome emails. Restart the email server or redeploy the current server.js, then try again.';
+      }
       throw new Error(message);
     }
 

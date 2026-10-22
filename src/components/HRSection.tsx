@@ -37,6 +37,7 @@ interface HrEmployee {
   compensation_rate: number;
   compensation_currency: string;
   pay_frequency: 'weekly' | 'biweekly' | 'monthly';
+  welcome_email_sent_at: string | null;
 }
 
 interface PlatformProfile {
@@ -147,6 +148,14 @@ const formatMoney = (amount: number, currency: string) => {
   } catch {
     return `${currency} ${(Number(amount) || 0).toFixed(2)}`;
   }
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return fallback;
 };
 
 const statusClass = (status: string) => {
@@ -619,7 +628,7 @@ export const HRSection: React.FC = () => {
       return true;
     } catch (actionError) {
       console.error('HR action failed:', actionError);
-      setError(actionError instanceof Error ? actionError.message : 'The HR action could not be completed.');
+      setError(getErrorMessage(actionError, 'The HR action could not be completed.'));
       return false;
     } finally {
       setIsSaving(false);
@@ -679,6 +688,7 @@ export const HRSection: React.FC = () => {
       return;
     }
     await runAction(async () => {
+      let employeeId = selectedEmployee?.id || '';
       if (selectedEmployee) {
         const { error: updateError } = await client
           .from('hr_employees')
@@ -693,36 +703,49 @@ export const HRSection: React.FC = () => {
           .select('id')
           .single();
         if (insertError) throw insertError;
+        employeeId = data.id;
         setSelectedEmployeeId(data.id);
         setProfileId('');
       }
+      let platformAccessError: unknown;
       if (targetProfile.role !== 'admin') {
-        const { data: accessProfile, error: accessError } = await client
-          .from('profiles')
-          .update({ admin_access_level: getHrJobTitleAdminAccess(jobTitle) })
-          .eq('id', targetProfileId)
-          .select('id')
-          .single();
-        if (accessError) {
+        try {
+          const { data: accessProfile, error: accessError } = await client.rpc('hr_update_employee_platform_access', {
+            p_profile_id: targetProfileId,
+            p_admin_access_level: getHrJobTitleAdminAccess(jobTitle)
+          });
+          if (accessError) throw accessError;
+          if (!accessProfile) throw new Error('Employee details were saved, but platform access could not be updated.');
+        } catch (accessError) {
+          platformAccessError = accessError;
           await loadData();
-          throw accessError;
-        }
-        if (!accessProfile) {
-          await loadData();
-          throw new Error('Employee details were saved, but platform access could not be updated.');
         }
       }
-      if (!selectedEmployee) {
+      let welcomeEmailError: unknown;
+      if (!selectedEmployee?.welcome_email_sent_at) {
         try {
           await sendProjectEmail({
             type: 'employee_welcome',
             employeeProfileId: targetProfileId
           });
+          const { error: emailTrackingError } = await client
+            .from('hr_employees')
+            .update({ welcome_email_sent_at: new Date().toISOString(), updated_by: currentProfileId })
+            .eq('id', employeeId);
+          if (emailTrackingError) {
+            throw new Error(`The welcome email was accepted, but its delivery status could not be saved: ${emailTrackingError.message}`);
+          }
         } catch (emailError) {
+          welcomeEmailError = emailError;
           await loadData();
-          const message = emailError instanceof Error ? emailError.message : 'Unknown email delivery error.';
-          throw new Error(`The employee profile was created, but the welcome email could not be sent: ${message}`);
         }
+      }
+      if (platformAccessError || welcomeEmailError) {
+        const errors = [
+          platformAccessError ? `Platform access: ${getErrorMessage(platformAccessError, 'The update failed.')}` : '',
+          welcomeEmailError ? `Welcome email: ${getErrorMessage(welcomeEmailError, 'The email could not be sent.')}` : ''
+        ].filter(Boolean);
+        throw new Error(`Employee details were saved, but follow-up actions need attention. ${errors.join(' ')}`);
       }
     }, selectedEmployee ? 'Employee profile updated.' : 'Employee profile created.');
   };

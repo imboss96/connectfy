@@ -17,6 +17,14 @@ const accessMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220005_hr_job_title_platform_access.sql', import.meta.url),
   'utf8'
 );
+const platformAccessRpcMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220008_hr_employee_platform_access_rpc.sql', import.meta.url),
+  'utf8'
+);
+const welcomeEmailTrackingMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610220009_hr_employee_welcome_email_tracking.sql', import.meta.url),
+  'utf8'
+);
 const hrSection = fs.readFileSync(new URL('../src/components/HRSection.tsx', import.meta.url), 'utf8');
 const appContext = fs.readFileSync(new URL('../src/context/AppContext.tsx', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
@@ -70,9 +78,13 @@ assert.match(hrSection, /Project Manager titles add Project Manager access/i);
 assert.match(hrSection, /<select[^>]*value=\{jobTitle\}/i);
 assert.match(hrSection, /<select[^>]*value=\{department\}/i);
 assert.match(hrSection, /from\('hr_option_catalog'\)/i);
+assert.match(hrSection, /rpc\('hr_update_employee_platform_access'/i);
+assert.match(hrSection, /const getErrorMessage = \(error: unknown, fallback: string\)/i);
 assert.doesNotMatch(hrSection, /admin_access_level\s*:\s*jobTitle/i);
-assert.match(hrSection, /if \(!selectedEmployee\) \{[\s\S]*?sendProjectEmail\(\{[\s\S]*?type: 'employee_welcome'[\s\S]*?employeeProfileId: targetProfileId/i);
-assert.match(hrSection, /employee profile was created, but the welcome email could not be sent/i);
+assert.match(hrSection, /if \(!selectedEmployee\?\.welcome_email_sent_at\) \{[\s\S]*?sendProjectEmail\(\{[\s\S]*?type: 'employee_welcome'[\s\S]*?employeeProfileId: targetProfileId[\s\S]*?welcome_email_sent_at/i);
+assert.match(hrSection, /follow-up actions need attention/i);
+assert.match(hrSection, /Platform access: \$\{getErrorMessage\(platformAccessError/);
+assert.match(welcomeEmailTrackingMigration, /add column if not exists welcome_email_sent_at timestamptz/i);
 assert.match(emailService, /'employee_welcome'/);
 assert.match(emailService, /employee_welcome[\s\S]*?requiresAdminSession/i);
 assert.match(emailBackend, /Only Super Admins can send employee welcome emails/i);
@@ -80,6 +92,7 @@ assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and r
 assert.match(emailBackend, /type === 'employee_welcome'[\s\S]*?<!doctype html>[\s\S]*?role="presentation"[\s\S]*?#0B132B[\s\S]*?#00A3E0[\s\S]*?#007AFF/i);
 assert.match(emailBackend, /Your set pay rate is reviewed every two weeks, and any revisions are based on your performance/i);
 assert.match(emailBackend, /hr_employees\?profile_id=eq\.\$\{encodeURIComponent\(employeeProfileId\)\}/i);
+assert.match(emailService, /does not support employee welcome emails/i);
 assert.equal(getHrJobTitleAdminAccess('Project Manager'), 'project_manager');
 assert.equal(getHrJobTitleAdminAccess('Reviewer'), 'reviewer');
 assert.equal(getHrJobTitleAdminAccess('Project Reviewer'), 'reviewer');
@@ -93,6 +106,11 @@ assert.match(accessMigration, /create or replace function public\.can_manage_pro
 assert.match(accessMigration, /create or replace function public\.can_review_submissions\(\)/i);
 assert.match(accessMigration, /protect_profile_platform_access/i);
 assert.match(accessMigration, /Only a Super Admin can change platform roles or access levels/i);
+assert.match(platformAccessRpcMigration, /create or replace function public\.hr_update_employee_platform_access/i);
+assert.match(platformAccessRpcMigration, /if not public\.is_admin\(\) then/i);
+assert.match(platformAccessRpcMigration, /p_admin_access_level not in \('project_manager', 'reviewer'\)/i);
+assert.match(platformAccessRpcMigration, /where id = p_profile_id\s+and role <> 'admin'/i);
+assert.match(platformAccessRpcMigration, /grant execute on function public\.hr_update_employee_platform_access\(uuid, text\) to authenticated/i);
 assert.match(
   accessMigration,
   /drop trigger if exists protect_profile_platform_access on public\.profiles;[\s\S]*update public\.profiles as profile[\s\S]*from public\.hr_employees as employee[\s\S]*create trigger protect_profile_platform_access/i
