@@ -10,6 +10,7 @@ const applauseStatusDeleteGuardMigration = readFileSync(path.resolve('supabase/m
 const applauseStatusTruncateMigration = readFileSync(path.resolve('supabase/migrations/202610040003_applause_status_sync_truncate.sql'), 'utf8');
 const projectOperationsMigration = readFileSync(path.resolve('supabase/migrations/202610040004_project_scoped_operations_payroll.sql'), 'utf8');
 const payrollScheduleDateReconciliationMigration = readFileSync(path.resolve('supabase/migrations/202610250001_reconcile_payroll_schedule_date.sql'), 'utf8');
+const blankApplauseSyncDateMigration = readFileSync(path.resolve('supabase/migrations/202610250002_guard_blank_applause_sync_date.sql'), 'utf8');
 const missedPayrollMigration = readFileSync(path.resolve('supabase/migrations/202610160001_reschedule_missed_payroll.sql'), 'utf8');
 const matchedPayrollMigration = readFileSync(path.resolve('supabase/migrations/202610160002_match_applause_payroll_profiles.sql'), 'utf8');
 const payrollAmountReconciliationMigration = readFileSync(path.resolve('supabase/migrations/202610160003_reconcile_scheduled_payroll_amounts.sql'), 'utf8');
@@ -69,6 +70,7 @@ assert.ok(projectOperationsMigration.includes('create table public.project_payro
 assert.ok(projectOperationsMigration.includes('lower(trim(source.status)) = \'claimed complete\''), 'Payroll schedules must be generated only for completed participants.');
 assert.ok(projectOperationsMigration.includes('payout_amount') && projectOperationsMigration.includes('payout_date'), 'Payroll schedules must use the configured project amount and pay date.');
 assert.match(payrollScheduleDateReconciliationMigration, /alter column payroll_scheduled_date type date\s+using nullif\(trim\(payroll_scheduled_date::text\), ''\)::date/i, 'The latest repair migration must convert empty legacy payroll dates to NULL before the sync RPC reads them.');
+assert.match(blankApplauseSyncDateMigration, /nullif\(trim\(settings\.payroll_scheduled_date::text\), ''\)::date/i, 'The latest Applause sync RPC must safely treat blank legacy payroll dates as NULL.');
 assert.match(missedPayrollMigration, /public\.next_project_payroll_date\(platform_today\)/, 'Missed payroll must roll to the upcoming semi-monthly pay date.');
 assert.match(missedPayrollMigration, /scheduled_date < platform_today/, 'Only unpaid schedules past their date must be moved.');
 assert.match(missedPayrollMigration, /now\(\) at time zone 'Africa\/Nairobi'/, 'Payroll rescheduling must use the platform calendar.');
