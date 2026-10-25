@@ -8,14 +8,6 @@
 			"args": [],
 			"isBackground": false,
 			"problemMatcher": []
-		},
-		{
-			"label": "Stage repair changes",
-			"type": "shell",
-			"command": "git add scripts/supabase-schema-regression.test.ts supabase/migrations/202610250002_guard_blank_applause_sync_date.sql",
-			"args": [],
-			"isBackground": false,
-			"problemMatcher": []
 		}
 	]
 }

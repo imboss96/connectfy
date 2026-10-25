@@ -26,6 +26,7 @@ import {
   MapPin,
   Eye,
   Filter,
+  Search,
   Volume2
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -68,6 +69,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
 
   const [activeTab, setActiveTab] = useState<'submissions' | 'applicants' | 'cycles'>('submissions');
   const [submissionFilter, setSubmissionFilter] = useState<'all' | 'tasks' | 'bugs'>('all');
+  const [submissionSearch, setSubmissionSearch] = useState('');
   const [selectedAttachment, setSelectedAttachment] = useState<AttachmentFile | null>(null);
   const [confirmedScreenerIds, setConfirmedScreenerIds] = useState<Set<string>>(() => new Set());
 
@@ -122,6 +124,54 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
   const pendingTasks = taskSubmissions.filter((t) => t.status === 'under_review');
   const totalPendingSubmissions = pendingBugs.length + pendingTasks.length;
   const pendingApplicants = applications.filter((a) => a.status === 'pending');
+  const normalizedSubmissionSearch = submissionSearch.trim().toLocaleLowerCase();
+  const matchingTaskSubmissions = taskSubmissions.filter((task) => {
+    if (!normalizedSubmissionSearch) return true;
+    const project = projects.find((item) => item.id === task.projectId);
+    const searchableText = [
+      task.id,
+      task.testerId,
+      task.testerName,
+      task.title,
+      task.taskType,
+      task.details,
+      task.status,
+      task.projectId,
+      project?.title,
+      task.submittedAt,
+      JSON.stringify(task.metadata || {}),
+      ...task.attachments.map((attachment) => attachment.name)
+    ].join(' ').toLocaleLowerCase();
+    return searchableText.includes(normalizedSubmissionSearch);
+  });
+  const matchingBugReports = bugReports.filter((bug) => {
+    if (!normalizedSubmissionSearch) return true;
+    const project = projects.find((item) => item.id === bug.projectId);
+    const searchableText = [
+      bug.id,
+      bug.testerId,
+      bug.testerName,
+      bug.title,
+      bug.featureArea,
+      bug.severity,
+      bug.bugType,
+      bug.device,
+      bug.osVersion,
+      bug.browserOrBuild,
+      bug.expectedResult,
+      bug.actualResult,
+      bug.status,
+      bug.projectId,
+      project?.title,
+      bug.submittedAt,
+      ...bug.stepsToReproduce,
+      ...bug.attachments.map((attachment) => attachment.name)
+    ].join(' ').toLocaleLowerCase();
+    return searchableText.includes(normalizedSubmissionSearch);
+  });
+  const visibleSubmissionCount =
+    (submissionFilter === 'all' || submissionFilter === 'tasks' ? matchingTaskSubmissions.length : 0) +
+    (submissionFilter === 'all' || submissionFilter === 'bugs' ? matchingBugReports.length : 0);
 
   const handleOpenApproveModal = (bug: BugReport) => {
     setApprovalMessage('');
@@ -384,49 +434,102 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
       {/* Tab 1: Submissions Review */}
       {activeTab === 'submissions' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <div>
-              <h3 className="text-sm font-bold text-white">Freelancer Work & Defect Review Queue</h3>
-              <p className="text-xs text-slate-400">
-                Inspect deliverable files and bug proofs. Approving immediately credits earnings into the freelancer's wallet account.
-              </p>
-            </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5 shadow-lg shadow-slate-950/20">
+            <div className="flex flex-col gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-2 text-cyan-300">
+                    <ClipboardCheck className="h-4 w-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white">Submission review queue</h3>
+                  <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                    {totalPendingSubmissions} awaiting review
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  Find a freelancer submission by name, project, details, device, or filename. Review and action items from one place.
+                </p>
+              </div>
 
-            {/* Filter Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-500 flex items-center gap-1 mr-1">
-                <Filter className="w-3.5 h-3.5" /> View:
-              </span>
-              <button
-                onClick={() => setSubmissionFilter('all')}
-                className={`px-2.5 py-1 rounded-lg font-medium transition ${
-                  submissionFilter === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-950 text-slate-400 hover:text-white'
-                }`}
-              >
-                All ({bugReports.length + taskSubmissions.length})
-              </button>
-              <button
-                onClick={() => setSubmissionFilter('tasks')}
-                className={`px-2.5 py-1 rounded-lg font-medium transition ${
-                  submissionFilter === 'tasks'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-slate-950 text-slate-400 hover:text-white'
-                }`}
-              >
-                Task Deliverables ({taskSubmissions.length})
-              </button>
-              <button
-                onClick={() => setSubmissionFilter('bugs')}
-                className={`px-2.5 py-1 rounded-lg font-medium transition ${
-                  submissionFilter === 'bugs'
-                    ? 'bg-rose-600 text-white'
-                    : 'bg-slate-950 text-slate-400 hover:text-white'
-                }`}
-              >
-                Bug Defects ({bugReports.length})
-              </button>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative w-full lg:max-w-md">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={submissionSearch}
+                    onChange={(event) => setSubmissionSearch(event.target.value)}
+                    placeholder="Search freelancer, project, submission..."
+                    aria-label="Search submissions by freelancer, project, or submission details"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10"
+                  />
+                  {submissionSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setSubmissionSearch('')}
+                      aria-label="Clear submission search"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 transition hover:bg-slate-800 hover:text-slate-200"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="mr-1 flex items-center gap-1 text-slate-500">
+                    <Filter className="h-3.5 w-3.5" /> Filter
+                  </span>
+                  <button
+                    onClick={() => setSubmissionFilter('all')}
+                    aria-pressed={submissionFilter === 'all'}
+                    className={`rounded-lg border px-3 py-2 font-semibold transition ${
+                      submissionFilter === 'all'
+                        ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-200'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    All <span className="ml-1 opacity-70">({bugReports.length + taskSubmissions.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setSubmissionFilter('tasks')}
+                    aria-pressed={submissionFilter === 'tasks'}
+                    className={`rounded-lg border px-3 py-2 font-semibold transition ${
+                      submissionFilter === 'tasks'
+                        ? 'border-purple-400/40 bg-purple-400/10 text-purple-200'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    Deliverables <span className="ml-1 opacity-70">({taskSubmissions.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setSubmissionFilter('bugs')}
+                    aria-pressed={submissionFilter === 'bugs'}
+                    className={`rounded-lg border px-3 py-2 font-semibold transition ${
+                      submissionFilter === 'bugs'
+                        ? 'border-rose-400/40 bg-rose-400/10 text-rose-200'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    Bug reports <span className="ml-1 opacity-70">({bugReports.length})</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-slate-800 pt-3 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Showing <span className="font-semibold text-slate-300">{visibleSubmissionCount}</span> of{' '}
+                  {bugReports.length + taskSubmissions.length} submissions
+                  {normalizedSubmissionSearch && <> matching <span className="font-semibold text-cyan-300">“{submissionSearch.trim()}”</span></>}
+                </span>
+                {submissionSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionSearch('')}
+                    className="font-semibold text-cyan-300 transition hover:text-cyan-200"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -437,10 +540,30 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
             </div>
           )}
 
+          {visibleSubmissionCount === 0 && (bugReports.length + taskSubmissions.length > 0) && (
+            <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 px-5 py-12 text-center">
+              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-400">
+                <Search className="h-5 w-5" />
+              </div>
+              <h4 className="text-sm font-semibold text-slate-200">No matching submissions</h4>
+              <p className="mt-1 text-xs text-slate-400">Try another name, project, or keyword, or clear your search.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmissionSearch('');
+                  setSubmissionFilter('all');
+                }}
+                className="mt-4 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/15"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+
           <div className="space-y-4">
             {/* Task Deliverables List */}
             {(submissionFilter === 'all' || submissionFilter === 'tasks') &&
-              taskSubmissions.map((task) => {
+              matchingTaskSubmissions.map((task) => {
                 const project = projects.find((p) => p.id === task.projectId);
                 const isApproved = task.status === 'approved';
                 const isReview = task.status === 'under_review';
@@ -627,7 +750,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
 
             {/* Bug Reports List */}
             {(submissionFilter === 'all' || submissionFilter === 'bugs') &&
-              bugReports.map((bug) => {
+              matchingBugReports.map((bug) => {
                 const project = projects.find((p) => p.id === bug.projectId);
                 const isApproved = bug.status === 'approved';
                 const isReview = bug.status === 'under_review';
