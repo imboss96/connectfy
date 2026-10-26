@@ -5,7 +5,10 @@ import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
 import { AttachmentFile, Project, TaskSubmission, TesterProfile } from '../types';
 import {
   fetchProjectStepProgress,
+  fetchProjectStepRequirements,
+  defaultProjectStepRequirements,
   ProjectStepProgress,
+  ProjectStepRequirements,
   ProjectStepReviewNotes,
   ProjectStepStatuses,
   ProjectStepStatus,
@@ -61,7 +64,7 @@ const readSavedProgress = (key: string): SavedProgress => {
     if (parsed.statuses && typeof parsed.statuses === 'object') {
       stepIds.forEach((id) => {
         const status = parsed.statuses?.[id];
-        if (status === 'pending' || status === 'submitted' || status === 'done' || status === 'failed') statuses[id] = status;
+        if (status === 'pending' || status === 'submitted' || status === 'done' || status === 'failed' || status === 'skipped') statuses[id] = status;
       });
     }
 
@@ -93,6 +96,8 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     return readSavedProgress(`connectfy_google_selfies_steps_${project.id}_${testerProfile.id || testerProfile.email}`);
   }, [project.id, storageKey, testerProfile.email, testerProfile.id]);
   const [statuses, setStatuses] = useState<StepStatuses>(initialProgress.statuses);
+  const [requirements, setRequirements] = useState<ProjectStepRequirements>(defaultProjectStepRequirements);
+  const [requirementsLoaded, setRequirementsLoaded] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentFile[]>(initialProgress.attachments);
   const [reviewNotes, setReviewNotes] = useState<ProjectStepReviewNotes>(initialProgress.reviewNotes);
   const [error, setError] = useState('');
@@ -126,6 +131,8 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
       setStatuses(defaultStatuses);
       setAttachments([]);
       setReviewNotes({});
+      setRequirements(defaultProjectStepRequirements);
+      setRequirementsLoaded(true);
       setProgressLoaded(true);
       setIsProgressLoading(false);
       return () => {
@@ -134,9 +141,15 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     }
 
     setProgressLoaded(false);
-    void fetchProjectStepProgress(project.id)
-      .then((savedProgress) => {
+    setRequirementsLoaded(false);
+    void Promise.all([
+      fetchProjectStepRequirements(project.id),
+      fetchProjectStepProgress(project.id)
+    ])
+      .then(([savedRequirements, savedProgress]) => {
         if (!isCurrent) return;
+        setRequirements(savedRequirements);
+        setRequirementsLoaded(true);
         if (savedProgress) {
           setStatuses(savedProgress.statuses);
           setAttachments(savedProgress.attachments);
@@ -170,8 +183,14 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
 
     const interval = window.setInterval(() => {
       if (Date.now() - lastLocalChangeAt.current < 3000) return;
-      void fetchProjectStepProgress(project.id)
-        .then((savedProgress) => {
+      void Promise.all([
+        fetchProjectStepRequirements(project.id),
+        fetchProjectStepProgress(project.id)
+      ])
+        .then(([savedRequirements, savedProgress]) => {
+          setRequirements((current) => JSON.stringify(current) === JSON.stringify(savedRequirements)
+            ? current
+            : savedRequirements);
           if (!savedProgress) return;
           setStatuses((current) => JSON.stringify(current) === JSON.stringify(savedProgress.statuses)
             ? current
@@ -196,7 +215,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
   }, [project.id, usesRemoteProgress]);
 
   useEffect(() => {
-    if (!usesRemoteProgress || !remoteProgressReady || !progressLoaded) return;
+    if (!usesRemoteProgress || !remoteProgressReady || !progressLoaded || !requirementsLoaded) return;
 
     const hasProgress = stepIds.some((id) => statuses[id] !== 'pending') || attachments.length > 0;
     if (!hasProgress) return;
@@ -216,18 +235,26 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [attachments, progressLoaded, project.id, remoteProgressReady, reviewNotes, statuses, usesRemoteProgress]);
+  }, [attachments, progressLoaded, project.id, remoteProgressReady, requirementsLoaded, reviewNotes, statuses, usesRemoteProgress]);
 
   const screenshot = attachments.find((attachment) => attachment.name.startsWith('screenshot:'));
   const screenshotReady = Boolean(screenshot);
-  const canStartConsent = statuses.slack === 'done';
-  const canStartLanguageSettings = statuses.slack === 'done' && statuses.consent === 'done';
-  const canStartCollection = canStartLanguageSettings && statuses.languageSettings === 'done';
-  const completedCount = stepIds.filter((id) => statuses[id] === 'done').length;
+  const canStartStep = (step: StepId) => {
+    const index = stepIds.indexOf(step);
+    return stepIds.slice(0, index).every((previous) =>
+      !requirements[previous] || statuses[previous] === 'done');
+  };
+  const canStartConsent = canStartStep('consent');
+  const canStartLanguageSettings = canStartStep('languageSettings');
+  const canStartCollection = canStartStep('recordings');
+  const requiredStepIds = stepIds.filter((id) => requirements[id]);
+  const completedCount = requiredStepIds.filter((id) => statuses[id] === 'done').length;
   const awaitingApprovalCount = stepIds.filter((id) => statuses[id] === 'submitted').length;
-  const isComplete = completedCount === stepIds.length;
+  const skippedCount = stepIds.filter((id) => !requirements[id] && statuses[id] === 'skipped').length;
+  const isComplete = requiredStepIds.every((id) => statuses[id] === 'done');
   const updateStatus = (stepId: StepId, status: StepStatus) => {
     lastLocalChangeAt.current = Date.now();
+    setIsProgressSaving(true);
     setStatuses((previous) => ({ ...previous, [stepId]: status }));
     setReviewNotes((previous) => ({ ...previous, [stepId]: undefined }));
     setError('');
@@ -275,7 +302,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
 
   const handleSubmit = async () => {
     if (!isComplete) {
-      setError('Wait until all four project steps are approved before submitting the project for review.');
+      setError('Wait until all required project steps are approved before submitting the project for review.');
       return;
     }
     if (!screenshotReady) {
@@ -290,10 +317,10 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         projectId: project.id,
         taskType: project.projectTrack || 'data_collection',
         title: 'Project Completion Checklist',
-        details: `All four project steps are marked Done for "${project.title}". The final completion screenshot is attached. The language settings video was submitted through the linked Monday form, and Google Selfie Collection tasks were completed.`,
+        details: `All required project steps are approved for "${project.title}". Optional steps were completed or skipped according to the project settings. The final completion screenshot is attached.`,
         metadata: {
           deviceUsed: testerProfile.devices[0] || 'Not specified',
-          meetingUrlOrNotes: `Consent signed by ${applicationName}; language settings video submitted through the Monday form.`
+          meetingUrlOrNotes: 'Project checklist completed under the configured required-step policy.'
         },
         attachments: screenshot ? [screenshot] : []
       });
@@ -342,8 +369,9 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
     canMarkDone = true
   ) => {
     const status = statuses[step];
+    const isRequired = requirements[step];
     return (
-      <article className={`rounded-2xl border bg-white p-5 shadow-sm ${status === 'done' ? 'border-emerald-200' : status === 'failed' ? 'border-rose-200' : status === 'submitted' ? 'border-amber-200' : 'border-slate-200'}`}>
+      <article className={`rounded-2xl border bg-white p-5 shadow-sm ${status === 'done' ? 'border-emerald-200' : status === 'failed' ? 'border-rose-200' : status === 'submitted' ? 'border-amber-200' : status === 'skipped' ? 'border-slate-300' : 'border-slate-200'}`}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 gap-3">
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${status === 'done' ? 'bg-emerald-100 text-emerald-700' : status === 'failed' ? 'bg-rose-100 text-rose-700' : status === 'submitted' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-700'}`}>
@@ -352,9 +380,11 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold text-slate-900">{title}</h3>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${isRequired ? 'bg-slate-100 text-slate-700' : 'bg-sky-50 text-sky-700'}`}>{isRequired ? 'Required' : 'Optional'}</span>
                 {status === 'done' && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Done</span>}
                 {status === 'submitted' && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Awaiting approval</span>}
                 {status === 'failed' && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Changes requested</span>}
+                {status === 'skipped' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{isRequired ? 'Complete to continue' : 'Skipped'}</span>}
               </div>
               <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-600">{children}</div>
               {reviewNotes[step] && status === 'failed' && (
@@ -364,16 +394,27 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
               )}
               {status === 'submitted' && (
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  Your step was submitted. The next step unlocks after a reviewer or project manager approves it.
+                  Your step was submitted for review. Later required steps only wait for this approval if this step is required.
                 </p>
               )}
+              {!isRequired && <p className="mt-2 text-xs text-slate-500">This step is optional for this project and does not block later required steps or final submission.</p>}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
+            {!isRequired && (status === 'pending' || status === 'failed') && (
+              <button
+                type="button"
+                onClick={() => updateStatus(step, 'skipped')}
+                disabled={!usesRemoteProgress || !remoteProgressReady || Boolean(progressError) || !canMarkDone || isSubmitting || isProgressLoading || isProgressSaving}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Skip optional step
+              </button>
+            )}
             <button
               type="button"
               onClick={() => updateStatus(step, 'submitted')}
-              disabled={!usesRemoteProgress || !remoteProgressReady || Boolean(progressError) || !canMarkDone || status === 'submitted' || status === 'done' || isSubmitting || isProgressLoading || isProgressSaving}
+              disabled={!usesRemoteProgress || !remoteProgressReady || Boolean(progressError) || !canMarkDone || status === 'submitted' || status === 'done' || status === 'skipped' && !isRequired || isSubmitting || isProgressLoading || isProgressSaving}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Check className="h-3.5 w-3.5" />
@@ -391,16 +432,18 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-sky-800">Project completion checklist</p>
-            <h2 className="mt-1 text-lg font-black text-slate-900">Submit each step and wait for approval</h2>
-            <p className="mt-1 text-sm text-slate-600">A reviewer or project manager must approve each step before the next step unlocks. Only the final completion screenshot is required here.</p>
+            <h2 className="mt-1 text-lg font-black text-slate-900">Complete the required steps</h2>
+            <p className="mt-1 text-sm text-slate-600">Required steps need reviewer approval before later required steps unlock. Optional steps can be skipped. Upload the final completion screenshot when you are ready.</p>
           </div>
           <div className="flex items-center gap-2 text-sm font-bold text-slate-700" aria-live="polite">
             {stepIds.map((step) => statuses[step] === 'done'
               ? <CheckCircle2 key={step} className="h-5 w-5 text-emerald-600" />
               : statuses[step] === 'submitted'
                 ? <Circle key={step} className="h-5 w-5 text-amber-500" />
+                : statuses[step] === 'skipped'
+                  ? <Circle key={step} className="h-5 w-5 text-slate-400" />
                 : <Circle key={step} className={`h-5 w-5 ${statuses[step] === 'failed' ? 'text-rose-500' : 'text-slate-300'}`} />)}
-            <span>{completedCount} of {stepIds.length} approved{awaitingApprovalCount > 0 ? ` · ${awaitingApprovalCount} awaiting review` : ''}</span>
+            <span>{completedCount} of {requiredStepIds.length} required approved{skippedCount > 0 ? ` · ${skippedCount} optional skipped` : ''}{awaitingApprovalCount > 0 ? ` · ${awaitingApprovalCount} awaiting review` : ''}</span>
           </div>
         </div>
       </section>
@@ -518,7 +561,7 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-600">4</span>
             <div>
               <h3 className="font-bold text-slate-700">Complete the Google Selfie Collection tasks</h3>
-              <p className="mt-1 text-sm text-slate-600">This step unlocks after Slack, consent, and language settings are approved.</p>
+              <p className="mt-1 text-sm text-slate-600">This step unlocks after all preceding required steps are approved.</p>
             </div>
           </div>
         </article>
@@ -602,12 +645,12 @@ export const GuidedProjectSteps: React.FC<GuidedProjectStepsProps> = ({
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-bold text-slate-900">Ready for review?</h3>
-          <p className="mt-1 text-xs text-slate-600">Submit becomes available after all four steps are Done and the final completion screenshot is uploaded here.</p>
+          <p className="mt-1 text-xs text-slate-600">Submit becomes available after all required steps are approved and the final completion screenshot is uploaded here.</p>
         </div>
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!isComplete || !screenshotReady || isUploading || isSubmitting || isProgressLoading}
+          disabled={!isComplete || !screenshotReady || isUploading || isSubmitting || isProgressLoading || !requirementsLoaded}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}

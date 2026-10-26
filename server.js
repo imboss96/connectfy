@@ -28,7 +28,7 @@ const app = express();
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
-const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome']);
+const adminEmailTypes = new Set(['invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome']);
 const APPLAUSE_SUPPORT_SLACK_LINK = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
 const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
 const SLACK_DOWNLOAD_URL = 'https://slack.com/downloads';
@@ -2368,7 +2368,7 @@ app.post('/api/project-email', async (req, res) => {
       return res.status(400).json({ ok: false, message: 'Choose a supported Applause follow-up email.' });
     }
 
-    if (adminEmailTypes.has(requestType) || requestType === 'submission_approved') {
+    if (adminEmailTypes.has(requestType) || requestType === 'submission_approved' || requestType === 'application') {
       const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
       const authorization = req.headers.authorization;
@@ -2387,7 +2387,7 @@ app.post('/api/project-email', async (req, res) => {
       }
 
       const user = await authResponse.json();
-      const roleResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,admin_access_level`, {
+      const roleResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,admin_access_level,email,name`, {
         headers: { apikey: supabaseAnonKey, Authorization: authorization }
       });
       if (!roleResponse.ok) {
@@ -2531,6 +2531,16 @@ app.post('/api/project-email', async (req, res) => {
         payload.projectTitle = project.title;
         payload.submissionTitle = submission.title;
         payload.approvedAmount = Number(submission.bounty_earned);
+      } else if (requestType === 'application') {
+        const requester = profiles[0];
+        const requesterEmail = String(requester.email || '').trim();
+        if (!requesterEmail || requesterEmail.toLowerCase() !== toEmail.toLowerCase()) {
+          return res.status(403).json({ ok: false, message: 'Application confirmations can only be sent to your account email address.' });
+        }
+        payload.toEmail = requesterEmail;
+        payload.toName = requester.name || requesterEmail.split('@')[0];
+        toEmail = payload.toEmail;
+        toName = payload.toName;
       } else if (profiles[0].role !== 'admin') {
         return res.status(403).json({ ok: false, message: 'Only administrators can send this email.' });
       }

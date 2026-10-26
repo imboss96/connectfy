@@ -25,6 +25,34 @@ type PaymentScheduleRow = {
   status: ScheduleStatus;
   updated_at: string;
 };
+type SubmissionPayableAccrual = {
+  id: string;
+  submission_id: string;
+  project_id: string;
+  tester_id: string;
+  tester_name: string;
+  submission_title: string;
+  project_title: string;
+  amount: number;
+  currency: string;
+  accrued_at: string;
+};
+type ReferralRewardPayableAccrual = {
+  id: string;
+  reward_id: string | null;
+  wallet_transaction_id: string | null;
+  reference_id: string;
+  ambassador_id: string | null;
+  ambassador_name: string;
+  referred_tester_id: string | null;
+  referred_tester_name: string;
+  submission_id: string;
+  project_id: string | null;
+  project_title: string;
+  amount: number;
+  currency: string;
+  accrued_at: string;
+};
 type StatusFilter = 'all' | ScheduleStatus;
 
 const PAGE_SIZE = 1000;
@@ -51,6 +79,11 @@ const formatDate = (date: string) => {
     : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
 };
 
+const formatDateTime = (date: string) => {
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleString();
+};
+
 const escapeCsvCell = (value: string | number) => {
   const safeValue = String(value).replace(/^[=+\-@]/, "'$&");
   return `"${safeValue.replace(/"/g, '""')}"`;
@@ -59,8 +92,14 @@ const escapeCsvCell = (value: string | number) => {
 export const PaymentsSection: React.FC = () => {
   const { projects, setActiveAdminProjectId, setActiveTab } = useApp();
   const [rows, setRows] = useState<PaymentScheduleRow[]>([]);
+  const [payableAccruals, setPayableAccruals] = useState<SubmissionPayableAccrual[]>([]);
+  const [referralPayables, setReferralPayables] = useState<ReferralRewardPayableAccrual[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingAccruals, setIsLoadingAccruals] = useState(true);
+  const [isLoadingReferralPayables, setIsLoadingReferralPayables] = useState(true);
   const [error, setError] = useState('');
+  const [accrualError, setAccrualError] = useState('');
+  const [referralPayableError, setReferralPayableError] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [projectFilter, setProjectFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -100,9 +139,79 @@ export const PaymentsSection: React.FC = () => {
     }
   }, []);
 
+  const refreshPayableAccruals = useCallback(async () => {
+    if (!supabase) {
+      setAccrualError('Submission accounting data is unavailable because Supabase is not configured.');
+      setPayableAccruals([]);
+      setIsLoadingAccruals(false);
+      return;
+    }
+
+    setIsLoadingAccruals(true);
+    setAccrualError('');
+    try {
+      const allRows: SubmissionPayableAccrual[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error: queryError } = await supabase
+          .from('submission_payable_accruals')
+          .select('id,submission_id,project_id,tester_id,tester_name,submission_title,project_title,amount,currency,accrued_at')
+          .order('accrued_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (queryError) throw queryError;
+        const page = (data || []) as SubmissionPayableAccrual[];
+        allRows.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      setPayableAccruals(allRows);
+    } catch (loadError) {
+      console.error('Unable to load submission payable accruals:', loadError);
+      setAccrualError(loadError instanceof Error ? loadError.message : 'Unable to load submission accounting entries.');
+    } finally {
+      setIsLoadingAccruals(false);
+    }
+  }, []);
+
+  const refreshReferralPayables = useCallback(async () => {
+    if (!supabase) {
+      setReferralPayableError('Referral accounting data is unavailable because Supabase is not configured.');
+      setReferralPayables([]);
+      setIsLoadingReferralPayables(false);
+      return;
+    }
+
+    setIsLoadingReferralPayables(true);
+    setReferralPayableError('');
+    try {
+      const allRows: ReferralRewardPayableAccrual[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error: queryError } = await supabase
+          .from('ambassador_reward_payable_accruals')
+          .select('id,reward_id,wallet_transaction_id,reference_id,ambassador_id,ambassador_name,referred_tester_id,referred_tester_name,submission_id,project_id,project_title,amount,currency,accrued_at')
+          .order('accrued_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (queryError) throw queryError;
+        const page = (data || []) as ReferralRewardPayableAccrual[];
+        allRows.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      setReferralPayables(allRows);
+    } catch (loadError) {
+      console.error('Unable to load ambassador reward payable accruals:', loadError);
+      setReferralPayableError(loadError instanceof Error ? loadError.message : 'Unable to load referral accounting entries.');
+    } finally {
+      setIsLoadingReferralPayables(false);
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshPayableAccruals();
+    void refreshReferralPayables();
+  }, [refresh, refreshPayableAccruals, refreshReferralPayables]);
 
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const today = localDateKey(new Date());
@@ -133,6 +242,15 @@ export const PaymentsSection: React.FC = () => {
       projectCount: new Set(rows.filter((row) => row.status !== 'cancelled').map((row) => row.project_id)).size
     };
   }, [rows, today]);
+  const accruedPayablesTotal = useMemo(
+    () => payableAccruals.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [payableAccruals]
+  );
+  const referralPayablesTotal = useMemo(
+    () => referralPayables.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [referralPayables]
+  );
+  const totalTesterPayables = accruedPayablesTotal + referralPayablesTotal;
 
   const projectSummaries = useMemo(() => {
     const summaries = new Map<string, { count: number; total: number; overdue: number; paid: number }>();
@@ -178,6 +296,62 @@ export const PaymentsSection: React.FC = () => {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const exportPayableAccrualsCsv = () => {
+    const csvRows = [
+      ['Accrued at', 'Project', 'Submission', 'Submission ID', 'Tester', 'Tester ID', 'Amount', 'Currency', 'Accounting status'],
+      ...payableAccruals.map((row) => [
+        row.accrued_at,
+        row.project_title,
+        row.submission_title,
+        row.submission_id,
+        row.tester_name,
+        row.tester_id,
+        Number(row.amount || 0).toFixed(2),
+        row.currency,
+        'Accrued tester payable'
+      ])
+    ];
+    const csv = csvRows.map((line) => line.map(escapeCsvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `connectfy-submission-payables-${today}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportReferralPayablesCsv = () => {
+    const csvRows = [
+      ['Accrued at', 'Ambassador', 'Ambassador ID', 'Referred tester', 'Referred tester ID', 'Project', 'Approved submission ID', 'Reward reference', 'Amount', 'Currency', 'Accounting status'],
+      ...referralPayables.map((row) => [
+        row.accrued_at,
+        row.ambassador_name,
+        row.ambassador_id || '',
+        row.referred_tester_name,
+        row.referred_tester_id || '',
+        row.project_title,
+        row.submission_id,
+        row.reference_id,
+        Number(row.amount || 0).toFixed(2),
+        row.currency,
+        'Accrued referral payable'
+      ])
+    ];
+    const csv = csvRows.map((line) => line.map(escapeCsvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `connectfy-referral-payables-${today}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const refreshAll = () => {
+    void refresh();
+    void refreshPayableAccruals();
+    void refreshReferralPayables();
+  };
+
   const openProjectOperations = (projectId: string) => {
     setActiveAdminProjectId(projectId);
     setActiveTab('project_operations');
@@ -221,7 +395,7 @@ export const PaymentsSection: React.FC = () => {
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Finance operations</p>
           <h1 id="payments-heading" className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Payments & schedules</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Track participant payments scheduled from project completion approvals, monitor overdue items, and review project-level totals.
+            Review tester payables from approved submissions and ambassador rewards alongside project participant payment schedules.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -242,8 +416,8 @@ export const PaymentsSection: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => void refresh()}
-            disabled={isLoading}
+            onClick={refreshAll}
+            disabled={isLoading || isLoadingAccruals || isLoadingReferralPayables}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
@@ -263,6 +437,175 @@ export const PaymentsSection: React.FC = () => {
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </div>
       )}
+
+      <section aria-label="Tester payable accounting" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 sm:px-5">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Submission approval payables</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Approved submission earnings recorded as tester payables. These accruals are not cash disbursements, and settlement is not linked here.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-right">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Submission accruals</span>
+              <span className="text-sm font-bold text-slate-900">
+                {isLoadingAccruals ? '—' : formatUsd(accruedPayablesTotal)}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={exportPayableAccrualsCsv}
+              disabled={isLoadingAccruals || payableAccruals.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArrowDownToLine className="h-4 w-4" /> Export accruals
+            </button>
+          </div>
+        </div>
+        {accrualError && (
+          <div role="alert" className="m-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+            Unable to load submission accounting entries: {accrualError}
+          </div>
+        )}
+        {isLoadingAccruals && payableAccruals.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">Loading submission payables…</p>
+        ) : accrualError && payableAccruals.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">Submission payable entries could not be loaded.</p>
+        ) : payableAccruals.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">No approved submission payables are recorded yet.</p>
+        ) : (
+          <div className="max-h-[28rem] overflow-auto">
+            <table className="min-w-[760px] w-full text-left text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold sm:px-5">Project / submission</th>
+                  <th className="px-4 py-3 font-bold">Tester account</th>
+                  <th className="px-4 py-3 font-bold">Accrued</th>
+                  <th className="px-4 py-3 font-bold">Amount</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {payableAccruals.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/70">
+                    <td className="px-4 py-3.5 sm:px-5">
+                      <p className="font-semibold text-slate-900">{row.project_title}</p>
+                      <p className="mt-1 text-[10px] text-slate-500">{row.submission_title}</p>
+                      <p className="mt-1 font-mono text-[9px] text-slate-400">Submission {row.submission_id}</p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <p className="font-semibold text-slate-800">{row.tester_name}</p>
+                      <p className="mt-1 font-mono text-[9px] text-slate-500">{row.tester_id}</p>
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-600">{formatDateTime(row.accrued_at)}</td>
+                    <td className="px-4 py-3.5 font-bold text-slate-900">
+                      {formatUsd(Number(row.amount || 0))} {row.currency}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-1 text-[10px] font-bold text-sky-800">
+                        Settlement unlinked
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section aria-label="Ambassador referral reward payables" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4 sm:px-5">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Ambassador referral reward payables</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Completed referral rewards are recorded against the ambassador, referred tester, approved submission, and source wallet transaction.
+              They are accrued payables, not disbursements.
+            </p>
+            <p className="mt-2 text-xs text-slate-600">
+              Combined submission and referral payables: <strong className="text-slate-900">
+                {isLoadingAccruals || isLoadingReferralPayables
+                  ? 'Loading…'
+                  : accrualError || referralPayableError
+                    ? 'Unavailable'
+                    : formatUsd(totalTesterPayables)}
+              </strong>
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-right">
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Referral accruals</span>
+              <span className="text-sm font-bold text-slate-900">
+                {isLoadingReferralPayables ? '—' : formatUsd(referralPayablesTotal)}
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={exportReferralPayablesCsv}
+              disabled={isLoadingReferralPayables || referralPayables.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArrowDownToLine className="h-4 w-4" /> Export rewards
+            </button>
+          </div>
+        </div>
+        {referralPayableError && (
+          <div role="alert" className="m-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+            Unable to load referral accounting entries: {referralPayableError}
+          </div>
+        )}
+        {isLoadingReferralPayables && referralPayables.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">Loading referral reward payables…</p>
+        ) : referralPayableError && referralPayables.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">Referral payable entries could not be loaded.</p>
+        ) : referralPayables.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-500">No referral reward payables are recorded yet.</p>
+        ) : (
+          <div className="max-h-[28rem] overflow-auto">
+              <table className="min-w-[900px] w-full text-left text-xs">
+                <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-bold sm:px-5">Ambassador</th>
+                    <th className="px-4 py-3 font-bold">Referred tester</th>
+                    <th className="px-4 py-3 font-bold">Project / approved submission</th>
+                    <th className="px-4 py-3 font-bold">Accrued</th>
+                    <th className="px-4 py-3 font-bold">Amount</th>
+                    <th className="px-4 py-3 font-bold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {referralPayables.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3.5">
+                        <p className="font-semibold text-slate-800">{row.ambassador_name}</p>
+                        <p className="mt-1 font-mono text-[9px] text-slate-500">{row.ambassador_id || 'Account removed'}</p>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <p className="font-semibold text-slate-800">{row.referred_tester_name}</p>
+                        <p className="mt-1 font-mono text-[9px] text-slate-500">{row.referred_tester_id || 'Account removed'}</p>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <p className="font-semibold text-slate-900">{row.project_title}</p>
+                        <p className="mt-1 text-[10px] text-slate-500">Approved submission {row.submission_id}</p>
+                        <p className="mt-1 font-mono text-[9px] text-slate-400">{row.reference_id}</p>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-600">{formatDateTime(row.accrued_at)}</td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900">
+                        {formatUsd(Number(row.amount || 0))} {row.currency}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="inline-flex rounded-full bg-sky-100 px-2 py-1 text-[10px] font-bold text-sky-800">
+                          Settlement unlinked
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+          </div>
+        )}
+      </section>
 
       <section aria-label="Payment schedule summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metricCards.map(({ label, value, detail, icon: Icon, color }) => (

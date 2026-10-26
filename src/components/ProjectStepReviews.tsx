@@ -11,6 +11,7 @@ interface PendingStepReview {
   step_id: string;
   updated_at: string;
   latest_note: string | null;
+  is_required: boolean;
 }
 
 const stepLabels: Record<string, string> = {
@@ -187,7 +188,7 @@ export const ProjectStepReviews: React.FC = () => {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Project workflow</p>
           <h1 className="mt-1 text-2xl font-black text-slate-900">Step approvals</h1>
-          <p className="mt-1 text-sm text-slate-600">Search by tester name or Gmail, then review steps individually or approve several at once. Approval unlocks the next step.</p>
+          <p className="mt-1 text-sm text-slate-600">Search by tester name or Gmail, then review steps individually or approve several at once. Only required steps block later required steps.</p>
         </div>
         <button
           type="button"
@@ -297,7 +298,12 @@ export const ProjectStepReviews: React.FC = () => {
                       className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
                     <div>
-                      <h3 className="font-bold text-slate-900">{stepLabels[review.step_id] || review.step_id}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-slate-900">{stepLabels[review.step_id] || review.step_id}</h3>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${review.is_required === false ? 'bg-sky-50 text-sky-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {review.is_required === false ? 'Optional' : 'Required'}
+                        </span>
+                      </div>
                       <p className="mt-1 text-sm text-slate-600">{review.tester_name} · {review.tester_email}</p>
                       <p className="text-xs text-slate-500">Submitted {formatDateTime(review.updated_at)}</p>
                     </div>

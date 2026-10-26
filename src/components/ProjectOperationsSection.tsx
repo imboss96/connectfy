@@ -18,6 +18,7 @@ import { ApplauseStatusSection } from './ApplauseStatusSection';
 import { EmailHistorySection } from './EmailHistorySection';
 import { LegacyOnboardingSection } from './LegacyOnboardingSection';
 import { ProjectParticipantsSection } from './ProjectParticipantsSection';
+import { ProjectStepSettingsSection } from './ProjectStepSettingsSection';
 
 type ProjectSettings = {
   project_id: string;
@@ -50,12 +51,13 @@ type ExchangeRateResponse = {
   rates?: { KES?: number };
 };
 
-type OperationsTab = 'overview' | 'participants' | 'completion' | 'onboarding' | 'emails' | 'payroll' | 'integrations';
+type OperationsTab = 'overview' | 'participants' | 'completion' | 'steps' | 'onboarding' | 'emails' | 'payroll' | 'integrations';
 
 const OPERATIONS_TABS: { id: OperationsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: Briefcase },
   { id: 'participants', label: 'Participants & eligibility', icon: Users },
   { id: 'completion', label: 'Completion & issues', icon: BadgeCheck },
+  { id: 'steps', label: 'Checklist steps', icon: ClipboardCheck },
   { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck },
   { id: 'emails', label: 'Emails', icon: Mail },
   { id: 'payroll', label: 'Payroll', icon: CalendarDays },
@@ -137,8 +139,8 @@ export const ProjectOperationsSection: React.FC = () => {
   const applauseCsvUrl = toCsvUrl(settings?.applause_sheet_url || '');
   const eligibilityCsvUrl = toCsvUrl(settings?.eligibility_sheet_url || '');
   const visibleOperationsTabs = isProjectManager
-    ? OPERATIONS_TABS.filter(({ id }) => id === 'completion')
-    : OPERATIONS_TABS;
+    ? OPERATIONS_TABS.filter(({ id }) => id === 'completion' || id === 'steps')
+    : OPERATIONS_TABS.filter(({ id }) => id !== 'steps' || isSuperAdmin);
 
   const loadExchangeRate = useCallback(async (signal?: AbortSignal) => {
     setExchangeRateLoading(true);
@@ -465,6 +467,14 @@ export const ProjectOperationsSection: React.FC = () => {
           sheetUrl={settings?.applause_sheet_url}
           syncEnabled={!settingsLoading && !settingsError}
           onSynced={isSuperAdmin ? refreshSelectedPayroll : undefined}
+        />
+      )}
+
+      {activeSection === 'steps' && (isProjectManager || isSuperAdmin) && (
+        <ProjectStepSettingsSection
+          key={selectedProject.id}
+          projectId={selectedProject.id}
+          projectTitle={selectedProject.title}
         />
       )}
 

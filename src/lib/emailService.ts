@@ -4,10 +4,14 @@ import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
 export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
+}
+
+export function requiresAuthenticatedSession(type: ProjectEmailType): boolean {
+  return type === 'application' || requiresAdminSession(type);
 }
 
 export class EmailTemplateMismatchError extends Error {
@@ -100,8 +104,8 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
       'Content-Type': 'application/json'
     };
 
-    const requiresAdmin = requiresAdminSession(safePayload.type);
-    if (requiresAdmin) {
+    const requiresSession = requiresAuthenticatedSession(safePayload.type);
+    if (requiresSession) {
       if (!supabase) throw new Error('Sign in to your account before sending this email.');
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
@@ -116,7 +120,7 @@ export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWe
     };
 
     let response = await fetch(backendUrl, requestOptions);
-    if (response.status === 401 && requiresAdmin && supabase) {
+    if (response.status === 401 && requiresSession && supabase) {
       const { data, error } = await supabase.auth.refreshSession();
       if (error) throw error;
       if (!data.session?.access_token) {

@@ -2,9 +2,18 @@ import { AttachmentFile } from '../types';
 import { isSupabaseConfigured, supabase } from './supabase';
 
 export type ProjectStepId = 'slack' | 'consent' | 'languageSettings' | 'recordings';
-export type ProjectStepStatus = 'pending' | 'submitted' | 'done' | 'failed';
+export type ProjectStepStatus = 'pending' | 'submitted' | 'done' | 'failed' | 'skipped';
 export type ProjectStepStatuses = Record<ProjectStepId, ProjectStepStatus>;
+export type ProjectStepRequirements = Record<ProjectStepId, boolean>;
 export type ProjectStepReviewNotes = Partial<Record<ProjectStepId, string>>;
+
+export const projectStepIds: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
+export const defaultProjectStepRequirements: ProjectStepRequirements = {
+  slack: true,
+  consent: true,
+  languageSettings: true,
+  recordings: true
+};
 
 export interface ProjectStepProgress {
   statuses: ProjectStepStatuses;
@@ -17,6 +26,52 @@ const isUuid = (value: string) =>
 
 export const usesRemoteProjectStepProgress = (projectId: string) =>
   isSupabaseConfigured && Boolean(supabase) && isUuid(projectId);
+
+export async function fetchProjectStepRequirements(projectId: string): Promise<ProjectStepRequirements> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const { data, error } = await supabase.rpc('get_project_step_requirements', {
+    p_project_id: projectId
+  });
+  if (error) {
+    throw new Error(`Unable to load project step requirements: ${error.message}`);
+  }
+
+  const requirements = { ...defaultProjectStepRequirements };
+  const rows = data as Array<{ step_id: string; is_required: boolean }> | null;
+  if (!Array.isArray(rows) || rows.length !== projectStepIds.length) {
+    throw new Error('Project step requirements have an invalid format.');
+  }
+
+  const foundSteps = new Set<ProjectStepId>();
+  for (const row of rows) {
+    if (!projectStepIds.includes(row.step_id as ProjectStepId)
+      || foundSteps.has(row.step_id as ProjectStepId)
+      || typeof row.is_required !== 'boolean') {
+      throw new Error('Project step requirements have an invalid format.');
+    }
+    const stepId = row.step_id as ProjectStepId;
+    foundSteps.add(stepId);
+    requirements[stepId] = row.is_required;
+  }
+
+  return requirements;
+}
+
+export async function saveProjectStepRequirements(
+  projectId: string,
+  requirements: ProjectStepRequirements
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const { error } = await supabase.rpc('set_project_step_requirements', {
+    p_project_id: projectId,
+    p_requirements: requirements
+  });
+  if (error) {
+    throw new Error(`Unable to save project step requirements: ${error.message}`);
+  }
+}
 
 const getAuthenticatedTesterId = async (): Promise<string> => {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -44,12 +99,12 @@ export async function fetchProjectStepProgress(projectId: string): Promise<Proje
   if (!data) return null;
 
   const statuses = data.statuses as Partial<ProjectStepStatuses> | null;
-  const stepIds: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
-  if (!statuses || !stepIds.every((stepId) =>
+  if (!statuses || !projectStepIds.every((stepId) =>
     statuses[stepId] === 'pending'
       || statuses[stepId] === 'submitted'
       || statuses[stepId] === 'done'
       || statuses[stepId] === 'failed'
+      || statuses[stepId] === 'skipped'
   )) {
     throw new Error('Saved project checklist progress has an invalid status format.');
   }

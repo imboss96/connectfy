@@ -14,8 +14,20 @@ const jsonbFixMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610220006_fix_project_step_jsonb_object_count.sql', import.meta.url),
   'utf8'
 );
+const requirementsMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610270003_configurable_project_steps.sql', import.meta.url),
+  'utf8'
+);
 const reviewInterface = fs.readFileSync(
   new URL('../src/components/ProjectStepReviews.tsx', import.meta.url),
+  'utf8'
+);
+const guidedInterface = fs.readFileSync(
+  new URL('../src/components/GuidedProjectSteps.tsx', import.meta.url),
+  'utf8'
+);
+const settingsInterface = fs.readFileSync(
+  new URL('../src/components/ProjectStepSettingsSection.tsx', import.meta.url),
   'utf8'
 );
 const steps: ProjectStepId[] = ['slack', 'consent', 'languageSettings', 'recordings'];
@@ -60,5 +72,18 @@ assert.match(reviewInterface, /Select all \{filteredReviews\.length\}/i);
 assert.match(reviewInterface, /Approve selected \(\$\{visibleSelectedCount\}\)/i);
 assert.match(reviewInterface, /for \(const review of selectedReviews\)/i);
 assert.match(reviewInterface, /review_project_step/i);
+assert.match(requirementsMigration, /create table if not exists public\.project_step_requirements/i);
+assert.match(requirementsMigration, /coalesce\(requirement\.is_required, true\)/i);
+assert.match(requirementsMigration, /create or replace function public\.set_project_step_requirements/i);
+assert.match(requirementsMigration, /latest_note text,\s+is_required boolean/i);
+assert.match(requirementsMigration, /new\.title in \('Project Completion Checklist', 'Google Selfies Project Completion'\)/i);
+assert.match(requirementsMigration, /all required project steps must be approved/i);
+assert.match(requirementsMigration, /'skipped'/i);
+assert.match(guidedInterface, /fetchProjectStepRequirements/i);
+assert.match(guidedInterface, /requiredStepIds\.every/i);
+assert.match(guidedInterface, /Skip optional step/i);
+assert.match(settingsInterface, /Required and optional steps/i);
+assert.match(settingsInterface, /saveProjectStepRequirements/i);
+assert.match(reviewInterface, /review\.is_required === false \? 'Optional' : 'Required'/i);
 
 console.log('project step approval regression checks passed');

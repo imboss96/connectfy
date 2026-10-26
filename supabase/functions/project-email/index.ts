@@ -20,7 +20,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000'
 ];
-const adminEmailTypes = new Set(['invite', 'rejected', 'utest_update_required', 'legacy_sheet_reapply']);
+const adminEmailTypes = new Set(['invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply']);
 
 const isAllowedOrigin = (value?: string | null) => {
   if (!value) return false;
@@ -44,14 +44,14 @@ const corsHeadersFor = (origin?: string | null) => {
   };
 };
 
-const verifyAdminRequest = async (authorization: string | null) => {
+const verifyEmailRequest = async (authorization: string | null, requireAdmin = true) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
   if (!authorization) {
-    return { status: 401, message: 'Sign in with an administrator account to send this email.' };
+    return { failure: { status: 401, message: 'Sign in to your account before sending this email.' } };
   }
   if (!supabaseUrl || !supabaseAnonKey) {
-    return { status: 500, message: 'Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration.' };
+    return { failure: { status: 500, message: 'Email backend is missing SUPABASE_URL or SUPABASE_ANON_KEY configuration.' } };
   }
 
   const baseUrl = supabaseUrl.replace(/\/$/, '');
@@ -59,22 +59,25 @@ const verifyAdminRequest = async (authorization: string | null) => {
     headers: { apikey: supabaseAnonKey, Authorization: authorization }
   });
   if (!authResponse.ok) {
-    return { status: 401, message: 'Your admin session is invalid or has expired. Please sign in again.' };
+    return { failure: { status: 401, message: 'Your session is invalid or has expired. Please sign in again.' } };
   }
 
   const user = await authResponse.json();
-  const roleResponse = await fetch(`${baseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {
+  const roleResponse = await fetch(`${baseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,email,name`, {
     headers: { apikey: supabaseAnonKey, Authorization: authorization }
   });
   if (!roleResponse.ok) {
-    return { status: 403, message: 'Unable to verify your admin access.' };
+    return { failure: { status: 403, message: 'Unable to verify your account access.' } };
   }
   const profiles = await roleResponse.json();
-  if (!Array.isArray(profiles) || profiles[0]?.role !== 'admin') {
-    return { status: 403, message: 'Only administrators can send this email.' };
+  if (!Array.isArray(profiles) || !profiles[0]) {
+    return { failure: { status: 403, message: 'Unable to verify your account access.' } };
+  }
+  if (requireAdmin && profiles[0].role !== 'admin') {
+    return { failure: { status: 403, message: 'Only administrators can send this email.' } };
   }
 
-  return null;
+  return { user, profile: profiles[0] };
 };
 
 const formatProjectDescription = (description: string) => {
@@ -228,13 +231,33 @@ serve(async (req) => {
     const type = payload?.type;
     if (adminEmailTypes.has(type)) {
       const authorization = req.headers.get('authorization');
-      const adminFailure = await verifyAdminRequest(authorization);
-      if (adminFailure) {
-        return new Response(JSON.stringify({ ok: false, message: adminFailure.message }), {
-          status: adminFailure.status,
+      const verification = await verifyEmailRequest(authorization);
+      if (verification.failure) {
+        const failure = verification.failure;
+        return new Response(JSON.stringify({ ok: false, message: failure.message }), {
+          status: failure.status,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
+    } else if (type === 'application') {
+      const authorization = req.headers.get('authorization');
+      const verification = await verifyEmailRequest(authorization, false);
+      if (verification.failure) {
+        const failure = verification.failure;
+        return new Response(JSON.stringify({ ok: false, message: failure.message }), {
+          status: failure.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      const profileEmail = String(verification.profile.email || '').trim();
+      if (!profileEmail || profileEmail.toLowerCase() !== String(payload.toEmail || '').trim().toLowerCase()) {
+        return new Response(JSON.stringify({ ok: false, message: 'Application confirmations can only be sent to your account email address.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      payload.toEmail = profileEmail;
+      payload.toName = verification.profile.name || profileEmail.split('@')[0];
     }
 
     const errors: string[] = [];
