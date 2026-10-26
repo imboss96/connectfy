@@ -1258,8 +1258,9 @@ export const HRSection: React.FC = () => {
       {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div>}
 
       {isHrAdmin && (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
-          <Card
+        <div className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
+            <Card
             title="Employee directory"
             action={<button type="button" className={secondaryButtonClass} onClick={() => {
               setSelectedEmployeeId('');
@@ -1370,25 +1371,26 @@ export const HRSection: React.FC = () => {
                 </button>
               </form>
             )}
-          </Card>
-        </div>
-        <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <summary className="cursor-pointer list-none text-sm font-bold text-slate-900">
-            Manage department and job title options
-            <span className="mt-1 block text-xs font-normal text-slate-500">
-              Advanced setup — expand only when you need to change the choices used in employee profiles.
-            </span>
-          </summary>
-          <div className="mt-4">
-            <HrOptionManager
-              options={hrOptions}
-              isSaving={isSaving}
-              onAdd={addHrOption}
-              onUpdate={updateHrOption}
-              onToggle={toggleHrOption}
-            />
+            </Card>
           </div>
-        </details>
+          <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer list-none text-sm font-bold text-slate-900">
+              Manage department and job title options
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Advanced setup — expand only when you need to change the choices used in employee profiles.
+              </span>
+            </summary>
+            <div className="mt-4">
+              <HrOptionManager
+                options={hrOptions}
+                isSaving={isSaving}
+                onAdd={addHrOption}
+                onUpdate={updateHrOption}
+                onToggle={toggleHrOption}
+              />
+            </div>
+          </details>
+        </div>
       )}
 
       {!isHrAdmin && !visibleEmployee && !isLoading && (
