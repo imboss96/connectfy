@@ -1,4 +1,5 @@
 import { ProjectApplication, SubmissionStatus } from '../types';
+import { supabase } from './supabase';
 
 export interface ProjectSubmissionStatus {
   id?: string;
@@ -12,6 +13,30 @@ export interface ProjectApplicationLock {
   projectId: string;
   totalSubmissions: number;
   approvedSubmissions: number;
+}
+
+export async function fetchProjectApplicationRestrictionEnabled(): Promise<boolean> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const { data, error } = await supabase.rpc('get_project_application_restriction');
+  if (error) {
+    throw new Error(`Unable to load the project application restriction: ${error.message}`);
+  }
+  if (typeof data !== 'boolean') {
+    throw new Error('The project application restriction returned an invalid setting.');
+  }
+  return data;
+}
+
+export async function saveProjectApplicationRestriction(enabled: boolean): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const { error } = await supabase.rpc('set_project_application_restriction', {
+    p_enabled: enabled
+  });
+  if (error) {
+    throw new Error(`Unable to update the project application restriction: ${error.message}`);
+  }
 }
 
 export function getBlockingProjectApplication(

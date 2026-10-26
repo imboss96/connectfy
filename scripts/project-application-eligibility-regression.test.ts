@@ -10,6 +10,22 @@ const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610220001_require_project_completion_before_next_application.sql', import.meta.url),
   'utf8'
 );
+const restrictionMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202610270004_admin_project_application_restriction.sql', import.meta.url),
+  'utf8'
+);
+const restrictionSettings = fs.readFileSync(
+  new URL('../src/components/ApplicationRestrictionSettingsSection.tsx', import.meta.url),
+  'utf8'
+);
+const projectBoard = fs.readFileSync(
+  new URL('../src/components/ProjectBoard.tsx', import.meta.url),
+  'utf8'
+);
+const appContext = fs.readFileSync(
+  new URL('../src/context/AppContext.tsx', import.meta.url),
+  'utf8'
+);
 
 const application = (
   projectId: string,
@@ -146,5 +162,15 @@ assert.match(migration, /create unique index if not exists submissions_single_re
 assert.match(migration, /original_submission\.status not in \('rejected', 'changes_requested'\)/i);
 assert.match(migration, /submission\.status <> 'approved'/i);
 assert.match(migration, /new\.status = 'rejected'/i);
+assert.match(restrictionMigration, /enabled boolean not null default true/i);
+assert.match(restrictionMigration, /public\.get_project_application_restriction\(\)/i);
+assert.match(restrictionMigration, /if public\.get_project_application_restriction\(\)\s+and exists/i);
+assert.match(restrictionMigration, /if not coalesce\(public\.is_admin\(\), false\)/i);
+assert.match(projectBoard, /fetchProjectApplicationRestrictionEnabled/i);
+assert.match(projectBoard, /role === 'tester' && applicationRestrictionEnabled/i);
+assert.match(appContext, /if \(restrictionEnabled\)/i);
+assert.match(appContext, /fetchProjectApplicationRestrictionEnabled\(\)/i);
+assert.match(restrictionSettings, /Turn restriction off/i);
+assert.match(restrictionSettings, /Turn restriction on/i);
 
 console.log('project application eligibility regression checks passed');

@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   Mail,
   RefreshCw,
+  ShieldCheck,
   Settings2,
   Users
 } from 'lucide-react';
@@ -19,6 +20,7 @@ import { EmailHistorySection } from './EmailHistorySection';
 import { LegacyOnboardingSection } from './LegacyOnboardingSection';
 import { ProjectParticipantsSection } from './ProjectParticipantsSection';
 import { ProjectStepSettingsSection } from './ProjectStepSettingsSection';
+import { ApplicationRestrictionSettingsSection } from './ApplicationRestrictionSettingsSection';
 
 type ProjectSettings = {
   project_id: string;
@@ -51,13 +53,14 @@ type ExchangeRateResponse = {
   rates?: { KES?: number };
 };
 
-type OperationsTab = 'overview' | 'participants' | 'completion' | 'steps' | 'onboarding' | 'emails' | 'payroll' | 'integrations';
+type OperationsTab = 'overview' | 'participants' | 'completion' | 'steps' | 'application_rules' | 'onboarding' | 'emails' | 'payroll' | 'integrations';
 
 const OPERATIONS_TABS: { id: OperationsTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: Briefcase },
   { id: 'participants', label: 'Participants & eligibility', icon: Users },
   { id: 'completion', label: 'Completion & issues', icon: BadgeCheck },
   { id: 'steps', label: 'Checklist steps', icon: ClipboardCheck },
+  { id: 'application_rules', label: 'Application restriction', icon: ShieldCheck },
   { id: 'onboarding', label: 'Onboarding', icon: ClipboardCheck },
   { id: 'emails', label: 'Emails', icon: Mail },
   { id: 'payroll', label: 'Payroll', icon: CalendarDays },
@@ -140,7 +143,7 @@ export const ProjectOperationsSection: React.FC = () => {
   const eligibilityCsvUrl = toCsvUrl(settings?.eligibility_sheet_url || '');
   const visibleOperationsTabs = isProjectManager
     ? OPERATIONS_TABS.filter(({ id }) => id === 'completion' || id === 'steps')
-    : OPERATIONS_TABS.filter(({ id }) => id !== 'steps' || isSuperAdmin);
+    : OPERATIONS_TABS.filter(({ id }) => id !== 'steps' && id !== 'application_rules' || isSuperAdmin);
 
   const loadExchangeRate = useCallback(async (signal?: AbortSignal) => {
     setExchangeRateLoading(true);
@@ -333,6 +336,7 @@ export const ProjectOperationsSection: React.FC = () => {
           ))}
           {projects.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">No project listings are available yet.</p>}
         </div>
+        {isSuperAdmin && <ApplicationRestrictionSettingsSection />}
       </section>
     );
   }
@@ -476,6 +480,10 @@ export const ProjectOperationsSection: React.FC = () => {
           projectId={selectedProject.id}
           projectTitle={selectedProject.title}
         />
+      )}
+
+      {activeSection === 'application_rules' && isSuperAdmin && (
+        <ApplicationRestrictionSettingsSection />
       )}
 
       {activeSection === 'onboarding' && <LegacyOnboardingSection key={selectedProject.id} projectId={selectedProject.id} />}

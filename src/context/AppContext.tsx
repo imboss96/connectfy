@@ -22,7 +22,12 @@ import { submitPayoutRequest } from '../lib/mpesaPayoutService';
 import { isProjectOpenForApplications, isProjectSlotsFull } from '../lib/projectStatus';
 import { APPLICATION_SCREENER_FORM_URL, ApplicationScreenerResult } from '../lib/applicationScreener';
 import { calculateTesterRanking } from '../lib/testerRanking';
-import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
+import {
+  fetchProjectApplicationRestrictionEnabled,
+  getBlockingProjectApplication,
+  getProjectApplicationLockMessage,
+  ProjectApplicationLock
+} from '../lib/projectApplicationEligibility';
 import { getDefaultAdminTab, getWorkspaceRoleForAuthenticatedAccount } from '../lib/adminPermissions';
 
 export interface InviteProfileDetails {
@@ -1531,18 +1536,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const project = projects.find(p => p.id === projectId);
     if (!existing && !isProjectOpenForApplications(project)) return { saved: false };
-    const blockingApplication = getBlockingProjectApplication(
-      applications,
-      [...bugReports, ...taskSubmissions].map((submission) => ({
-        id: submission.id,
-        projectId: submission.projectId,
-        testerId: submission.testerId,
-        status: submission.status,
-        resubmissionOfId: submission.resubmissionOfId
-      })),
-      effectiveTesterId,
-      projectId
-    );
+    let blockingApplication: ProjectApplicationLock | null = null;
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const restrictionEnabled = await fetchProjectApplicationRestrictionEnabled();
+        if (restrictionEnabled) {
+          blockingApplication = getBlockingProjectApplication(
+            applications,
+            [...bugReports, ...taskSubmissions].map((submission) => ({
+              id: submission.id,
+              projectId: submission.projectId,
+              testerId: submission.testerId,
+              status: submission.status,
+              resubmissionOfId: submission.resubmissionOfId
+            })),
+            effectiveTesterId,
+            projectId
+          );
+        }
+      } catch (error) {
+        console.error('Unable to verify project application restriction:', error);
+        return {
+          saved: false,
+          error: error instanceof Error
+            ? error.message
+            : 'Unable to verify the project application restriction. Please try again.'
+        };
+      }
+    } else {
+      blockingApplication = getBlockingProjectApplication(
+        applications,
+        [...bugReports, ...taskSubmissions].map((submission) => ({
+          id: submission.id,
+          projectId: submission.projectId,
+          testerId: submission.testerId,
+          status: submission.status,
+          resubmissionOfId: submission.resubmissionOfId
+        })),
+        effectiveTesterId,
+        projectId
+      );
+    }
     if (blockingApplication) {
       const blockingProject = projects.find((item) => item.id === blockingApplication.projectId);
       return {

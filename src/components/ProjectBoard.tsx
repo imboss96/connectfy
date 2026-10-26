@@ -34,7 +34,12 @@ import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 import evidenceImage from '../../evidence.png';
-import { getBlockingProjectApplication, getProjectApplicationLockMessage } from '../lib/projectApplicationEligibility';
+import { isSupabaseConfigured } from '../lib/supabase';
+import {
+  fetchProjectApplicationRestrictionEnabled,
+  getBlockingProjectApplication,
+  getProjectApplicationLockMessage
+} from '../lib/projectApplicationEligibility';
 
 type ApplicationDraft = {
   projectId: string;
@@ -210,6 +215,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     isp: ''
   });
   const [deviceFormError, setDeviceFormError] = useState('');
+  const [applicationRestrictionEnabled, setApplicationRestrictionEnabled] = useState(true);
+  const [applicationRestrictionLoaded, setApplicationRestrictionLoaded] = useState(false);
+  const [applicationRestrictionError, setApplicationRestrictionError] = useState('');
   const applicationSubmissions = [...bugReports, ...taskSubmissions].map((submission) => ({
     id: submission.id,
     projectId: submission.projectId,
@@ -223,13 +231,55 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     testerProfile.id,
     targetProjectId
   );
-  const globalApplicationBlocker = role === 'tester' ? getApplicationBlocker() : null;
+  const globalApplicationBlocker = role === 'tester' && applicationRestrictionEnabled
+    ? getApplicationBlocker()
+    : null;
   const globalBlockingProject = globalApplicationBlocker
     ? projects.find((project) => project.id === globalApplicationBlocker.projectId)
     : undefined;
   const globalApplicationLockMessage = globalApplicationBlocker
     ? getProjectApplicationLockMessage(globalApplicationBlocker, globalBlockingProject?.title || 'your current project')
     : '';
+
+  useEffect(() => {
+    if (role !== 'tester') {
+      setApplicationRestrictionLoaded(true);
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      setApplicationRestrictionEnabled(true);
+      setApplicationRestrictionError('');
+      setApplicationRestrictionLoaded(true);
+      return;
+    }
+
+    let active = true;
+    setApplicationRestrictionLoaded(false);
+    const refreshApplicationRestriction = async () => {
+      try {
+        const enabled = await fetchProjectApplicationRestrictionEnabled();
+        if (!active) return;
+        setApplicationRestrictionEnabled(enabled);
+        setApplicationRestrictionError('');
+      } catch (error) {
+        if (!active) return;
+        console.error('Unable to load project application restriction:', error);
+        setApplicationRestrictionEnabled(true);
+        setApplicationRestrictionError(error instanceof Error
+          ? error.message
+          : 'Unable to verify the project application restriction.');
+      } finally {
+        if (active) setApplicationRestrictionLoaded(true);
+      }
+    };
+
+    void refreshApplicationRestriction();
+    const interval = window.setInterval(() => void refreshApplicationRestriction(), 30000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [role]);
 
   const tracks: { id: string; label: string; icon: any }[] = [
     { id: 'all', label: 'All Opportunities', icon: Layers },
@@ -321,7 +371,13 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   };
 
   const handleOpenApplyModal = (project: Project) => {
-    const blockingApplication = role === 'tester' ? getApplicationBlocker(project.id) : null;
+    if (role === 'tester' && !applicationRestrictionLoaded) {
+      setApplyError('Verifying the project application policy. Please try again in a moment.');
+      return;
+    }
+    const blockingApplication = role === 'tester' && applicationRestrictionEnabled
+      ? getApplicationBlocker(project.id)
+      : null;
     if (blockingApplication) {
       const blockingProject = projects.find((item) => item.id === blockingApplication.projectId);
       setApplyError(getProjectApplicationLockMessage(
@@ -424,6 +480,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     if (!project || !isProjectVisibleToTesters(project)) return;
 
     const shouldApply = params.get('apply') === '1';
+    if (shouldApply && role === 'tester' && !applicationRestrictionLoaded) return;
     if (shouldApply && role === 'tester' && isProjectOpenForApplications(project)) {
       handleOpenApplyModal(project);
     } else {
@@ -433,7 +490,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     params.delete('apply');
     const query = params.toString();
     window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
-  }, [projects, role]);
+  }, [applicationRestrictionLoaded, projects, role]);
 
   const handleToggleDevice = (d: string) => {
     if (selectedDevices.includes(d)) {
@@ -861,6 +918,12 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
             <p className="font-bold">Finish your current project before applying to another</p>
             <p className="mt-1 text-sm">{globalApplicationLockMessage}</p>
           </div>
+        </div>
+      )}
+
+      {role === 'tester' && applicationRestrictionError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          Could not verify the current project application policy. The restriction remains on. {applicationRestrictionError}
         </div>
       )}
 
