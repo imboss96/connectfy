@@ -1371,7 +1371,15 @@ export const HRSection: React.FC = () => {
               </form>
             )}
           </Card>
-          <div className="xl:col-span-2">
+        </div>
+        <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <summary className="cursor-pointer list-none text-sm font-bold text-slate-900">
+            Manage department and job title options
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Advanced setup — expand only when you need to change the choices used in employee profiles.
+            </span>
+          </summary>
+          <div className="mt-4">
             <HrOptionManager
               options={hrOptions}
               isSaving={isSaving}
@@ -1380,7 +1388,7 @@ export const HRSection: React.FC = () => {
               onToggle={toggleHrOption}
             />
           </div>
-        </div>
+        </details>
       )}
 
       {!isHrAdmin && !visibleEmployee && !isLoading && (

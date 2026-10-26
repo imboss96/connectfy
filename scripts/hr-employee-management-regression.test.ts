@@ -108,6 +108,7 @@ for (const label of [
   assert.ok(catalogMigration.includes(label), `Expected seeded HR option ${label}`);
 }
 assert.match(hrSection, /Manage department and job title options/i);
+assert.match(hrSection, /<details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">[\s\S]*?<summary[\s\S]*?Manage department and job title options[\s\S]*?<HrOptionManager/i);
 assert.match(hrSection, /Super Admin, Project Manager, Reviewer, and Project Reviewer titles promote/i);
 assert.match(hrSection, /const isHrManagedAccess = targetProfile\.role !== 'admin' \|\| Boolean\(selectedEmployee\?\.previous_platform_role\)/i);
 assert.match(hrSection, /<select[^>]*value=\{jobTitle\}/i);
