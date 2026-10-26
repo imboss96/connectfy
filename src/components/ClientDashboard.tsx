@@ -434,8 +434,8 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
       {/* Tab 1: Submissions Review */}
       {activeTab === 'submissions' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5 shadow-lg shadow-slate-950/20">
-            <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-slate-950/20">
+            <div className="flex flex-col gap-3">
               <div>
                 <div className="flex items-center gap-2">
                   <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-2 text-cyan-300">
@@ -446,9 +446,6 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                     {totalPendingSubmissions} awaiting review
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  Find a freelancer submission by name, project, details, device, or filename. Review and action items from one place.
-                </p>
               </div>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -514,8 +511,8 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 border-t border-slate-800 pt-3 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                <span>
+              <div className="flex flex-col gap-2 border-t border-slate-800 pt-2 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <span aria-live="polite">
                   Showing <span className="font-semibold text-slate-300">{visibleSubmissionCount}</span> of{' '}
                   {bugReports.length + taskSubmissions.length} submissions
                   {normalizedSubmissionSearch && <> matching <span className="font-semibold text-cyan-300">“{submissionSearch.trim()}”</span></>}
@@ -571,9 +568,9 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                 const isRejected = task.status === 'rejected';
 
                 return (
-                  <div
+                  <article
                     key={task.id}
-                    className={`p-5 rounded-2xl border transition space-y-4 ${
+                    className={`p-4 rounded-2xl border transition space-y-3 ${
                       isReview
                         ? 'bg-slate-900 border-purple-500/40 shadow-md'
                         : 'bg-slate-900/70 border-slate-800'
@@ -628,9 +625,9 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                             {isApproved && <CheckCircle2 className="w-3.5 h-3.5" />}
                             {isReview && <Clock className="w-3.5 h-3.5" />}
                             {isApproved
-                              ? 'Approved & Paid'
+                              ? 'Approved'
                               : isReview
-                              ? 'Needs Client Review'
+                              ? 'Awaiting review'
                               : isChanges
                               ? 'Revision Requested'
                               : 'Rejected'}
@@ -639,66 +636,75 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                       </div>
                     </div>
 
-                    {/* Deliverable Details & Metadata */}
-                    <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
-                      <div className="font-semibold text-slate-300">Methodology & Submission Notes:</div>
-                      <p className="text-slate-300 text-[11px] leading-relaxed">
-                        {task.details}
-                      </p>
-
-                      {task.metadata && Object.keys(task.metadata).length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
-                          {task.metadata.sampleCount && (
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
-                              Sample Count: <strong className="text-white">{task.metadata.sampleCount}</strong>
-                            </span>
-                          )}
-                          {task.metadata.languageOrDialect && (
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-purple-300">
-                              Dialect: <strong className="text-white">{task.metadata.languageOrDialect}</strong>
-                            </span>
-                          )}
-                          {task.metadata.audioEnvironment && (
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
-                              Acoustics: <strong className="text-white">{task.metadata.audioEnvironment}</strong>
-                            </span>
-                          )}
-                          {task.metadata.storeLocationOrMerchant && (
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-emerald-300">
-                              Store: <strong className="text-white">{task.metadata.storeLocationOrMerchant}</strong>
-                            </span>
-                          )}
-                          {task.metadata.deviceUsed && (
-                            <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
-                              Hardware: {task.metadata.deviceUsed}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Attached files */}
-                    {task.attachments.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-                          <Paperclip className="w-3.5 h-3.5" /> Deliverable Files ({task.attachments.length}):
+                    <details className="group rounded-xl border border-slate-800 bg-slate-950/50">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-slate-300 [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-slate-500" />
+                          Full submission details
+                          <span className="font-normal text-slate-500">
+                            {task.attachments.length > 0 ? `· ${task.attachments.length} file${task.attachments.length === 1 ? '' : 's'}` : ''}
+                          </span>
                         </span>
-                        {task.attachments.map((att) => (
-                          <button
-                            key={att.id}
-                            onClick={() => setSelectedAttachment(att)}
-                            className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs flex items-center space-x-1.5 transition"
-                          >
-                            {att.type.startsWith('audio/') ? (
-                              <Volume2 className="w-3.5 h-3.5 text-purple-400" />
-                            ) : (
-                              <FileText className="w-3.5 h-3.5 text-blue-400" />
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
+                      </summary>
+                      <div className="space-y-3 border-t border-slate-800 p-3">
+                        <div className="text-xs">
+                          <div className="font-semibold text-slate-300">Submission notes</div>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{task.details}</p>
+                        </div>
+
+                        {task.metadata && Object.keys(task.metadata).length > 0 && (
+                          <div className="flex flex-wrap gap-2 border-t border-slate-800/80 pt-3 text-[11px]">
+                            {task.metadata.sampleCount && (
+                              <span className="rounded border border-slate-800 bg-slate-900 px-2 py-0.5 text-slate-300">
+                                Samples: <strong className="text-white">{task.metadata.sampleCount}</strong>
+                              </span>
                             )}
-                            <span className="text-[11px] font-medium">{att.name}</span>
-                          </button>
-                        ))}
+                            {task.metadata.languageOrDialect && (
+                              <span className="rounded border border-slate-800 bg-slate-900 px-2 py-0.5 text-purple-300">
+                                Language: <strong className="text-white">{task.metadata.languageOrDialect}</strong>
+                              </span>
+                            )}
+                            {task.metadata.audioEnvironment && (
+                              <span className="rounded border border-slate-800 bg-slate-900 px-2 py-0.5 text-slate-300">
+                                Acoustics: <strong className="text-white">{task.metadata.audioEnvironment}</strong>
+                              </span>
+                            )}
+                            {task.metadata.storeLocationOrMerchant && (
+                              <span className="rounded border border-slate-800 bg-slate-900 px-2 py-0.5 text-emerald-300">
+                                Store: <strong className="text-white">{task.metadata.storeLocationOrMerchant}</strong>
+                              </span>
+                            )}
+                            {task.metadata.deviceUsed && (
+                              <span className="rounded border border-slate-800 bg-slate-900 px-2 py-0.5 text-slate-400">
+                                Device: {task.metadata.deviceUsed}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {task.attachments.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 pt-3">
+                            <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                              <Paperclip className="h-3.5 w-3.5" /> Deliverables
+                            </span>
+                            {task.attachments.map((att) => (
+                              <button
+                                key={att.id}
+                                type="button"
+                                onClick={() => setSelectedAttachment(att)}
+                                className="flex items-center space-x-1.5 rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-300 transition hover:border-slate-700"
+                              >
+                                {att.type.startsWith('audio/')
+                                  ? <Volume2 className="h-3.5 w-3.5 text-purple-400" />
+                                  : <FileText className="h-3.5 w-3.5 text-blue-400" />}
+                                <span className="text-[11px] font-medium">{att.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </details>
 
                     {/* Action Bar for Client */}
                     <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
@@ -744,7 +750,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                         </div>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
 
@@ -758,9 +764,9 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                 const isRejected = bug.status === 'rejected';
 
                 return (
-                  <div
+                  <article
                     key={bug.id}
-                    className={`p-5 rounded-2xl border transition space-y-4 ${
+                    className={`p-4 rounded-2xl border transition space-y-3 ${
                       isReview
                         ? 'bg-slate-900 border-rose-500/40 shadow-md'
                         : 'bg-slate-900/70 border-slate-800'
@@ -828,9 +834,9 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                             {isApproved && <CheckCircle2 className="w-3.5 h-3.5" />}
                             {isReview && <Clock className="w-3.5 h-3.5" />}
                             {isApproved
-                              ? 'Approved & Slot Payout Credited'
+                              ? 'Approved'
                               : isReview
-                              ? 'Needs Client Review'
+                              ? 'Awaiting review'
                               : isChanges
                               ? 'Clarification Requested'
                               : 'Rejected'}
@@ -839,49 +845,58 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                       </div>
                     </div>
 
-                    {/* Reproduction Steps & Results */}
-                    <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 text-xs space-y-2">
-                      <div className="font-semibold text-slate-300">Reproduction Sequence:</div>
-                      <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px]">
-                        {bug.stepsToReproduce.map((step, i) => (
-                          <li key={i}>{step}</li>
-                        ))}
-                      </ol>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80 text-[11px]">
-                        <div className="p-2 bg-slate-900 rounded-lg">
-                          <span className="text-slate-400 font-semibold block mb-0.5">
-                            Expected Result:
+                    <details className="group rounded-xl border border-slate-800 bg-slate-950/50">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-xs font-semibold text-slate-300 [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-2">
+                          <Bug className="h-4 w-4 text-slate-500" />
+                          Reproduction details
+                          <span className="font-normal text-slate-500">
+                            {bug.attachments.length > 0 ? `· ${bug.attachments.length} file${bug.attachments.length === 1 ? '' : 's'}` : ''}
                           </span>
-                          <span className="text-slate-200">{bug.expectedResult}</span>
-                        </div>
-                        <div className="p-2 bg-slate-900 rounded-lg">
-                          <span className="text-rose-400 font-semibold block mb-0.5">
-                            Actual Defect Result:
-                          </span>
-                          <span className="text-slate-200">{bug.actualResult}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Attachments */}
-                    {bug.attachments.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-                          <Paperclip className="w-3.5 h-3.5" /> Uploaded Proofs ({bug.attachments.length}):
                         </span>
-                        {bug.attachments.map((att) => (
-                          <button
-                            key={att.id}
-                            onClick={() => setSelectedAttachment(att)}
-                            className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs flex items-center space-x-1.5 transition"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-blue-400" />
-                            <span className="text-[11px] font-medium">{att.name}</span>
-                          </button>
-                        ))}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
+                      </summary>
+                      <div className="space-y-3 border-t border-slate-800 p-3">
+                        <div>
+                          <div className="text-xs font-semibold text-slate-300">Steps to reproduce</div>
+                          <ol className="mt-1 list-inside list-decimal space-y-1 text-[11px] text-slate-400">
+                            {bug.stepsToReproduce.map((step, i) => (
+                              <li key={i}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 border-t border-slate-800/80 pt-3 text-[11px] sm:grid-cols-2">
+                          <div className="rounded-lg bg-slate-900 p-2">
+                            <span className="mb-0.5 block font-semibold text-slate-400">Expected result</span>
+                            <span className="text-slate-200">{bug.expectedResult}</span>
+                          </div>
+                          <div className="rounded-lg bg-slate-900 p-2">
+                            <span className="mb-0.5 block font-semibold text-rose-400">Actual result</span>
+                            <span className="text-slate-200">{bug.actualResult}</span>
+                          </div>
+                        </div>
+
+                        {bug.attachments.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 pt-3">
+                            <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                              <Paperclip className="h-3.5 w-3.5" /> Uploaded proof
+                            </span>
+                            {bug.attachments.map((att) => (
+                              <button
+                                key={att.id}
+                                type="button"
+                                onClick={() => setSelectedAttachment(att)}
+                                className="flex items-center space-x-1.5 rounded border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-300 transition hover:border-slate-700"
+                              >
+                                <FileText className="h-3.5 w-3.5 text-blue-400" />
+                                <span className="text-[11px] font-medium">{att.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </details>
 
                     {/* Action Bar for Client */}
                     <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
@@ -927,7 +942,7 @@ export const ClientDashboard: React.FC<{ reviewOnly?: boolean }> = ({ reviewOnly
                         </div>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
           </div>
