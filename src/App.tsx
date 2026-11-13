@@ -21,6 +21,7 @@ import { ApprovalEmailLogSection } from './components/ApprovalEmailLogSection';
 import { ProjectManagerActivity } from './components/ProjectManagerActivity';
 import { ApplicationUtestDetailsUpdatePage } from './components/ApplicationUtestDetailsUpdatePage';
 import { ApplicationScreenerSubmissions } from './components/ApplicationScreenerSubmissions';
+import { ScreenerReconciliationSection } from './components/ScreenerReconciliationSection';
 import { HRSection } from './components/HRSection';
 import { ProjectStepReviews } from './components/ProjectStepReviews';
 import { AmbassadorDashboard } from './components/AmbassadorDashboard';
@@ -48,7 +49,8 @@ import {
   MailCheck,
   CheckCircle2,
   UserPlus,
-  ClipboardCheck
+  ClipboardCheck,
+  ClipboardList
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -61,6 +63,7 @@ const adminMobileItems = [
   { tab: 'admin_manager', label: 'PM Ops', icon: ShieldCheck },
   { tab: 'project_tasks', label: 'Tasks', icon: FileCheck },
   { tab: 'application_screener_submissions', label: 'Applause', icon: CheckCircle2 },
+  { tab: 'screener_reconciliation', label: 'Never Applied', icon: ClipboardList },
   { tab: 'step_reviews', label: 'Step Reviews', icon: ClipboardCheck },
   { tab: 'hr', label: 'HR', icon: Users },
   { tab: 'crm', label: 'CRM', icon: Users },
@@ -88,6 +91,7 @@ const adminWorkspaceTabs = new Set<string>([
   'payout_operations',
   'referral_operations',
   'application_screener_submissions',
+  'screener_reconciliation',
   'service_listings',
   'client_applicants',
   'client_cycles',
@@ -213,6 +217,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <ProjectManagerActivity />
           ) : activeTab === 'application_screener_submissions' ? (
             <ApplicationScreenerSubmissions />
+          ) : activeTab === 'screener_reconciliation' ? (
+            <ScreenerReconciliationSection />
           ) : activeTab === 'mass_invites' ? (
             <MassInviteSection />
           ) : activeTab === 'payout_operations' ? (

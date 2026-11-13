@@ -13,6 +13,7 @@ export type AdminTab =
   | 'payout_operations'
   | 'referral_operations'
   | 'application_screener_submissions'
+  | 'screener_reconciliation'
   | 'arbeitnow_jobs'
   | 'service_listings'
   | 'client_applicants'
@@ -38,6 +39,7 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'client_applicants',
     'client_cycles',
     'application_screener_submissions',
+    'screener_reconciliation',
     'hr',
     'step_reviews'
   ]),
@@ -54,6 +56,7 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'client_applicants',
     'client_cycles',
     'application_screener_submissions',
+    'screener_reconciliation',
     'step_reviews'
   ]),
   reviewer: new Set(['client_submissions', 'profile_settings', 'project_tasks', 'arbeitnow_jobs', 'step_reviews'])

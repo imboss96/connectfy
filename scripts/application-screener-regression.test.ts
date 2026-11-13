@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { isEligibleApplauseUtestId } from '../src/lib/applicationScreener';
+import { isEligibleApplauseUtestId } from '../src/lib/applicationScreener.ts';
 
 const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610170003_queue_application_screeners.sql', import.meta.url),
@@ -14,6 +14,10 @@ const reconciliationMigration = fs.readFileSync(
   new URL('../supabase/migrations/202610170006_reconcile_confirmed_screener.sql', import.meta.url),
   'utf8'
 );
+const adminReconciliationMigration = fs.readFileSync(
+  new URL('../supabase/migrations/202611130001_admin_screener_reconciliation.sql', import.meta.url),
+  'utf8'
+);
 const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const submissionsSource = fs.readFileSync(
   new URL('../src/components/ApplicationScreenerSubmissions.tsx', import.meta.url),
@@ -23,6 +27,12 @@ const projectBoardSource = fs.readFileSync(
   new URL('../src/components/ProjectBoard.tsx', import.meta.url),
   'utf8'
 );
+const screenerReconciliationSource = fs.readFileSync(
+  new URL('../src/components/ScreenerReconciliationSection.tsx', import.meta.url),
+  'utf8'
+);
+const adminPermissionsSource = fs.readFileSync(new URL('../src/lib/adminPermissions.ts', import.meta.url), 'utf8');
+const navbarSource = fs.readFileSync(new URL('../src/components/Navbar.tsx', import.meta.url), 'utf8');
 const setupSource = fs.readFileSync(new URL('../BACKEND_SETUP.md', import.meta.url), 'utf8');
 const pythonSubmitterSource = fs.readFileSync(new URL('../submit_google_form.py', import.meta.url), 'utf8');
 
@@ -75,6 +85,21 @@ assert.match(reconciliationMigration, /outbox_status is distinct from 'ambiguous
 assert.match(reconciliationMigration, /screener_submission_status = 'submitted'/);
 assert.match(reconciliationMigration, /status = 'approved'/);
 assert.match(reconciliationMigration, /reconcile_confirmed_application_screener[\s\S]*?to service_role/);
+assert.match(adminReconciliationMigration, /create or replace function public\.admin_reconcile_application_screener/);
+assert.match(adminReconciliationMigration, /only project managers and super admins can reconcile screeners/i);
+assert.match(adminReconciliationMigration, /p_applicant_confirmed is distinct from true/);
+assert.match(adminReconciliationMigration, /This tester has already applied to a project/);
+assert.match(adminReconciliationMigration, /screener_consent_at, admin_reconciled_by, admin_reconciled_at, updated_at/);
+assert.match(adminReconciliationMigration, /perform 1 from public\.profiles where id = p_tester_id for update/);
+assert.match(adminReconciliationMigration, /grant execute on function public\.admin_reconcile_application_screener[\s\S]*to authenticated/);
+assert.match(adminReconciliationMigration, /application_utest_details[\s\S]*on conflict \(application_id\) do update/);
+assert.match(setupSource, /202611130001_admin_screener_reconciliation\.sql/);
+assert.match(screenerReconciliationSource, /Never Applied/);
+assert.match(screenerReconciliationSource, /Pending \/ Missing/);
+assert.match(screenerReconciliationSource, /Save verified answers and queue screener/);
+assert.match(screenerReconciliationSource, /<option value="false">No<\/option>/);
+assert.match(adminPermissionsSource, /'screener_reconciliation'/);
+assert.match(navbarSource, /Never Applied · Screener/);
 
 assert.match(projectBoardSource, /screenerConsent: true/);
 assert.match(projectBoardSource, /isEligibleApplauseUtestId\(applicationDraft\.testerId\)/);
