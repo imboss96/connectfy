@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, Briefcase, Clock, CreditCard, FileText, Loader2, Save, UserRound, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { updateTesterApplicationUtestDetailsInSupabase } from '../lib/projectRepository';
 
 type PlatformMember = {
   id: string;
@@ -30,6 +31,11 @@ type EditableProfile = {
   country: string;
   city: string;
   avatar_url: string;
+  utest_id: string;
+  utest_email: string;
+  legal_name: string;
+  date_of_birth: string;
+  phone_number: string;
 };
 
 const objectJson = (value: unknown) => JSON.stringify(value && typeof value === 'object' && !Array.isArray(value) ? value : {}, null, 2);
@@ -68,7 +74,12 @@ export const AdminUserDetailsDialog: React.FC<{
     company: member.company || '',
     country: member.country || '',
     city: member.city || '',
-    avatar_url: member.avatar_url || ''
+    avatar_url: member.avatar_url || '',
+    utest_id: '',
+    utest_email: '',
+    legal_name: '',
+    date_of_birth: '',
+    phone_number: ''
   });
   const [profileDataText, setProfileDataText] = useState('{}');
   const [loading, setLoading] = useState(true);
@@ -117,6 +128,14 @@ export const AdminUserDetailsDialog: React.FC<{
 
         const loadedProfile = profileResult.data as PlatformMember & { profile_data?: Record<string, unknown> | null };
         const profileData = loadedProfile.profile_data || {};
+        const profileTesterData = (profileData.testerProfile && typeof profileData.testerProfile === 'object') ? profileData.testerProfile as Record<string, unknown> : {};
+        const applicationDetails = (() => {
+          const firstApplication = (applicationsResult.data || [])[0] as Record<string, unknown> | undefined;
+          const rawDetails = firstApplication?.application_utest_details;
+          if (Array.isArray(rawDetails)) return (rawDetails[0] as Record<string, unknown> | undefined) || {};
+          return (rawDetails as Record<string, unknown> | undefined) || {};
+        })();
+
         setSnapshot({
           profile: loadedProfile,
           profileData,
@@ -131,7 +150,12 @@ export const AdminUserDetailsDialog: React.FC<{
           company: loadedProfile.company || '',
           country: loadedProfile.country || '',
           city: loadedProfile.city || '',
-          avatar_url: loadedProfile.avatar_url || ''
+          avatar_url: loadedProfile.avatar_url || '',
+          utest_id: String(profileTesterData.uTestId ?? applicationDetails.utest_id ?? ''),
+          utest_email: String(profileTesterData.uTestEmail ?? applicationDetails.utest_email ?? ''),
+          legal_name: String(profileTesterData.legalName ?? applicationDetails.full_name ?? ''),
+          date_of_birth: String(profileTesterData.dateOfBirth ?? applicationDetails.date_of_birth ?? ''),
+          phone_number: String(profileTesterData.phone ?? applicationDetails.phone_number ?? '')
         });
         setProfileDataText(objectJson(profileData));
       } catch (loadError) {
@@ -164,6 +188,23 @@ export const AdminUserDetailsDialog: React.FC<{
       return;
     }
 
+    const testerProfileData = (profileData.testerProfile && typeof profileData.testerProfile === 'object') ? profileData.testerProfile as Record<string, unknown> : {};
+    const mergedProfileData = {
+      ...profileData,
+      testerProfile: {
+        ...testerProfileData,
+        uTestId: profile.utest_id.trim(),
+        uTestEmail: profile.utest_email.trim(),
+        legalName: profile.legal_name.trim(),
+        dateOfBirth: profile.date_of_birth,
+        phone: profile.phone_number.trim(),
+        name: profile.name.trim(),
+        email: profile.email.trim(),
+        country: profile.country.trim(),
+        city: profile.city.trim()
+      }
+    };
+
     setSaving(true);
     try {
       const { data, error: updateError } = await supabase
@@ -175,7 +216,7 @@ export const AdminUserDetailsDialog: React.FC<{
           country: profile.country.trim(),
           city: profile.city.trim(),
           avatar_url: profile.avatar_url.trim() || null,
-          profile_data: profileData,
+          profile_data: mergedProfileData,
           updated_at: new Date().toISOString()
         })
         .eq('id', member.id)
@@ -184,7 +225,17 @@ export const AdminUserDetailsDialog: React.FC<{
       if (updateError) throw updateError;
       if (!data) throw new Error('The profile was not updated. Check administrator access and database policies.');
 
-      setSnapshot({ ...snapshot, profileData });
+      await updateTesterApplicationUtestDetailsInSupabase(member.id, {
+        full_name: profile.legal_name.trim(),
+        utest_id: profile.utest_id.trim(),
+        utest_email: profile.utest_email.trim(),
+        date_of_birth: profile.date_of_birth,
+        country: profile.country.trim(),
+        phone_number: profile.phone_number.trim()
+      });
+
+      setSnapshot({ ...snapshot, profileData: mergedProfileData });
+      setProfileDataText(objectJson(mergedProfileData));
       setNotice('User profile saved.');
       await onSaved();
     } catch (saveError) {
@@ -297,12 +348,17 @@ export const AdminUserDetailsDialog: React.FC<{
                       ['company', 'Company / organization'],
                       ['country', 'Country'],
                       ['city', 'City'],
-                      ['avatar_url', 'Avatar URL']
+                      ['avatar_url', 'Avatar URL'],
+                      ['utest_id', 'uTest ID'],
+                      ['utest_email', 'uTest email'],
+                      ['legal_name', 'Legal name'],
+                      ['date_of_birth', 'Date of birth'],
+                      ['phone_number', 'Phone number']
                     ] as const).map(([field, label]) => (
                       <label key={field} className="space-y-1 text-xs font-semibold text-slate-700">
                         {label}
                         <input
-                          type={field === 'email' ? 'email' : 'text'}
+                          type={field === 'email' || field === 'utest_email' ? 'email' : field === 'date_of_birth' ? 'date' : 'text'}
                           value={profile[field]}
                           onChange={(event) => setProfile((current) => ({ ...current, [field]: event.target.value }))}
                           className={inputClass}

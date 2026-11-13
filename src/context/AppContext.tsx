@@ -2797,7 +2797,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         utest_id: updated.uTestId,
         utest_email: updated.uTestEmail,
         date_of_birth: updated.dateOfBirth,
-        country: updated.country
+        country: updated.country,
+        phone_number: updated.phone
       }).catch(error => console.error('Unable to update application uTest details:', error));
 
       return updated;

@@ -504,6 +504,7 @@ export async function updateTesterApplicationUtestDetailsInSupabase(testerId: st
   utest_email?: string;
   date_of_birth?: string;
   country?: string;
+  phone_number?: string;
 }) {
   if (!supabase) return;
 
@@ -512,6 +513,7 @@ export async function updateTesterApplicationUtestDetailsInSupabase(testerId: st
     .update({
       ...details,
       date_of_birth: details.date_of_birth || null,
+      phone_number: details.phone_number || '',
       updated_at: new Date().toISOString()
     })
     .eq('tester_id', testerId);
