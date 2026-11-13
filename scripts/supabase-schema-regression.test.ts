@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const crmSource = readFileSync(path.resolve('src/components/CRMSection.tsx'), 'utf8');
+const massInviteSource = readFileSync(path.resolve('src/components/MassInviteSection.tsx'), 'utf8');
 const migrationSource = readFileSync(path.resolve('supabase/migrations/202609240001_admin_invite_function.sql'), 'utf8');
 const adminDismissalMigration = readFileSync(path.resolve('supabase/migrations/202610030003_admin_dismissal_function.sql'), 'utf8');
 const applauseStatusMigration = readFileSync(path.resolve('supabase/migrations/202610040001_applause_project_status.sql'), 'utf8');
@@ -39,6 +40,9 @@ assert.ok(crmSource.includes("supabase.from('applications').select('tester_id')"
 assert.match(crmSource, /isSuperAdmin\s*\?\s*supabase\.from\('applications'\)\.select\('tester_id'\)/, 'Only Super Admins may classify users using complete application history.');
 assert.ok(crmSource.includes("value=\"never_applied\">Never applied"), 'CRM must allow filtering for testers who have never applied.');
 assert.ok(crmSource.includes("appliedTesterIds.has(member.id) ? 'Has applied' : 'Never applied'"), 'CRM must show application history on tester records.');
+assert.ok(massInviteSource.includes("application.testerId === tester.id"), 'Mass invites must filter registered testers by all-project application history.');
+assert.ok(massInviteSource.includes('Never applied anywhere'), 'Mass invites must expose the never-applied audience filter.');
+assert.ok(massInviteSource.includes('Select all {selectableInviteTesters.length} visible profiles'), 'Mass invites must allow bulk-selecting the filtered tester audience.');
 
 assert.ok(
   migrationSource.includes('grant execute on function public.invite_user_as_admin'),

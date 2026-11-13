@@ -3,11 +3,14 @@ import { Plus, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { fetchRegisteredTestersFromSupabase, RegisteredTester } from '../lib/projectRepository';
 
+type InviteAudienceFilter = 'all' | 'never_applied' | 'has_applied';
+
 export const MassInviteSection: React.FC = () => {
   const { projects, applications, inviteTesterToProject } = useApp();
   const [registeredTesters, setRegisteredTesters] = useState<RegisteredTester[]>([]);
   const [testerDirectoryError, setTesterDirectoryError] = useState('');
   const [inviteSearch, setInviteSearch] = useState('');
+  const [inviteAudienceFilter, setInviteAudienceFilter] = useState<InviteAudienceFilter>('all');
   const [selectedInviteTesterIds, setSelectedInviteTesterIds] = useState<string[]>([]);
   const [inviteProjectId, setInviteProjectId] = useState('');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
@@ -39,10 +42,14 @@ export const MassInviteSection: React.FC = () => {
 
   const matchingInviteTesters = useMemo(() => {
     const query = inviteSearch.trim().toLowerCase();
-    return registeredTesters.filter((tester) =>
-      !query || tester.name.toLowerCase().includes(query) || tester.email.toLowerCase().includes(query)
-    );
-  }, [inviteSearch, registeredTesters]);
+    return registeredTesters.filter((tester) => {
+      const matchesSearch = !query || tester.name.toLowerCase().includes(query) || tester.email.toLowerCase().includes(query);
+      const hasApplied = applications.some((application) => application.testerId === tester.id);
+      const matchesAudience = inviteAudienceFilter === 'all'
+        || (inviteAudienceFilter === 'never_applied' ? !hasApplied : hasApplied);
+      return matchesSearch && matchesAudience;
+    });
+  }, [applications, inviteAudienceFilter, inviteSearch, registeredTesters]);
 
   const selectableInviteTesters = useMemo(() => matchingInviteTesters.filter((tester) =>
     !applications.some((application) =>
@@ -110,7 +117,7 @@ export const MassInviteSection: React.FC = () => {
       </header>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <label className="space-y-1.5 text-xs font-semibold text-slate-600">
             <span>Project</span>
             <select value={inviteProjectId} onChange={(event) => { setInviteProjectId(event.target.value); setSelectedInviteTesterIds([]); setInviteFeedback(''); }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-[#007AFF] focus:outline-none">
@@ -121,6 +128,21 @@ export const MassInviteSection: React.FC = () => {
           <label className="space-y-1.5 text-xs font-semibold text-slate-600">
             <span>Search tester profiles</span>
             <input type="search" value={inviteSearch} onChange={(event) => setInviteSearch(event.target.value)} placeholder="Search by name or email" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#007AFF] focus:outline-none" />
+          </label>
+          <label className="space-y-1.5 text-xs font-semibold text-slate-600">
+            <span>Application history</span>
+            <select
+              value={inviteAudienceFilter}
+              onChange={(event) => {
+                setInviteAudienceFilter(event.target.value as InviteAudienceFilter);
+                setSelectedInviteTesterIds([]);
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-[#007AFF] focus:outline-none"
+            >
+              <option value="all">All testers</option>
+              <option value="never_applied">Never applied anywhere</option>
+              <option value="has_applied">Has applied</option>
+            </select>
           </label>
         </div>
 
@@ -142,7 +164,7 @@ export const MassInviteSection: React.FC = () => {
             {isLoadingTesters ? (
               <p className="px-4 py-6 text-center text-xs text-slate-500">Loading registered tester profiles…</p>
             ) : matchingInviteTesters.length === 0 ? (
-              <p className="px-4 py-6 text-center text-xs text-slate-500">No tester profiles match your search.</p>
+              <p className="px-4 py-6 text-center text-xs text-slate-500">No tester profiles match these filters.</p>
             ) : matchingInviteTesters.map((tester) => {
               const alreadyAccepted = applications.some((application) =>
                 application.projectId === inviteProjectId
@@ -167,6 +189,9 @@ export const MassInviteSection: React.FC = () => {
                     <span className="block truncate text-xs font-semibold text-slate-800">{tester.name}</span>
                     <span className="block truncate text-[11px] text-slate-500">{tester.email}</span>
                   </span>
+                  {!applications.some((application) => application.testerId === tester.id) && (
+                    <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">Never applied</span>
+                  )}
                   {alreadyAccepted ? (
                     <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Accepted</span>
                   ) : alreadyInvited ? (
