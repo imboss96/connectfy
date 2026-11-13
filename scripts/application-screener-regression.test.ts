@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { isEligibleApplauseUtestId } from '../src/lib/applicationScreener';
 
 const migration = fs.readFileSync(
   new URL('../supabase/migrations/202610170003_queue_application_screeners.sql', import.meta.url),
@@ -23,6 +24,13 @@ const projectBoardSource = fs.readFileSync(
   'utf8'
 );
 const setupSource = fs.readFileSync(new URL('../BACKEND_SETUP.md', import.meta.url), 'utf8');
+const pythonSubmitterSource = fs.readFileSync(new URL('../submit_google_form.py', import.meta.url), 'utf8');
+
+assert.equal(isEligibleApplauseUtestId('3000001'), true, 'the lower uTest ID boundary is eligible');
+assert.equal(isEligibleApplauseUtestId('4000001'), true, 'the upper uTest ID boundary is eligible');
+assert.equal(isEligibleApplauseUtestId('3000000'), false, 'IDs below the range are not eligible');
+assert.equal(isEligibleApplauseUtestId('4000002'), false, 'IDs above the range are not eligible');
+assert.equal(isEligibleApplauseUtestId('3000001x'), false, 'uTest IDs must contain digits only');
 
 assert.match(migration, /new\.screener_consent is true/);
 assert.match(migration, /new\.screener_consent_at is not null/);
@@ -69,8 +77,11 @@ assert.match(reconciliationMigration, /status = 'approved'/);
 assert.match(reconciliationMigration, /reconcile_confirmed_application_screener[\s\S]*?to service_role/);
 
 assert.match(projectBoardSource, /screenerConsent: true/);
+assert.match(projectBoardSource, /isEligibleApplauseUtestId\(applicationDraft\.testerId\)/);
 assert.match(projectBoardSource, /uses your prior hiring authorization/);
 assert.match(projectBoardSource, /automatically sends your saved application details and screener answers to Applause/);
 assert.doesNotMatch(projectBoardSource, /Confirm Applause screener consent/);
+assert.match(serverSource, /isEligibleApplauseUtestId\(details\.utest_id\)/);
+assert.match(pythonSubmitterSource, /3000001 <= int\(normalized_id\) <= 4000001/);
 
 console.log('application screener regression checks passed');

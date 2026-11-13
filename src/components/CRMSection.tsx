@@ -16,6 +16,7 @@ import {
 } from '../lib/legacySheetEmail.js';
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
+type ApplicationHistoryFilter = 'all' | 'never_applied' | 'has_applied';
 type CRMView = 'members' | 'utest' | 'sheet' | 'participants';
 
 type ImportedParticipant = {
@@ -182,6 +183,8 @@ export const CRMSection: React.FC<{
   const { projects, adminAccessLevel } = useApp();
   const isSuperAdmin = adminAccessLevel === 'super_admin';
   const [members, setMembers] = useState<PlatformMember[]>([]);
+  const [appliedTesterIds, setAppliedTesterIds] = useState<Set<string> | null>(null);
+  const [applicationHistoryError, setApplicationHistoryError] = useState('');
   const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
   const [activeView, setActiveView] = useState<CRMView>(initialView);
   const [projectParticipants, setProjectParticipants] = useState<ImportedParticipant[]>([]);
@@ -207,6 +210,7 @@ export const CRMSection: React.FC<{
   const [legacySyncMessage, setLegacySyncMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [applicationHistoryFilter, setApplicationHistoryFilter] = useState<ApplicationHistoryFilter>('all');
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteAccessLevel, setInviteAccessLevel] = useState<AdminAccessLevel>('reviewer');
@@ -226,16 +230,31 @@ export const CRMSection: React.FC<{
     }
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name, email, role, admin_access_level, company, country, city, avatar_url, created_at, profile_data')
-        .order('created_at', { ascending: false });
+      const [profilesResult, applicationsResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, name, email, role, admin_access_level, company, country, city, avatar_url, created_at, profile_data')
+          .order('created_at', { ascending: false }),
+        isSuperAdmin ? supabase.from('applications').select('tester_id') : Promise.resolve(null)
+      ]);
 
-      if (error) throw error;
-      setMembers((data || []) as PlatformMember[]);
+      if (profilesResult.error) throw profilesResult.error;
+      setMembers((profilesResult.data || []) as PlatformMember[]);
+      if (!applicationsResult) {
+        setAppliedTesterIds(null);
+        setApplicationHistoryError('');
+      } else if (applicationsResult.error) {
+        console.error('Unable to load member application history:', applicationsResult.error);
+        setAppliedTesterIds(null);
+        setApplicationHistoryError('Application history is unavailable, so application status cannot be determined.');
+      } else {
+        setAppliedTesterIds(new Set((applicationsResult.data || []).map((application) => application.tester_id).filter(Boolean)));
+        setApplicationHistoryError('');
+      }
     } catch (error) {
       console.error('Unable to load CRM members:', error);
       setMembers([]);
+      setAppliedTesterIds(null);
     } finally {
       setLoading(false);
     }
@@ -916,9 +935,14 @@ export const CRMSection: React.FC<{
       ].join(' ').toLowerCase();
 
       const matchesSearch = !term || haystack.includes(term);
-      return matchesRole && matchesSearch;
+      const hasApplied = appliedTesterIds?.has(member.id) ?? false;
+      const matchesApplicationHistory = applicationHistoryFilter === 'all'
+        || (member.role === 'tester'
+          && appliedTesterIds !== null
+          && (applicationHistoryFilter === 'never_applied' ? !hasApplied : hasApplied));
+      return matchesRole && matchesSearch && matchesApplicationHistory;
     });
-  }, [members, roleFilter, search]);
+  }, [members, roleFilter, search, applicationHistoryFilter, appliedTesterIds]);
 
   const roleCounts = useMemo(() => ({
     tester: members.filter((m) => m.role === 'tester').length,
@@ -930,6 +954,9 @@ export const CRMSection: React.FC<{
     () => members.filter((member) => member.role === 'tester'),
     [members]
   );
+  const neverAppliedTesterCount = appliedTesterIds === null
+    ? null
+    : testerMembers.filter((member) => !appliedTesterIds.has(member.id)).length;
 
   return (
     <>
@@ -953,7 +980,7 @@ export const CRMSection: React.FC<{
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-6 pt-5 border-t border-slate-200 text-xs">
+        <div className={`grid grid-cols-2 ${isSuperAdmin ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3 mt-6 pt-5 border-t border-slate-200 text-xs`}>
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">Connectfy Accounts</span>
             <span className="text-lg font-bold text-slate-900">{members.length}</span>
@@ -962,6 +989,10 @@ export const CRMSection: React.FC<{
             <span className="text-slate-500 block text-[11px]">Testers</span>
             <span className="text-lg font-bold text-[#007AFF]">{roleCounts.tester}</span>
           </div>
+          {isSuperAdmin && <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">Never applied</span>
+            <span className="text-lg font-bold text-amber-700">{neverAppliedTesterCount ?? '—'}</span>
+          </div>}
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">Clients & Admins</span>
             <span className="text-lg font-bold text-emerald-600">{roleCounts.client + roleCounts.admin}</span>
@@ -1442,6 +1473,17 @@ export const CRMSection: React.FC<{
               <option value="client">Client</option>
               <option value="admin">Admin</option>
             </select>
+            {isSuperAdmin && <select
+                aria-label="Filter by project application history"
+                value={applicationHistoryFilter}
+                onChange={(event) => setApplicationHistoryFilter(event.target.value as ApplicationHistoryFilter)}
+                disabled={appliedTesterIds === null}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="all">All application history</option>
+                <option value="never_applied">Never applied</option>
+                <option value="has_applied">Has applied</option>
+              </select>}
           </div>
 
           {isSuperAdmin && (
@@ -1482,6 +1524,7 @@ export const CRMSection: React.FC<{
           {inviteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{inviteError}</div>}
           {adminDismissStatus && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">{adminDismissStatus}</div>}
           {adminDismissError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">{adminDismissError}</div>}
+          {applicationHistoryError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{applicationHistoryError}</div>}
         </div>
 
         {loading ? (
@@ -1503,6 +1546,13 @@ export const CRMSection: React.FC<{
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{member.name || 'Unnamed member'}</h3>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-white text-slate-700 border-slate-200">{roleTag}</span>
+                          {isSuperAdmin && member.role === 'tester' && appliedTesterIds !== null && (
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${appliedTesterIds.has(member.id)
+                              ? 'border-sky-200 bg-sky-50 text-sky-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                              {appliedTesterIds.has(member.id) ? 'Has applied' : 'Never applied'}
+                            </span>
+                          )}
                           {isSuperAdmin && member.admin_access_level && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
                               {member.admin_access_level === 'super_admin'

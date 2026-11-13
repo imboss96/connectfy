@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, RefreshCw, Search, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
-import { hasValidUtestIdAndScreenshot } from '../lib/applicationScreener';
+import { hasValidUtestIdAndScreenshot, isEligibleApplauseUtestId } from '../lib/applicationScreener';
 
 interface ScreenerSubmission {
   application_id: string;
@@ -229,7 +229,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
         ) : (
           <div className="space-y-3">
             {pendingApplications.map(({ application, submission, project }) => {
-              const validId = /^30\d+$/.test(submission.utest_id.trim());
+              const validId = isEligibleApplauseUtestId(submission.utest_id);
               const validAccount = hasValidUtestIdAndScreenshot(submission.utest_id, submission.utest_account_screenshot_url);
               const completeConsent = submission.screener_consent && Boolean(submission.screener_consent_at);
               const ready = validId
@@ -260,7 +260,7 @@ export const ApplicationScreenerSubmissions: React.FC = () => {
                 : submission.screener_submission_status === 'failed'
                   ? submission.screener_submission_error || 'Submission was blocked; review the saved answers.'
                 : !validId
-                  ? 'Not eligible: uTest ID must start with 30 and contain digits only.'
+                  ? 'Not eligible: uTest ID must be from 3000001 through 4000001.'
                   : !validAccount
                     ? 'Not eligible: a valid uTest account screenshot is required.'
                     : !completeConsent

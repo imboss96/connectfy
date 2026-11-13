@@ -40,6 +40,12 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
   "'": '&#39;'
 })[character]);
 const createHttpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+const isEligibleApplauseUtestId = (value) => {
+  const normalizedId = String(value ?? '').trim();
+  if (!/^\d{7}$/.test(normalizedId)) return false;
+  const numericId = Number(normalizedId);
+  return numericId >= 3000001 && numericId <= 4000001;
+};
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -1923,7 +1929,7 @@ const processOneApplicationScreenerJob = async () => {
       ['application status', application.status === 'pending'],
       ['applicant consent', details.screener_consent === true && Boolean(details.screener_consent_at)],
       ['full legal name', Boolean(String(details.full_name || '').trim())],
-      ['uTest ID beginning with 30', /^30\d+$/.test(String(details.utest_id || '').trim())],
+      ['uTest ID in the Applause-eligible range', isEligibleApplauseUtestId(details.utest_id)],
       ['uTest email', Boolean(String(details.utest_email || '').trim())],
       ['phone number', Boolean(String(details.phone_number || '').trim())],
       ['profile Gmail address', /^[^\s@]+@gmail\.com$/i.test(String(details.gmail_email || '').trim())],
@@ -2145,11 +2151,11 @@ app.post('/api/application-screener', async (req, res) => {
     if (!details) {
       return res.status(404).json({ ok: false, retryable: false, message: 'The application screener details were not found for your account.' });
     }
-    if (!/^30\d+$/.test(String(details.utest_id || '').trim())) {
+    if (!isEligibleApplauseUtestId(details.utest_id)) {
       return res.status(400).json({
         ok: false,
         retryable: false,
-        message: 'The Applause screener is available only for uTest IDs that start with 30 and contain digits only.'
+        message: 'The Applause screener is available only for uTest IDs from 3000001 through 4000001.'
       });
     }
     if (details.screener_submission_status === 'submitted') {

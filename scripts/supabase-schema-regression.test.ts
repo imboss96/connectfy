@@ -35,6 +35,10 @@ assert.ok(
   !crmSource.includes('last_sign_in_at'),
   'CRM profile query must not request a last_sign_in_at column that does not exist in the current profiles schema.'
 );
+assert.ok(crmSource.includes("supabase.from('applications').select('tester_id')"), 'CRM must load application history for registered profiles.');
+assert.match(crmSource, /isSuperAdmin\s*\?\s*supabase\.from\('applications'\)\.select\('tester_id'\)/, 'Only Super Admins may classify users using complete application history.');
+assert.ok(crmSource.includes("value=\"never_applied\">Never applied"), 'CRM must allow filtering for testers who have never applied.');
+assert.ok(crmSource.includes("appliedTesterIds.has(member.id) ? 'Has applied' : 'Never applied'"), 'CRM must show application history on tester records.');
 
 assert.ok(
   migrationSource.includes('grant execute on function public.invite_user_as_admin'),

@@ -7,6 +7,13 @@ export interface ApplicationScreenerResult {
   message: string;
 }
 
+export const isEligibleApplauseUtestId = (utestId?: string) => {
+  const normalizedId = utestId?.trim() || '';
+  if (!/^\d{7}$/.test(normalizedId)) return false;
+  const numericId = Number(normalizedId);
+  return numericId >= 3000001 && numericId <= 4000001;
+};
+
 export const hasValidUtestIdAndScreenshot = (utestId?: string, screenshotUrl?: string) => {
   if (!utestId?.trim() || !screenshotUrl) return false;
   try {

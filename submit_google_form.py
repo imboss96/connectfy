@@ -60,6 +60,11 @@ EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9\s().-]*$")
 
 
+def is_eligible_utest_id(value: str) -> bool:
+    normalized_id = str(value).strip()
+    return bool(re.fullmatch(r"[0-9]{7}", normalized_id)) and 3000001 <= int(normalized_id) <= 4000001
+
+
 def calculate_age_range(date_of_birth: str, today: date | None = None) -> str:
     born = date.fromisoformat(date_of_birth)
     current = today or date.today()
@@ -120,8 +125,8 @@ def validate_submission(data: dict[str, Any]) -> None:
     gmail_email = str(data["gmail_email"]).strip()
     if not EMAIL_PATTERN.fullmatch(gmail_email) or not gmail_email.casefold().endswith("@gmail.com"):
         raise ValueError("Use the applicant's profile email, which must be a @gmail.com address.")
-    if not re.fullmatch(r"30\d+", str(data["utest_id"]).strip()):
-        raise ValueError("The Applause screener is available only for uTest IDs that start with 30.")
+    if not is_eligible_utest_id(data["utest_id"]):
+        raise ValueError("The Applause screener is available only for uTest IDs from 3000001 through 4000001.")
     if data["screener_consent"] is not True:
         raise ValueError("The applicant has not consented to the external screener.")
     if data["gender"] not in GENDER_OPTIONS:

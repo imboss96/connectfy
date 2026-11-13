@@ -35,6 +35,7 @@ import { EditProjectModal } from './EditProjectModal';
 import { ProjectIcon } from './ProjectIcon';
 import evidenceImage from '../../evidence.png';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { isEligibleApplauseUtestId } from '../lib/applicationScreener';
 import {
   fetchProjectApplicationRestrictionEnabled,
   getBlockingProjectApplication,
@@ -562,8 +563,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
-    if (!/^30\d+$/.test(applicationDraft.testerId.trim())) {
-      setApplyError('The Applause screener is available only for uTest IDs that start with 30 and contain digits only.');
+    if (!isEligibleApplauseUtestId(applicationDraft.testerId)) {
+      setApplyError('The Applause screener is available only for uTest IDs from 3000001 through 4000001.');
       return;
     }
 
@@ -1524,7 +1525,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                       className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#00A3E0]"
                       placeholder="uTest Tester ID"
                     />
-                    <span className="text-[10px] font-normal text-slate-500">Applause screener submissions require an ID beginning with 30.</span>
+                    <span className="text-[10px] font-normal text-slate-500">Applause screener submissions require an ID from 3000001 through 4000001.</span>
                   </label>
 
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
