@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Briefcase, CheckCircle2, ExternalLink, Mail, MapPin, PlusCircle, RefreshCw, Search, Send, ShieldCheck, Users, X, XCircle } from 'lucide-react';
+import { Briefcase, CheckCircle2, Copy, ExternalLink, Mail, MapPin, PlusCircle, RefreshCw, Search, Send, ShieldCheck, Users, X, XCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
 import { AdminUserDetailsDialog } from './AdminUserDetailsDialog';
@@ -220,6 +220,7 @@ export const CRMSection: React.FC<{
   const [dismissingAdminId, setDismissingAdminId] = useState<string | null>(null);
   const [adminDismissStatus, setAdminDismissStatus] = useState<string | null>(null);
   const [adminDismissError, setAdminDismissError] = useState<string | null>(null);
+  const [slackInviteEmailStatus, setSlackInviteEmailStatus] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<PlatformMember | null>(null);
 
   const loadMembers = async () => {
@@ -944,6 +945,28 @@ export const CRMSection: React.FC<{
     });
   }, [members, roleFilter, search, applicationHistoryFilter, appliedTesterIds]);
 
+  const copySlackInviteEmails = async () => {
+    const emailByAddress = new Map<string, string>();
+    members.forEach((member) => {
+      const email = cleanText(member.email);
+      if (EMAIL_VALIDATION_PATTERN.test(email)) emailByAddress.set(email.toLowerCase(), email);
+    });
+    const emails = Array.from(emailByAddress.values());
+
+    if (emails.length === 0) {
+      setSlackInviteEmailStatus('No valid profile emails are available to copy.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(emails.join(', '));
+      setSlackInviteEmailStatus(`Copied ${emails.length} unique profile emails. Paste them into Slack's invite dialog.`);
+    } catch (error) {
+      console.error('Unable to copy platform emails for Slack:', error);
+      setSlackInviteEmailStatus('Clipboard access was blocked. Open this page over HTTPS and try again.');
+    }
+  };
+
   const roleCounts = useMemo(() => ({
     tester: members.filter((m) => m.role === 'tester').length,
     client: members.filter((m) => m.role === 'client').length,
@@ -1517,6 +1540,21 @@ export const CRMSection: React.FC<{
                 <PlusCircle className="w-4 h-4" />
                 {inviting ? 'Inviting...' : 'Invite Admin'}
               </button>
+            </div>
+          )}
+
+          {isSuperAdmin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copySlackInviteEmails()}
+                disabled={loading || members.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copy Slack invite emails
+              </button>
+              {slackInviteEmailStatus && <span role="status" className="text-xs text-slate-600">{slackInviteEmailStatus}</span>}
             </div>
           )}
 

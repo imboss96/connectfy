@@ -21,6 +21,7 @@ import {
 } from '../src/lib/emailSlackFooter.js';
 import { getNextPlatformPayDate } from '../src/lib/platformPayDate.js';
 
+assert.equal(CONNECTFY_SLACK_INVITE_URL, 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA');
 assert.match(appendSlackFooterHtml('<div>approval</div>'), new RegExp(CONNECTFY_SLACK_INVITE_URL));
 assert.match(appendSlackFooterHtml('<div>approval</div>'), new RegExp(CONNECTFY_SLACK_SUPPORT_URL));
 assert.equal(appendSlackFooterHtml(`<div>${CONNECTFY_SLACK_INVITE_URL}</div>`), `<div>${CONNECTFY_SLACK_INVITE_URL}</div>`);

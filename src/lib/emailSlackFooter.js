@@ -1,6 +1,6 @@
 // @ts-check
 
-export const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+export const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA';
 export const CONNECTFY_SLACK_SUPPORT_URL = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
 
 /**

@@ -2,7 +2,7 @@ import React, { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Video, X } from 'lucide-react';
 import { ConnectfyLogo } from './UTestLogo';
 
-const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA';
 const UTEST_GUIDE_SEEN_KEY = 'connectfy_utest_signup_guide_seen';
 const UTEST_GUIDE_VIDEO_URL = 'https://www.youtube.com/watch?v=F_XmEVQZaHc';
 

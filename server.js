@@ -30,7 +30,7 @@ const preferredPort = Number(process.env.PORT || 3002);
 const host = process.env.HOST || '127.0.0.1';
 const adminEmailTypes = new Set(['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome']);
 const APPLAUSE_SUPPORT_SLACK_LINK = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
-const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+const CONNECTFY_SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA';
 const SLACK_DOWNLOAD_URL = 'https://slack.com/downloads';
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
   '&': '&amp;',

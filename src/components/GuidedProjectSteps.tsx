@@ -21,7 +21,7 @@ const LANGUAGE_SETTINGS_REFERENCE_VIDEO_EMBED_URL = 'https://drive.google.com/fi
 const PROJECT_CONSENT_URL = 'https://prod-data-collection.cloud.utest.com/people/add_person_basics/3bd1eb19-fbf1-4f10-b354-0038bc016b5e/04e9d4c1-a615-4a85-b9fa-5b5b4ba7ff30';
 const SELFIE_COLLECTION_URL = 'https://myaccount.google.com/video-verification/collect?source=42';
 const COMPLETION_EVIDENCE_URL = 'https://wkf.ms/4i83vDd';
-const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyops/shared_invite/zt-4cmuhc6av-4dwkrhonBEtgxVaHBW6tJQ';
+const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA';
 const SLACK_SUPPORT_URL = 'https://app.slack.com/client/T0C8FU34030/C0C82GD0NMV';
 
 const stepIds = ['slack', 'consent', 'languageSettings', 'recordings'] as const;
