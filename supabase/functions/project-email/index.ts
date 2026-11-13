@@ -20,7 +20,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000'
 ];
-const adminEmailTypes = new Set(['invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply']);
+const adminEmailTypes = new Set(['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply']);
 
 const isAllowedOrigin = (value?: string | null) => {
   if (!value) return false;
@@ -63,7 +63,7 @@ const verifyEmailRequest = async (authorization: string | null, requireAdmin = t
   }
 
   const user = await authResponse.json();
-  const roleResponse = await fetch(`${baseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,email,name`, {
+  const roleResponse = await fetch(`${baseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,admin_access_level,email,name`, {
     headers: { apikey: supabaseAnonKey, Authorization: authorization }
   });
   if (!roleResponse.ok) {
@@ -88,6 +88,17 @@ const formatProjectDescription = (description: string) => {
 
 const buildHtml = (payload: Record<string, any>) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'application_request') {
+    const escape = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[character] || character);
+    const safeLink = escape(projectLink);
+    return `<div style="font-family:Arial,sans-serif;background:#f6f9fc;padding:32px;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:14px;overflow:hidden;"><div style="padding:20px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escape(payload.toName || 'there')},</p><h1 style="font-size:22px;">You’re invited to apply</h1><p style="line-height:1.7;">${escape(payload.projectCompany || 'Connectfy')} is accepting applications for <strong>${escape(payload.projectTitle || 'the project')}</strong>. Review the project details and submit your application if you’re interested.</p><p style="line-height:1.7;">You must complete your application and any required screener answers yourself. Connectfy will submit the screener automatically after you submit an eligible application.</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Review project and apply</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+  }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
   }
@@ -167,6 +178,20 @@ const buildHtml = (payload: Record<string, any>) => {
 
 const buildText = (payload: Record<string, any>) => {
   const projectLink = payload.projectLink || payload.actionUrl || 'https://connectfy.tech';
+  if (payload.type === 'application_request') {
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      `${payload.projectCompany || 'Connectfy'} is accepting applications for ${payload.projectTitle || 'a project opportunity'}. Review the project details and apply if interested.`,
+      '',
+      'You must complete your application and any required screener answers yourself. Connectfy will submit the screener automatically after you submit an eligible application.',
+      '',
+      `Review project and apply: ${projectLink}`,
+      '',
+      'Best,',
+      'Connectfy Team'
+    ].join('\n');
+  }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailText(payload.toName, projectLink, payload.supportEmail);
   }
@@ -239,6 +264,56 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
+      if (type === 'application_request') {
+        const { profile } = verification;
+        if (profile.role !== 'admin' || !['super_admin', 'project_manager'].includes(profile.admin_access_level)) {
+          return new Response(JSON.stringify({ ok: false, message: 'Only project managers and super admins can send application requests.' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        const projectId = String(payload.projectId || '').trim();
+        const testerId = String(payload.testerId || '').trim();
+        if (!projectId || !testerId) throw new Error('Project and tester IDs are required.');
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!.replace(/\/$/, '');
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+        const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization! };
+        const restBase = `${supabaseUrl}/rest/v1`;
+        const [projectResponse, testerResponse, applicationResponse] = await Promise.all([
+          fetch(`${restBase}/projects?id=eq.${encodeURIComponent(projectId)}&select=id,title,company,short_description,deadline,category,status,slots_total,slots_filled`, { headers: restHeaders }),
+          fetch(`${restBase}/profiles?id=eq.${encodeURIComponent(testerId)}&role=eq.tester&select=id,name,email`, { headers: restHeaders }),
+          fetch(`${restBase}/applications?tester_id=eq.${encodeURIComponent(testerId)}&select=id&limit=1`, { headers: restHeaders })
+        ]);
+        if (!projectResponse.ok || !testerResponse.ok || !applicationResponse.ok) {
+          throw new Error('Unable to verify the project, tester, or application history.');
+        }
+        const [projectRows, testerRows, applicationRows] = await Promise.all([
+          projectResponse.json(), testerResponse.json(), applicationResponse.json()
+        ]);
+        const project = projectRows[0];
+        const tester = testerRows[0];
+        if (!project || !tester || !tester.email) throw new Error('The project or registered tester could not be found.');
+        if (applicationRows.length > 0) throw new Error('This tester already has a project application and is not eligible for a first-application request.');
+        if (String(project.status || 'active').toLowerCase() !== 'active'
+          || Number(project.slots_total) <= 0
+          || Number(project.slots_filled || 0) >= Number(project.slots_total)) {
+          throw new Error('This project is not currently accepting applications.');
+        }
+        const applicationLink = new URL(Deno.env.get('APP_URL') || 'https://connectfy.tech');
+        applicationLink.search = '';
+        applicationLink.searchParams.set('project', project.id);
+        applicationLink.searchParams.set('apply', '1');
+        applicationLink.hash = '';
+        payload.toEmail = tester.email;
+        payload.toName = tester.name || tester.email.split('@')[0];
+        payload.projectTitle = project.title;
+        payload.projectCompany = project.company || 'Connectfy';
+        payload.projectDescription = project.short_description || '';
+        payload.projectDeadline = project.deadline || '';
+        payload.projectCategory = project.category || '';
+        payload.actionUrl = applicationLink.toString();
+        payload.projectLink = applicationLink.toString();
+      }
     } else if (type === 'application') {
       const authorization = req.headers.get('authorization');
       const verification = await verifyEmailRequest(authorization, false);
@@ -266,8 +341,8 @@ serve(async (req) => {
       errors.push('Request body must be a JSON object.');
     }
 
-    if (!['application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply'].includes(type)) {
-      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', or 'legacy_sheet_reapply'.`);
+    if (!['application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply'].includes(type)) {
+      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', or 'legacy_sheet_reapply'.`);
     }
 
     if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
@@ -308,7 +383,9 @@ serve(async (req) => {
     const requestPayload = {
       sender: { name: 'Connectfy', email: senderEmail },
       to: [{ email: toEmail, name: toName }],
-      subject: payload.type === 'invite'
+      subject: payload.type === 'application_request'
+        ? `Now accepting applications: ${payload.projectTitle || 'Connectfy project'}`
+        : payload.type === 'invite'
         ? buildProjectApprovalEmailSubject(payload.projectTitle)
         : payload.type === 'accepted'
           ? `Invite Accepted: ${payload.projectTitle || 'Project Update'}`

@@ -259,6 +259,26 @@ export async function fetchRegisteredTestersFromSupabase(): Promise<RegisteredTe
   })).filter((profile) => profile.email);
 }
 
+export async function fetchApplicationTesterIdsFromSupabase(): Promise<Set<string>> {
+  if (!supabase) throw new Error('Connectfy application history is not configured.');
+
+  const testerIds = new Set<string>();
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('applications')
+      .select('tester_id')
+      .order('tester_id', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    (data || []).forEach((application) => {
+      if (application.tester_id) testerIds.add(application.tester_id);
+    });
+    if (!data || data.length < pageSize) return testerIds;
+  }
+}
+
 export async function fetchSubmissionsFromSupabase() {
   if (!supabase) return [];
 

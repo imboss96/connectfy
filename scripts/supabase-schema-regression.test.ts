@@ -43,6 +43,8 @@ assert.ok(crmSource.includes("appliedTesterIds.has(member.id) ? 'Has applied' : 
 assert.ok(massInviteSource.includes("application.testerId === tester.id"), 'Mass invites must filter registered testers by all-project application history.');
 assert.ok(massInviteSource.includes('Never applied anywhere'), 'Mass invites must expose the never-applied audience filter.');
 assert.ok(massInviteSource.includes('Select all {selectableInviteTesters.length} visible profiles'), 'Mass invites must allow bulk-selecting the filtered tester audience.');
+assert.ok(massInviteSource.includes('fetchApplicationTesterIdsFromSupabase'), 'Mass invites must load complete application history before filtering the audience.');
+assert.ok(massInviteSource.includes('type: \'application_request\''), 'Mass invites must email a project application link without creating an invitation record.');
 
 assert.ok(
   migrationSource.includes('grant execute on function public.invite_user_as_admin'),

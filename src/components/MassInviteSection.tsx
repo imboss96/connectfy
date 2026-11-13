@@ -1,21 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { fetchRegisteredTestersFromSupabase, RegisteredTester } from '../lib/projectRepository';
+import { sendProjectEmail } from '../lib/emailService';
+import {
+  fetchApplicationTesterIdsFromSupabase,
+  fetchRegisteredTestersFromSupabase,
+  RegisteredTester
+} from '../lib/projectRepository';
 
 type InviteAudienceFilter = 'all' | 'never_applied' | 'has_applied';
 
 export const MassInviteSection: React.FC = () => {
   const { projects, applications, inviteTesterToProject } = useApp();
   const [registeredTesters, setRegisteredTesters] = useState<RegisteredTester[]>([]);
+  const [applicationTesterIds, setApplicationTesterIds] = useState<Set<string> | null>(null);
   const [testerDirectoryError, setTesterDirectoryError] = useState('');
   const [inviteSearch, setInviteSearch] = useState('');
   const [inviteAudienceFilter, setInviteAudienceFilter] = useState<InviteAudienceFilter>('all');
   const [selectedInviteTesterIds, setSelectedInviteTesterIds] = useState<string[]>([]);
   const [inviteProjectId, setInviteProjectId] = useState('');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [isSendingApplicationRequests, setIsSendingApplicationRequests] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState('');
   const [isLoadingTesters, setIsLoadingTesters] = useState(true);
+  const [isLoadingApplicationHistory, setIsLoadingApplicationHistory] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -33,6 +41,20 @@ export const MassInviteSection: React.FC = () => {
           setIsLoadingTesters(false);
         }
       });
+    void fetchApplicationTesterIdsFromSupabase()
+      .then((testerIds) => {
+        if (isMounted) {
+          setApplicationTesterIds(testerIds);
+          setIsLoadingApplicationHistory(false);
+        }
+      })
+      .catch((error) => {
+        console.error('Unable to load application history for project invitations:', error);
+        if (isMounted) {
+          setTesterDirectoryError(error instanceof Error ? error.message : 'Unable to load application history.');
+          setIsLoadingApplicationHistory(false);
+        }
+      });
     return () => { isMounted = false; };
   }, []);
 
@@ -44,12 +66,13 @@ export const MassInviteSection: React.FC = () => {
     const query = inviteSearch.trim().toLowerCase();
     return registeredTesters.filter((tester) => {
       const matchesSearch = !query || tester.name.toLowerCase().includes(query) || tester.email.toLowerCase().includes(query);
-      const hasApplied = applications.some((application) => application.testerId === tester.id);
+      const hasApplied = applicationTesterIds?.has(tester.id) ?? false;
       const matchesAudience = inviteAudienceFilter === 'all'
-        || (inviteAudienceFilter === 'never_applied' ? !hasApplied : hasApplied);
+        || (applicationTesterIds !== null
+          && (inviteAudienceFilter === 'never_applied' ? !hasApplied : hasApplied));
       return matchesSearch && matchesAudience;
     });
-  }, [applications, inviteAudienceFilter, inviteSearch, registeredTesters]);
+  }, [applicationTesterIds, inviteAudienceFilter, inviteSearch, registeredTesters]);
 
   const selectableInviteTesters = useMemo(() => matchingInviteTesters.filter((tester) =>
     !applications.some((application) =>
@@ -104,6 +127,57 @@ export const MassInviteSection: React.FC = () => {
     setIsSendingInvite(false);
   };
 
+  const handleSendApplicationRequests = async () => {
+    const project = projects.find((item) => item.id === inviteProjectId);
+    const selectedTesters = registeredTesters.filter((tester) => selectedInviteTesterIds.includes(tester.id));
+    if (!project || selectedTesters.length === 0 || inviteAudienceFilter !== 'never_applied' || applicationTesterIds === null) {
+      setInviteFeedback('Choose a project, select Never applied anywhere, and select at least one tester.');
+      return;
+    }
+
+    const applicationUrl = new URL(window.location.href);
+    applicationUrl.search = '';
+    applicationUrl.searchParams.set('project', project.id);
+    applicationUrl.searchParams.set('apply', '1');
+    applicationUrl.hash = '';
+
+    setIsSendingApplicationRequests(true);
+    setInviteFeedback('');
+    const failedRequests: RegisteredTester[] = [];
+    let sentCount = 0;
+    for (const tester of selectedTesters) {
+      try {
+        await sendProjectEmail({
+          type: 'application_request',
+          toEmail: tester.email,
+          toName: tester.name,
+          projectTitle: project.title,
+          projectCompany: project.company,
+          projectDescription: project.shortDescription,
+          projectDeadline: project.deadline,
+          projectCategory: project.category,
+          projectId: project.id,
+          testerId: tester.id,
+          actionUrl: applicationUrl.toString(),
+          projectLink: applicationUrl.toString()
+        });
+        sentCount += 1;
+      } catch (error) {
+        console.error(`Unable to send application request to tester ${tester.id}:`, error);
+        failedRequests.push(tester);
+      }
+    }
+
+    const successfulIds = selectedTesters
+      .filter((tester) => !failedRequests.some((failedTester) => failedTester.id === tester.id))
+      .map((tester) => tester.id);
+    setSelectedInviteTesterIds((selected) => selected.filter((id) => !successfulIds.includes(id)));
+    setInviteFeedback(failedRequests.length
+      ? `${sentCount} application request${sentCount === 1 ? '' : 's'} sent. Failed: ${failedRequests.map((tester) => tester.name).join(', ')}. You can retry the selected profiles.`
+      : `Application requests sent to ${sentCount} tester${sentCount === 1 ? '' : 's'}.`);
+    setIsSendingApplicationRequests(false);
+  };
+
   return (
     <div className="space-y-5 animate-fade-in text-slate-700">
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -137,7 +211,8 @@ export const MassInviteSection: React.FC = () => {
                 setInviteAudienceFilter(event.target.value as InviteAudienceFilter);
                 setSelectedInviteTesterIds([]);
               }}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-[#007AFF] focus:outline-none"
+              disabled={isLoadingApplicationHistory || applicationTesterIds === null}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="all">All testers</option>
               <option value="never_applied">Never applied anywhere</option>
@@ -153,7 +228,7 @@ export const MassInviteSection: React.FC = () => {
                 type="checkbox"
                 checked={selectableInviteTesters.length > 0 && selectableInviteTesters.every((tester) => selectedInviteTesterIds.includes(tester.id))}
                 onChange={toggleAllVisibleInviteTesters}
-                disabled={isSendingInvite || selectableInviteTesters.length === 0}
+                disabled={isSendingInvite || isSendingApplicationRequests || selectableInviteTesters.length === 0}
                 className="h-4 w-4 rounded border-slate-300 text-[#007AFF] focus:ring-[#007AFF]"
               />
               Select all {selectableInviteTesters.length} visible profiles
@@ -163,6 +238,8 @@ export const MassInviteSection: React.FC = () => {
           <div className="max-h-[min(60vh,32rem)] divide-y divide-slate-100 overflow-y-auto">
             {isLoadingTesters ? (
               <p className="px-4 py-6 text-center text-xs text-slate-500">Loading registered tester profiles…</p>
+            ) : isLoadingApplicationHistory && inviteAudienceFilter !== 'all' ? (
+              <p className="px-4 py-6 text-center text-xs text-slate-500">Loading complete application history…</p>
             ) : matchingInviteTesters.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-slate-500">No tester profiles match these filters.</p>
             ) : matchingInviteTesters.map((tester) => {
@@ -182,14 +259,14 @@ export const MassInviteSection: React.FC = () => {
                     type="checkbox"
                     checked={selectedInviteTesterIds.includes(tester.id)}
                     onChange={() => toggleInviteTester(tester.id)}
-                    disabled={isSendingInvite || !inviteProjectId || alreadyAccepted}
+                    disabled={isSendingInvite || isSendingApplicationRequests || !inviteProjectId || alreadyAccepted}
                     className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#007AFF] focus:ring-[#007AFF]"
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold text-slate-800">{tester.name}</span>
                     <span className="block truncate text-[11px] text-slate-500">{tester.email}</span>
                   </span>
-                  {!applications.some((application) => application.testerId === tester.id) && (
+                  {applicationTesterIds && !applicationTesterIds.has(tester.id) && (
                     <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">Never applied</span>
                   )}
                   {alreadyAccepted ? (
@@ -204,15 +281,25 @@ export const MassInviteSection: React.FC = () => {
         </div>
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            onClick={() => void handleSendProjectInvites()}
-            disabled={isSendingInvite || !inviteProjectId || selectedInviteTesterIds.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />{isSendingInvite ? `Sending ${selectedInviteTesterIds.length} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}…` : `Send ${selectedInviteTesterIds.length || ''} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}`}
-          </button>
-          {inviteFeedback && <p role="status" className={`text-xs ${inviteFeedback.startsWith('Invitations sent') ? 'text-emerald-700' : 'text-amber-700'}`}>{inviteFeedback}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSendProjectInvites()}
+              disabled={isSendingInvite || isSendingApplicationRequests || !inviteProjectId || selectedInviteTesterIds.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />{isSendingInvite ? `Sending ${selectedInviteTesterIds.length} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}…` : `Send ${selectedInviteTesterIds.length || ''} invite${selectedInviteTesterIds.length === 1 ? '' : 's'}`}
+            </button>
+            {inviteAudienceFilter === 'never_applied' && <button
+                type="button"
+                onClick={() => void handleSendApplicationRequests()}
+                disabled={isSendingInvite || isSendingApplicationRequests || !inviteProjectId || selectedInviteTesterIds.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0066EE] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Users className="h-4 w-4" />{isSendingApplicationRequests ? `Sending ${selectedInviteTesterIds.length} requests…` : `Request applications (${selectedInviteTesterIds.length})`}
+              </button>}
+          </div>
+          {inviteFeedback && <p role="status" className={`text-xs ${inviteFeedback.startsWith('Invitations sent') || inviteFeedback.startsWith('Application requests sent') ? 'text-emerald-700' : 'text-amber-700'}`}>{inviteFeedback}</p>}
         </div>
         {testerDirectoryError ? (
           <p role="alert" className="text-xs text-rose-700">{testerDirectoryError}</p>

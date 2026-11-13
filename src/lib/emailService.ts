@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome';
+export type ProjectEmailType = 'application' | 'application_request' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -23,6 +23,8 @@ export class EmailTemplateMismatchError extends Error {
 
 export function formatProjectEmailType(type?: string | null): ProjectEmailType {
   switch (type) {
+    case 'application_request':
+      return 'application_request';
     case 'invite':
       return 'invite';
     case 'accepted':
