@@ -25,6 +25,8 @@ import {
   X,
   CheckCircle2,
   ArrowLeft,
+  MessageCircle,
+  Users,
   Building,
   Sparkles,
   Layers,
@@ -35,6 +37,8 @@ import { useApp } from '../context/AppContext';
 import { ProjectIcon } from './ProjectIcon';
 import { DeviceFleetItem, LanguageSkill } from '../types';
 import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
+import { CONNECTFY_SLACK_INVITE_URL } from '../lib/emailSlackFooter.js';
+import { buildProfileHelpWhatsAppUrl, CONNECTFY_SUPPORT_PHONE } from '../lib/profileSupportContacts.js';
 
 interface ProfileSettingsProps {
   onBack?: () => void;
@@ -911,6 +915,37 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onBack }) => {
           {/* Tab 2: Hardware Fleet */}
       {currentTab === 'utest' && (
         <div className="max-w-3xl rounded-2xl border border-[#1E2E4E] bg-[#0B132B] p-6 shadow-lg">
+          <div className="mb-5 rounded-xl border border-cyan-400/20 bg-[#111C33] p-4">
+            <h3 className="text-sm font-bold text-white">Need help completing your profile?</h3>
+            <p className="mt-1 text-xs text-slate-300">Reach the Connectfy team through any of these channels.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={CONNECTFY_SLACK_INVITE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-[#0B132B] px-3 py-2 text-xs font-semibold text-slate-100 hover:border-cyan-400"
+              >
+                <Users className="h-4 w-4" />
+                Join us on Slack
+              </a>
+              <a
+                href={buildProfileHelpWhatsAppUrl(email || testerProfile.email)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/20"
+              >
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp us
+              </a>
+              <a
+                href={`tel:${CONNECTFY_SUPPORT_PHONE}`}
+                className="inline-flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/20"
+              >
+                <Phone className="h-4 w-4" />
+                Call {CONNECTFY_SUPPORT_PHONE}
+              </a>
+            </div>
+          </div>
           <div className="mb-5 flex items-start gap-3 border-b border-[#1E2E4E] pb-4">
             <div className="rounded-xl bg-[#007AFF]/15 p-2 text-[#38BDF8]">
               <Briefcase className="h-5 w-5" />

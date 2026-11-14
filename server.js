@@ -15,6 +15,7 @@ import {
   buildProjectApprovalEmailText
 } from './src/lib/projectApprovalEmail.js';
 import { appendSlackFooterHtml, appendSlackFooterText } from './src/lib/emailSlackFooter.js';
+import { PROJECT_CONSENT_URL } from './src/lib/projectConsent.js';
 import { getNextPlatformPayDate } from './src/lib/platformPayDate.js';
 import { buildEmployeeContractPdf } from './src/lib/employeeContractPdf.js';
 import { EmailProviderHttpError, sendWithEmailProviderFailover } from './src/lib/emailProviderFailover.js';
@@ -157,15 +158,19 @@ const buildHtml = (payload) => {
       consent_signature: {
         subject: 'Action required: sign your project consent form',
         heading: 'Please sign your consent form',
-        body: `Our records show that a consent form has been sent for <strong>${escapeHtml(payload.projectTitle || 'your project')}</strong>. Please review and sign it promptly. A signed consent form is required to continue with the project.`
+        body: `Our records show that a consent form has been sent for <strong>${escapeHtml(payload.projectTitle || 'your project')}</strong>. Please review and sign it promptly using the link below. A signed consent form is required to continue with the project.`
       }
     };
     const message = messages[payload.applauseFollowUpKind];
     if (!message) throw new Error('Unsupported Applause follow-up email kind.');
     const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    const safeConsentLink = escapeHtml(PROJECT_CONSENT_URL);
+    const consentCallToAction = payload.applauseFollowUpKind === 'consent_signature'
+      ? `<p style="margin:24px 0;"><a href="${safeConsentLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#0b5cff;color:#fff;text-decoration:none;font-weight:700;">Open and sign your consent form</a></p><p>If the button does not work, open this link: <a href="${safeConsentLink}">${safeConsentLink}</a></p>`
+      : '';
     const slackInviteUrl = escapeHtml(CONNECTFY_SLACK_INVITE_URL);
     const slackDownloadUrl = escapeHtml(SLACK_DOWNLOAD_URL);
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">${message.heading}</h1><p style="line-height:1.7;">${message.body}</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Open Connectfy</a></p><div style="margin:20px 0;padding:16px;border-radius:10px;background:#f8fafc;"><h2 style="margin:0 0 8px;font-size:16px;">Join us on Slack for real-time communication</h2><p style="margin:0 0 12px;line-height:1.6;">Download the Slack app, then join the Connectfy Ops workspace so you can receive project updates and contact the team in real time.</p><p style="margin:0 0 10px;"><a href="${slackDownloadUrl}" style="color:#007f95;font-weight:700;">Download Slack</a></p><p style="margin:0;"><a href="${slackInviteUrl}" style="color:#007f95;font-weight:700;">Join the Connectfy Ops Slack workspace</a></p></div><p style="color:#475569;">If you need assistance, contact <a href="mailto:support@connectfy.tech">support@connectfy.tech</a>.</p><p>Best regards,<br>Connectfy Team</p></div></div></div>`;
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">${message.heading}</h1><p style="line-height:1.7;">${message.body}</p>${consentCallToAction}<p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Open Connectfy</a></p><div style="margin:20px 0;padding:16px;border-radius:10px;background:#f8fafc;"><h2 style="margin:0 0 8px;font-size:16px;">Join us on Slack for real-time communication</h2><p style="margin:0 0 12px;line-height:1.6;">Download the Slack app, then join the Connectfy Ops workspace so you can receive project updates and contact the team in real time.</p><p style="margin:0 0 10px;"><a href="${slackDownloadUrl}" style="color:#007f95;font-weight:700;">Download Slack</a></p><p style="margin:0;"><a href="${slackInviteUrl}" style="color:#007f95;font-weight:700;">Join the Connectfy Ops Slack workspace</a></p></div><p style="color:#475569;">If you need assistance, contact <a href="mailto:support@connectfy.tech">support@connectfy.tech</a>.</p><p>Best regards,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'application_utest_details_request') {
     const projectTitle = escapeHtml(payload.projectTitle || 'your project');
@@ -373,7 +378,7 @@ const buildText = (payload) => {
       },
       consent_signature: {
         subject: 'Action required: sign your project consent form',
-        body: `Our records show that a consent form has been sent for ${payload.projectTitle || 'your project'}. Please review and sign it promptly. A signed consent form is required to continue with the project.`
+        body: `Our records show that a consent form has been sent for ${payload.projectTitle || 'your project'}. Please review and sign it promptly using the link below. A signed consent form is required to continue with the project.`
       }
     };
     const message = messages[payload.applauseFollowUpKind];
@@ -383,6 +388,9 @@ const buildText = (payload) => {
       '',
       message.body,
       '',
+      ...(payload.applauseFollowUpKind === 'consent_signature'
+        ? ['Open and sign your consent form:', PROJECT_CONSENT_URL, '']
+        : []),
       `Open Connectfy: ${projectLink}`,
       'Join the Connectfy Ops workspace on Slack for real-time project communication:',
       `Download Slack: ${SLACK_DOWNLOAD_URL}`,

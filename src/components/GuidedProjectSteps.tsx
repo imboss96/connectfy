@@ -15,10 +15,10 @@ import {
   saveProjectStepProgress,
   usesRemoteProjectStepProgress
 } from '../lib/projectStepProgress';
+import { PROJECT_CONSENT_URL } from '../lib/projectConsent.js';
 
 const LANGUAGE_SETTINGS_FORM_URL = 'https://forms.monday.com/forms/108f5b47f91717382930502bd999303d?r=use1';
 const LANGUAGE_SETTINGS_REFERENCE_VIDEO_EMBED_URL = 'https://drive.google.com/file/d/1WzraUOaatrefjtcW23H9YEZm77-6vG0S/preview';
-const PROJECT_CONSENT_URL = 'https://prod-data-collection.cloud.utest.com/people/add_person_basics/3bd1eb19-fbf1-4f10-b354-0038bc016b5e/04e9d4c1-a615-4a85-b9fa-5b5b4ba7ff30';
 const SELFIE_COLLECTION_URL = 'https://myaccount.google.com/video-verification/collect?source=42';
 const COMPLETION_EVIDENCE_URL = 'https://wkf.ms/4i83vDd';
 const SLACK_INVITE_URL = 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA';
