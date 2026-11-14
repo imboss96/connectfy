@@ -12,7 +12,15 @@ import {
   buildProjectApprovalEmailSubject,
   buildProjectApprovalEmailText
 } from '../../../src/lib/projectApprovalEmail.js';
-import { appendSlackFooterHtml, appendSlackFooterText } from '../../../src/lib/emailSlackFooter.js';
+import {
+  appendSlackFooterHtml,
+  appendSlackFooterText,
+  CONNECTFY_SLACK_INVITE_URL
+} from '../../../src/lib/emailSlackFooter.js';
+import {
+  buildProfileHelpWhatsAppUrl,
+  CONNECTFY_SUPPORT_PHONE
+} from '../../../src/lib/profileSupportContacts.js';
 import { getMissingTesterProfileFields } from '../../../src/lib/testerProfileCompleteness.js';
 
 const allowedOrigins = [
@@ -109,11 +117,13 @@ const buildHtml = (payload: Record<string, any>) => {
   }
   if (payload.type === 'profile_update_request') {
     const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    const safeWhatsAppLink = escapeHtml(buildProfileHelpWhatsAppUrl(payload.toEmail));
+    const safeSlackInviteLink = escapeHtml(CONNECTFY_SLACK_INVITE_URL);
     const missingFields = Array.isArray(payload.missingFields) ? payload.missingFields : [];
     const fieldList = missingFields.length
       ? `<ul style="line-height:1.8;">${missingFields.map((field: unknown) => `<li>${escapeHtml(field)}</li>`).join('')}</ul>`
       : '<p>Review your tester profile and make sure your details are up to date.</p>';
-    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">Please complete your tester profile</h1><p style="line-height:1.7;">Some information needed to assess eligibility for current Connectfy projects is missing or invalid in your profile:</p>${fieldList}<p style="line-height:1.7;">Please sign in and update these details. Completing your profile helps us assess project eligibility, but does not guarantee selection for a project.</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Update my profile</a></p><p>For uTest ID, uTest email, legal name, and date of birth, open Profile &amp; Fleet and choose uTest Partner Details. Update your phone number and country in Personal Information.</p><p>Need help? Contact <a href="mailto:support@connectfy.tech">support@connectfy.tech</a>.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">Please complete your tester profile</h1><p style="line-height:1.7;">Some information needed to assess eligibility for current Connectfy projects is missing or invalid in your profile:</p>${fieldList}<p style="line-height:1.7;">Please sign in and update these details. Completing your profile helps us assess project eligibility, but does not guarantee selection for a project.</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Update my profile</a></p><p>For uTest ID, uTest email, legal name, and date of birth, open Profile &amp; Fleet and choose uTest Partner Details. Update your phone number and country in Personal Information.</p><div style="margin:24px 0;padding:16px;border:1px solid #dbeafe;border-radius:10px;background:#f8fbff;"><p style="margin:0 0 12px;font-weight:700;">Need help? Contact Connectfy through any of these channels:</p><p style="margin:0 0 12px;"><a href="${safeWhatsAppLink}" style="display:inline-block;padding:11px 16px;border-radius:8px;background:#25D366;color:#fff;text-decoration:none;font-weight:700;">Message us on WhatsApp</a></p><p style="margin:0 0 8px;">Call us: <a href="tel:${CONNECTFY_SUPPORT_PHONE}" style="color:#0056D6;font-weight:700;">${CONNECTFY_SUPPORT_PHONE}</a></p><p style="margin:0 0 8px;">Join us on Slack: <a href="${safeSlackInviteLink}" style="color:#0056D6;font-weight:700;">Connectfy Ops workspace</a></p><p style="margin:0;">Email: <a href="mailto:support@connectfy.tech" style="color:#0056D6;">support@connectfy.tech</a></p></div><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
@@ -220,7 +230,11 @@ const buildText = (payload: Record<string, any>) => {
       'For uTest ID, uTest email, legal name, and date of birth, open Profile & Fleet and choose uTest Partner Details. Update your phone number and country in Personal Information.',
       '',
       `Update your profile: ${projectLink}`,
-      'Need help? Contact support@connectfy.tech.',
+      'Need help? Contact Connectfy through any of these channels:',
+      `WhatsApp: ${buildProfileHelpWhatsAppUrl(payload.toEmail)}`,
+      `Call: ${CONNECTFY_SUPPORT_PHONE}`,
+      `Slack: ${CONNECTFY_SLACK_INVITE_URL}`,
+      'Email: support@connectfy.tech.',
       '',
       'Best,',
       'Connectfy Team'
