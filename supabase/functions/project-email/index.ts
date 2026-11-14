@@ -13,6 +13,7 @@ import {
   buildProjectApprovalEmailText
 } from '../../../src/lib/projectApprovalEmail.js';
 import { appendSlackFooterHtml, appendSlackFooterText } from '../../../src/lib/emailSlackFooter.js';
+import { getMissingTesterProfileFields } from '../../../src/lib/testerProfileCompleteness.js';
 
 const allowedOrigins = [
   'https://connectfy.tech',
@@ -20,7 +21,14 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000'
 ];
-const adminEmailTypes = new Set(['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply']);
+const adminEmailTypes = new Set(['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'profile_update_request']);
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+})[character] || character);
 
 const isAllowedOrigin = (value?: string | null) => {
   if (!value) return false;
@@ -98,6 +106,14 @@ const buildHtml = (payload: Record<string, any>) => {
     })[character] || character);
     const safeLink = escape(projectLink);
     return `<div style="font-family:Arial,sans-serif;background:#f6f9fc;padding:32px;color:#10213b;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #dfeaf5;border-radius:14px;overflow:hidden;"><div style="padding:20px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escape(payload.toName || 'there')},</p><h1 style="font-size:22px;">You’re invited to apply</h1><p style="line-height:1.7;">${escape(payload.projectCompany || 'Connectfy')} is accepting applications for <strong>${escape(payload.projectTitle || 'the project')}</strong>. Review the project details and submit your application if you’re interested.</p><p style="line-height:1.7;">You must complete your application and any required screener answers yourself. Connectfy will submit the screener automatically after you submit an eligible application.</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Review project and apply</a></p><p>Best,<br>Connectfy Team</p></div></div></div>`;
+  }
+  if (payload.type === 'profile_update_request') {
+    const safeLink = escapeHtml(/^https?:\/\//i.test(projectLink) ? projectLink : 'https://connectfy.tech');
+    const missingFields = Array.isArray(payload.missingFields) ? payload.missingFields : [];
+    const fieldList = missingFields.length
+      ? `<ul style="line-height:1.8;">${missingFields.map((field: unknown) => `<li>${escapeHtml(field)}</li>`).join('')}</ul>`
+      : '<p>Review your tester profile and make sure your details are up to date.</p>';
+    return `<div style="margin:0;padding:24px 12px;background:#f4f6f8;font-family:Arial,sans-serif;color:#202124;"><div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;"><div style="padding:18px 24px;background:#080808;color:#fff;font-size:20px;font-weight:700;">Connectfy</div><div style="padding:24px;"><p>Hello ${escapeHtml(payload.toName || 'there')},</p><h1 style="font-size:21px;">Please complete your tester profile</h1><p style="line-height:1.7;">Some information needed to assess eligibility for current Connectfy projects is missing or invalid in your profile:</p>${fieldList}<p style="line-height:1.7;">Please sign in and update these details. Completing your profile helps us assess project eligibility, but does not guarantee selection for a project.</p><p style="margin:24px 0;"><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#007AFF;color:#fff;text-decoration:none;font-weight:700;">Update my profile</a></p><p>For uTest ID, uTest email, legal name, and date of birth, open Profile &amp; Fleet and choose uTest Partner Details. Update your phone number and country in Personal Information.</p><p>Need help? Contact <a href="mailto:support@connectfy.tech">support@connectfy.tech</a>.</p><p>Best,<br>Connectfy Team</p></div></div></div>`;
   }
   if (payload.type === 'legacy_sheet_reapply') {
     return buildLegacySheetEmailHtml(payload.toName, projectLink, payload.supportEmail);
@@ -187,6 +203,24 @@ const buildText = (payload: Record<string, any>) => {
       'You must complete your application and any required screener answers yourself. Connectfy will submit the screener automatically after you submit an eligible application.',
       '',
       `Review project and apply: ${projectLink}`,
+      '',
+      'Best,',
+      'Connectfy Team'
+    ].join('\n');
+  }
+  if (payload.type === 'profile_update_request') {
+    const missingFields = Array.isArray(payload.missingFields) ? payload.missingFields : [];
+    return [
+      `Hello ${payload.toName || 'there'},`,
+      '',
+      'Some information needed to assess eligibility for current Connectfy projects is missing or invalid in your tester profile:',
+      ...missingFields.map((field: unknown) => `- ${String(field)}`),
+      '',
+      'Please sign in and update these details. Completing your profile helps us assess project eligibility, but does not guarantee selection for a project.',
+      'For uTest ID, uTest email, legal name, and date of birth, open Profile & Fleet and choose uTest Partner Details. Update your phone number and country in Personal Information.',
+      '',
+      `Update your profile: ${projectLink}`,
+      'Need help? Contact support@connectfy.tech.',
       '',
       'Best,',
       'Connectfy Team'
@@ -313,6 +347,39 @@ serve(async (req) => {
         payload.projectCategory = project.category || '';
         payload.actionUrl = applicationLink.toString();
         payload.projectLink = applicationLink.toString();
+      } else if (type === 'profile_update_request') {
+        const { profile } = verification;
+        if (profile.role !== 'admin' || !['super_admin', 'project_manager'].includes(profile.admin_access_level)) {
+          return new Response(JSON.stringify({ ok: false, message: 'Only project managers and super admins can send profile update requests.' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        const testerId = String(payload.testerId || '').trim();
+        if (!testerId) throw new Error('The tester account is required.');
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!.replace(/\/$/, '');
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+        const restHeaders = { apikey: supabaseAnonKey, Authorization: authorization! };
+        const restBase = `${supabaseUrl}/rest/v1`;
+        const [testerResponse, detailsResponse] = await Promise.all([
+          fetch(`${restBase}/profiles?id=eq.${encodeURIComponent(testerId)}&role=eq.tester&select=id,name,email,country,profile_data`, { headers: restHeaders }),
+          fetch(`${restBase}/application_utest_details?tester_id=eq.${encodeURIComponent(testerId)}&select=full_name,utest_id,utest_email,date_of_birth,phone_number,country`, { headers: restHeaders })
+        ]);
+        if (!testerResponse.ok || !detailsResponse.ok) throw new Error('Unable to verify the tester profile details.');
+        const [testerRows, detailsRows] = await Promise.all([testerResponse.json(), detailsResponse.json()]);
+        const tester = testerRows[0];
+        if (!tester || !tester.email) throw new Error('The registered tester or email could not be found.');
+        const missingFields = getMissingTesterProfileFields(tester, detailsRows);
+        if (missingFields.length === 0) throw new Error('This tester profile already has the required information.');
+        const profileLink = new URL(Deno.env.get('APP_URL') || 'https://connectfy.tech');
+        profileLink.search = '';
+        profileLink.searchParams.set('settings', 'utest');
+        profileLink.hash = '';
+        payload.toEmail = tester.email;
+        payload.toName = tester.name || tester.email.split('@')[0];
+        payload.missingFields = missingFields;
+        payload.actionUrl = profileLink.toString();
+        payload.projectLink = profileLink.toString();
       }
     } else if (type === 'application') {
       const authorization = req.headers.get('authorization');
@@ -341,8 +408,8 @@ serve(async (req) => {
       errors.push('Request body must be a JSON object.');
     }
 
-    if (!['application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply'].includes(type)) {
-      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', or 'legacy_sheet_reapply'.`);
+    if (!['application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'profile_update_request'].includes(type)) {
+      errors.push(`Invalid email type: ${String(type ?? 'missing')}. Expected 'application', 'application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', or 'profile_update_request'.`);
     }
 
     if (!payload?.toEmail || typeof payload.toEmail !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.toEmail.trim())) {
@@ -353,11 +420,13 @@ serve(async (req) => {
       errors.push('Recipient name is required.');
     }
 
-    if (!payload?.projectTitle || typeof payload.projectTitle !== 'string' || !payload.projectTitle.trim()) {
+    if (type !== 'profile_update_request'
+      && (!payload?.projectTitle || typeof payload.projectTitle !== 'string' || !payload.projectTitle.trim())) {
       errors.push('Project title is required.');
     }
 
-    if (!payload?.projectCompany || typeof payload.projectCompany !== 'string' || !payload.projectCompany.trim()) {
+    if (type !== 'profile_update_request'
+      && (!payload?.projectCompany || typeof payload.projectCompany !== 'string' || !payload.projectCompany.trim())) {
       errors.push('Project company is required.');
     }
 
@@ -385,6 +454,8 @@ serve(async (req) => {
       to: [{ email: toEmail, name: toName }],
       subject: payload.type === 'application_request'
         ? `Now accepting applications: ${payload.projectTitle || 'Connectfy project'}`
+        : payload.type === 'profile_update_request'
+          ? 'Action requested: complete your Connectfy tester profile'
         : payload.type === 'invite'
         ? buildProjectApprovalEmailSubject(payload.projectTitle)
         : payload.type === 'accepted'

@@ -12,6 +12,7 @@ import { WalletModal } from './components/WalletModal';
 import { ProfileSettings } from './components/ProfileSettings';
 import { AdminProjectManager } from './components/AdminProjectManager';
 import { MassInviteSection } from './components/MassInviteSection';
+import { ProfileInformationRequestsSection } from './components/ProfileInformationRequestsSection';
 import { CRMSection } from './components/CRMSection';
 import { ProjectOperationsSection } from './components/ProjectOperationsSection';
 import { PayoutOperationsSection } from './components/PayoutOperationsSection';
@@ -47,6 +48,7 @@ import {
   Plus,
   CalendarClock,
   MailCheck,
+  Mail,
   CheckCircle2,
   UserPlus,
   ClipboardCheck,
@@ -68,6 +70,7 @@ const adminMobileItems = [
   { tab: 'hr', label: 'HR', icon: Users },
   { tab: 'crm', label: 'CRM', icon: Users },
   { tab: 'mass_invites', label: 'Invites', icon: Users },
+  { tab: 'profile_information_requests', label: 'Profile Updates', icon: Mail },
   { tab: 'project_operations', label: 'Project Ops', icon: Briefcase },
   { tab: 'payments', label: 'Payments', icon: CalendarClock },
   { tab: 'approval_emails', label: 'Email Log', icon: MailCheck },
@@ -82,6 +85,7 @@ const adminMobileItems = [
 const adminWorkspaceTabs = new Set<string>([
   'admin_manager',
   'mass_invites',
+  'profile_information_requests',
   'crm',
   'project_operations',
   'client_submissions',
@@ -221,6 +225,8 @@ const MainContent: React.FC<MainContentProps> = ({ onLogout, onRequestAdminAcces
             <ScreenerReconciliationSection />
           ) : activeTab === 'mass_invites' ? (
             <MassInviteSection />
+          ) : activeTab === 'profile_information_requests' ? (
+            <ProfileInformationRequestsSection />
           ) : activeTab === 'payout_operations' ? (
             <PayoutOperationsSection />
           ) : activeTab === 'referral_operations' ? (
@@ -895,7 +901,7 @@ const AppExperience: React.FC = () => {
 
   const handleLogin = async (email: string, password: string) => {
     if (!isSupabaseConfigured || !supabase) throw new Error('Authentication is not configured. Add your Supabase URL and anon key to .env.local.');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     if (error) throw error;
     resetLocalUserState();
     setActiveTab('projects');
@@ -962,7 +968,7 @@ const AppExperience: React.FC = () => {
     }
     if (referralCode) returnUrl.searchParams.set('ref', referralCode);
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: email.trim().toLowerCase(),
       password,
       options: {
         data: {

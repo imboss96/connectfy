@@ -20,6 +20,7 @@ import {
   CONNECTFY_SLACK_SUPPORT_URL
 } from '../src/lib/emailSlackFooter.js';
 import { getNextPlatformPayDate } from '../src/lib/platformPayDate.js';
+import { getMissingTesterProfileFields } from '../src/lib/testerProfileCompleteness.js';
 
 assert.equal(CONNECTFY_SLACK_INVITE_URL, 'https://join.slack.com/t/connectfyopsworkspace/shared_invite/zt-4goo1bcpv-A7Sr2a8OnDhmMx0dqVvyRA');
 assert.match(appendSlackFooterHtml('<div>approval</div>'), new RegExp(CONNECTFY_SLACK_INVITE_URL));
@@ -45,6 +46,7 @@ assert.equal(formatProjectEmailType('rejected'), 'rejected');
 assert.equal(formatProjectEmailType('declined'), 'declined');
 assert.equal(formatProjectEmailType('utest_update_required'), 'utest_update_required');
 assert.equal(formatProjectEmailType('legacy_sheet_reapply'), 'legacy_sheet_reapply');
+assert.equal(formatProjectEmailType('profile_update_request'), 'profile_update_request');
 assert.equal(formatProjectEmailType('unknown' as any), 'application');
 assert.equal(requiresAdminSession('invite'), true);
 assert.equal(requiresAdminSession('accepted'), true);
@@ -52,6 +54,7 @@ assert.equal(requiresAdminSession('rejected'), true);
 assert.equal(requiresAdminSession('declined'), true);
 assert.equal(requiresAdminSession('utest_update_required'), true);
 assert.equal(requiresAdminSession('legacy_sheet_reapply'), true);
+assert.equal(requiresAdminSession('profile_update_request'), true);
 assert.equal(requiresAdminSession('application'), false);
 assert.equal(requiresAuthenticatedSession('application'), true);
 assert.equal(requiresAuthenticatedSession('accepted'), true);
@@ -101,6 +104,40 @@ const approvalFunctionSource = appContextSource.slice(
 );
 const payoutBackendSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const payoutUiSource = fs.readFileSync(new URL('../src/components/PayoutOperationsSection.tsx', import.meta.url), 'utf8');
+const profileRequestsSource = fs.readFileSync(new URL('../src/components/ProfileInformationRequestsSection.tsx', import.meta.url), 'utf8');
+
+assert.deepEqual(getMissingTesterProfileFields({}), [
+  'uTest ID',
+  'uTest email',
+  'legal name',
+  'date of birth',
+  'phone number',
+  'country'
+]);
+assert.deepEqual(getMissingTesterProfileFields({
+  country: 'Kenya',
+  profile_data: {
+    testerProfile: {
+      uTestId: '3000001',
+      uTestEmail: 'tester@example.com',
+      legalName: 'Taylor Tester',
+      dateOfBirth: '1990-01-01',
+      phone: '+254 712 345 678',
+      country: 'Kenya'
+    }
+  }
+}), []);
+assert.deepEqual(getMissingTesterProfileFields({}, [{
+  utest_id: '3000001',
+  utest_email: 'tester@example.com',
+  full_name: 'Taylor Tester',
+  date_of_birth: '1990-01-01',
+  phone_number: '+254 712 345 678',
+  country: 'Kenya'
+}]), []);
+assert.deepEqual(getMissingTesterProfileFields({
+  profile_data: { testerProfile: { dateOfBirth: 'not-a-date', phone: '123', uTestEmail: 'invalid' } }
+}), ['uTest ID', 'uTest email', 'legal name', 'date of birth', 'phone number', 'country']);
 
 assert.match(serverSource, /valid uTest account created within the last 7 days/i);
 assert.match(edgeSource, /valid uTest account created within the last 7 days/i);
@@ -118,6 +155,13 @@ assert.match(serverSource.replace(/\s+/g, ' '), /requestType === 'application_re
 assert.match(serverSource, /You must complete your application and any required screener answers yourself/);
 assert.match(edgeSource, /You must complete your application and any required screener answers yourself/);
 assert.match(emailServiceSource, /'application_request'[\s\S]*requiresAdminSession/);
+assert.match(emailServiceSource, /'profile_update_request'[\s\S]*requiresAdminSession/);
+assert.match(profileRequestsSource, /type: 'profile_update_request'/);
+assert.match(profileRequestsSource, /Email selected/);
+assert.match(serverSource, /requestType === 'profile_update_request'[\s\S]*getMissingTesterProfileFields/);
+assert.match(edgeSource, /type === 'profile_update_request'[\s\S]*getMissingTesterProfileFields/);
+assert.match(serverSource, /Please complete your tester profile/);
+assert.match(edgeSource, /Please complete your tester profile/);
 assert.match(fs.readFileSync(new URL('../src/components/MassInviteSection.tsx', import.meta.url), 'utf8'), /sendProjectEmail\([\s\S]*?type: 'application_request'/);
 assert.match(fs.readFileSync(new URL('../src/components/MassInviteSection.tsx', import.meta.url), 'utf8'), /Request applications \(/);
 assert.match(fs.readFileSync(new URL('../src/lib/projectRepository.ts', import.meta.url), 'utf8'), /fetchApplicationTesterIdsFromSupabase[\s\S]*?\.range\(from, from \+ pageSize - 1\)/);

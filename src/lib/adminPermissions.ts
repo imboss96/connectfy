@@ -19,7 +19,8 @@ export type AdminTab =
   | 'client_applicants'
   | 'client_cycles'
   | 'hr'
-  | 'step_reviews';
+  | 'step_reviews'
+  | 'profile_information_requests';
 
 const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
   super_admin: new Set([
@@ -41,7 +42,8 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'application_screener_submissions',
     'screener_reconciliation',
     'hr',
-    'step_reviews'
+    'step_reviews',
+    'profile_information_requests'
   ]),
   project_manager: new Set([
     'admin_manager',
@@ -57,7 +59,8 @@ const adminTabs: Record<AdminAccessLevel, ReadonlySet<AdminTab>> = {
     'client_cycles',
     'application_screener_submissions',
     'screener_reconciliation',
-    'step_reviews'
+    'step_reviews',
+    'profile_information_requests'
   ]),
   reviewer: new Set(['client_submissions', 'profile_settings', 'project_tasks', 'arbeitnow_jobs', 'step_reviews'])
 };

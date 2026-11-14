@@ -23,6 +23,7 @@ const approvalEmailOutboxMigration = readFileSync(path.resolve('supabase/migrati
 const safaricomPayoutMigration = readFileSync(path.resolve('supabase/migrations/202610050003_safaricom_b2c_payouts.sql'), 'utf8');
 const projectStepProgressMigration = readFileSync(path.resolve('supabase/migrations/202610130001_project_step_progress.sql'), 'utf8');
 const tieredAdminAccessMigration = readFileSync(path.resolve('supabase/migrations/202610140001_tiered_admin_access.sql'), 'utf8');
+const duplicateEmailPreviewMigration = readFileSync(path.resolve('supabase/migrations/202611140001_admin_duplicate_email_preview.sql'), 'utf8');
 const projectManagerCrmMigration = readFileSync(path.resolve('supabase/migrations/202610140002_project_manager_crm_read_access.sql'), 'utf8');
 const adminPermissionsSource = readFileSync(path.resolve('src/lib/adminPermissions.ts'), 'utf8');
 const projectStepProgressSource = readFileSync(path.resolve('src/lib/projectStepProgress.ts'), 'utf8');
@@ -68,6 +69,14 @@ assert.ok(tieredAdminAccessMigration.includes("p_access_level not in ('super_adm
 assert.ok(crmSource.includes('p_access_level: inviteAccessLevel'), 'The CRM must pass the selected admin tier to the database.');
 assert.match(adminPermissionsSource, /project_manager: new Set\([\s\S]*?'crm'/, 'Project Managers must be able to access the CRM tab.');
 assert.ok(crmSource.includes('const isSuperAdmin = adminAccessLevel === \'super_admin\''), 'CRM mutation controls must be limited to Super Admins.');
+assert.match(crmSource, /const duplicateEmailGroups = useMemo\([\s\S]*?cleanText\(member\.email\)\.toLowerCase\(\)[\s\S]*?matchingMembers\.length > 1/);
+assert.ok(crmSource.includes('Same-email accounts ({duplicateEmailGroups.length})'), 'CRM must expose same-email account groups.');
+assert.ok(crmSource.includes('This view links them for review only; each account, login, and record remains separate.'), 'The CRM must clarify that matching emails do not merge accounts or data.');
+assert.ok(duplicateEmailPreviewMigration.includes('public.admin_preview_duplicate_email_accounts()'), 'Duplicate-email preview must be available as a database function.');
+assert.ok(duplicateEmailPreviewMigration.includes('if not coalesce(public.is_admin(), false)'), 'Duplicate-email account details must be restricted to Super Admins.');
+assert.ok(duplicateEmailPreviewMigration.includes('lower(trim(profile.email))'), 'Duplicate-email preview must normalize case and surrounding spaces.');
+assert.ok(duplicateEmailPreviewMigration.includes('first_value(normalized_profiles.id)'), 'Duplicate-email preview must suggest one survivor profile.');
+assert.doesNotMatch(duplicateEmailPreviewMigration, /\b(delete|update|insert)\s+(?:from|into)\s+(?:public\.)?(?:profiles|auth\.users)/i, 'Duplicate-email preview migration must not modify or delete accounts.');
 assert.ok(projectManagerCrmMigration.includes('project managers view Applause statuses'), 'Project Managers must be able to read saved Applause participant records.');
 assert.ok(projectManagerCrmMigration.includes('project managers view legacy sheet responses'), 'Project Managers must be able to read saved eligibility responses.');
 assert.ok(projectManagerCrmMigration.includes('project managers view legacy email logs'), 'Project Managers must be able to read CRM email history.');

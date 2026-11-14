@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { ProjectResource } from '../types';
 import { LEGACY_SHEET_EMAIL_SUBJECT } from './legacySheetEmail.js';
 
-export type ProjectEmailType = 'application' | 'application_request' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome';
+export type ProjectEmailType = 'application' | 'application_request' | 'invite' | 'accepted' | 'rejected' | 'declined' | 'utest_update_required' | 'legacy_sheet_reapply' | 'submission_approved' | 'application_utest_details_request' | 'applause_follow_up' | 'employee_welcome' | 'profile_update_request';
 
-const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome'];
+const ADMIN_EMAIL_TYPES: ProjectEmailType[] = ['application_request', 'invite', 'accepted', 'rejected', 'declined', 'utest_update_required', 'legacy_sheet_reapply', 'submission_approved', 'application_utest_details_request', 'applause_follow_up', 'employee_welcome', 'profile_update_request'];
 
 export function requiresAdminSession(type: ProjectEmailType): boolean {
   return ADMIN_EMAIL_TYPES.includes(type);
@@ -45,6 +45,8 @@ export function formatProjectEmailType(type?: string | null): ProjectEmailType {
       return 'applause_follow_up';
     case 'employee_welcome':
       return 'employee_welcome';
+    case 'profile_update_request':
+      return 'profile_update_request';
     case 'application':
     default:
       return 'application';
@@ -92,7 +94,15 @@ export interface EmployeeWelcomeEmailPayload {
   employeeEmailPurpose?: 'welcome' | 'pay_update' | 'contract' | 'contract_update';
 }
 
-export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWelcomeEmailPayload): Promise<boolean> {
+export interface ProfileUpdateEmailPayload {
+  type: 'profile_update_request';
+  toEmail: string;
+  toName: string;
+  testerId: string;
+  actionUrl: string;
+}
+
+export async function sendProjectEmail(payload: ProjectEmailPayload | EmployeeWelcomeEmailPayload | ProfileUpdateEmailPayload): Promise<boolean> {
   try {
     const safePayload = {
       ...payload,

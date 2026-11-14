@@ -17,7 +17,7 @@ import {
 
 type RoleFilter = 'all' | 'tester' | 'client' | 'admin';
 type ApplicationHistoryFilter = 'all' | 'never_applied' | 'has_applied';
-type CRMView = 'members' | 'utest' | 'sheet' | 'participants';
+type CRMView = 'members' | 'duplicates' | 'utest' | 'sheet' | 'participants';
 
 type ImportedParticipant = {
   key: string;
@@ -152,6 +152,17 @@ type PlatformMember = {
   profile_data?: Record<string, any>;
 };
 
+type DuplicateEmailGroup = {
+  email: string;
+  members: PlatformMember[];
+  suggestedSurvivorId?: string;
+};
+
+type DuplicateEmailPreviewRow = {
+  normalized_email: string;
+  suggested_survivor_id: string;
+};
+
 type ApplicationUtestDetails = {
   application_id: string;
   tester_id: string;
@@ -183,6 +194,8 @@ export const CRMSection: React.FC<{
   const { projects, adminAccessLevel } = useApp();
   const isSuperAdmin = adminAccessLevel === 'super_admin';
   const [members, setMembers] = useState<PlatformMember[]>([]);
+  const [duplicateEmailPreview, setDuplicateEmailPreview] = useState<DuplicateEmailPreviewRow[]>([]);
+  const [duplicateEmailPreviewError, setDuplicateEmailPreviewError] = useState('');
   const [appliedTesterIds, setAppliedTesterIds] = useState<Set<string> | null>(null);
   const [applicationHistoryError, setApplicationHistoryError] = useState('');
   const [utestDetails, setUtestDetails] = useState<ApplicationUtestDetails[]>([]);
@@ -226,6 +239,7 @@ export const CRMSection: React.FC<{
   const loadMembers = async () => {
     if (!supabase) {
       setMembers([]);
+      setDuplicateEmailPreview([]);
       setLoading(false);
       return;
     }
@@ -241,6 +255,21 @@ export const CRMSection: React.FC<{
 
       if (profilesResult.error) throw profilesResult.error;
       setMembers((profilesResult.data || []) as PlatformMember[]);
+      if (isSuperAdmin) {
+        try {
+          const { data: previewData, error: previewError } = await supabase.rpc('admin_preview_duplicate_email_accounts');
+          if (previewError) throw previewError;
+          setDuplicateEmailPreview((previewData || []) as DuplicateEmailPreviewRow[]);
+          setDuplicateEmailPreviewError('');
+        } catch (previewError) {
+          console.error('Unable to load duplicate-email account preview:', previewError);
+          setDuplicateEmailPreview([]);
+          setDuplicateEmailPreviewError('Database preview is unavailable. Apply migration 202611140001_admin_duplicate_email_preview.sql, then reload this view.');
+        }
+      } else {
+        setDuplicateEmailPreview([]);
+        setDuplicateEmailPreviewError('');
+      }
       if (!applicationsResult) {
         setAppliedTesterIds(null);
         setApplicationHistoryError('');
@@ -255,6 +284,8 @@ export const CRMSection: React.FC<{
     } catch (error) {
       console.error('Unable to load CRM members:', error);
       setMembers([]);
+      setDuplicateEmailPreview([]);
+      setDuplicateEmailPreviewError('');
       setAppliedTesterIds(null);
     } finally {
       setLoading(false);
@@ -945,6 +976,30 @@ export const CRMSection: React.FC<{
     });
   }, [members, roleFilter, search, applicationHistoryFilter, appliedTesterIds]);
 
+  const duplicateEmailGroups = useMemo(() => {
+    const membersByEmail = new Map<string, PlatformMember[]>();
+    members.forEach((member) => {
+      const email = cleanText(member.email).toLowerCase();
+      if (!email) return;
+      membersByEmail.set(email, [...(membersByEmail.get(email) || []), member]);
+    });
+
+    return Array.from(membersByEmail.entries())
+      .filter(([, matchingMembers]) => matchingMembers.length > 1)
+      .map(([email, matchingMembers]) => ({
+        email,
+        members: matchingMembers,
+        suggestedSurvivorId: duplicateEmailPreview.find((row) => row.normalized_email === email)?.suggested_survivor_id
+      }));
+  }, [members, duplicateEmailPreview]);
+  const duplicateEmailGroupByMemberId = useMemo(() => {
+    const groupByMemberId = new Map<string, DuplicateEmailGroup>();
+    duplicateEmailGroups.forEach((group) => {
+      group.members.forEach((member) => groupByMemberId.set(member.id, group));
+    });
+    return groupByMemberId;
+  }, [duplicateEmailGroups]);
+
   const copySlackInviteEmails = async () => {
     const emailByAddress = new Map<string, string>();
     members.forEach((member) => {
@@ -1003,7 +1058,7 @@ export const CRMSection: React.FC<{
           </div>
         </div>
 
-        <div className={`grid grid-cols-2 ${isSuperAdmin ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3 mt-6 pt-5 border-t border-slate-200 text-xs`}>
+        <div className={`grid grid-cols-2 ${isSuperAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-3'} gap-3 mt-6 pt-5 border-t border-slate-200 text-xs`}>
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">Connectfy Accounts</span>
             <span className="text-lg font-bold text-slate-900">{members.length}</span>
@@ -1011,6 +1066,10 @@ export const CRMSection: React.FC<{
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">Testers</span>
             <span className="text-lg font-bold text-[#007AFF]">{roleCounts.tester}</span>
+          </div>
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <span className="text-slate-500 block text-[11px]">Same-email groups</span>
+            <span className="text-lg font-bold text-amber-700">{duplicateEmailGroups.length}</span>
           </div>
           {isSuperAdmin && <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
             <span className="text-slate-500 block text-[11px]">Never applied</span>
@@ -1024,25 +1083,32 @@ export const CRMSection: React.FC<{
       </div>}
 
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-        {activeView !== 'sheet' && <div className="mb-4 flex items-center gap-2 border-b border-slate-200 pb-3">
+        {activeView !== 'sheet' && <div className="mb-4 flex items-center gap-2 overflow-x-auto border-b border-slate-200 pb-3">
           <button
             type="button"
             onClick={() => setActiveView('members')}
-            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'members' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+            className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'members' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
           >
             Platform Members
           </button>
           <button
             type="button"
+            onClick={() => setActiveView('duplicates')}
+            className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'duplicates' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+          >
+            Same-email accounts ({duplicateEmailGroups.length})
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveView('utest')}
-            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'utest' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+            className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'utest' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
           >
             uTest Details
           </button>
           <button
             type="button"
             onClick={() => setActiveView('participants')}
-            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'participants' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+            className={`shrink-0 rounded-xl px-4 py-2 text-xs font-bold transition ${activeView === 'participants' ? 'bg-[#007AFF] text-white shadow-md shadow-[#007AFF]/20' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
           >
             Project Participants
           </button>
@@ -1413,6 +1479,66 @@ export const CRMSection: React.FC<{
             )}
             <p className="text-[11px] text-slate-400">Email and name are displayed as contact details only; they are not used to merge records. Rows without uTest IDs remain distinct.</p>
           </section>
+        ) : activeView === 'duplicates' ? (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              Accounts are grouped by matching email, ignoring case and surrounding spaces. This view links them for review only; each account, login, and record remains separate.
+            </div>
+            {duplicateEmailPreviewError && (
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                {duplicateEmailPreviewError}
+              </div>
+            )}
+            {loading ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">Checking account emails...</div>
+            ) : duplicateEmailGroups.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500">No accounts share an email address.</div>
+            ) : (
+              duplicateEmailGroups.map((group) => {
+                const suggestedSurvivor = group.members.find((member) => member.id === group.suggestedSurvivorId);
+                return (
+                <section key={group.email} className="rounded-2xl border border-amber-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">{group.email}</h3>
+                      <p className="mt-1 text-[11px] text-slate-500">{group.members.length} separate accounts share this email</p>
+                      {suggestedSurvivor && (
+                        <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+                          Suggested survivor (oldest): {suggestedSurvivor.name || 'Unnamed member'} · Member ID {suggestedSurvivor.id.slice(0, 8)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800">Linked by email</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {group.members.map((member) => (
+                      <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">{member.name || 'Unnamed member'}</p>
+                          <p className="mt-1 text-[10px] text-slate-500">
+                            {(member.role || 'tester').replace(/^./, (letter) => letter.toUpperCase())}
+                            {' · '}Member ID {member.id.slice(0, 8)}
+                            {' · '}Joined {member.created_at ? new Date(member.created_at).toLocaleDateString() : 'unknown'}
+                          </p>
+                        </div>
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedMember(member)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#007AFF] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#005fce]"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Full user record
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                );
+              })
+            )}
+          </div>
         ) : activeView === 'utest' ? (
           <div className="space-y-3">
             <div className="rounded-xl border border-[#00A3E0]/30 bg-[#e0f7ff] p-3 text-xs text-[#075985]">
@@ -1598,6 +1724,11 @@ export const CRMSection: React.FC<{
                                 : member.admin_access_level === 'project_manager'
                                   ? 'Project Manager'
                                   : 'Reviewer'}
+                            </span>
+                          )}
+                          {duplicateEmailGroupByMemberId.has(member.id) && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                              Same email · {duplicateEmailGroupByMemberId.get(member.id)?.members.length} accounts
                             </span>
                           )}
                         </div>

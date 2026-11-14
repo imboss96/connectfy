@@ -11,6 +11,8 @@ const referralMigration = readFileSync(
 
 assert.match(appSource, /signInWithOAuth\(\{\s*provider: 'google'/);
 assert.match(appSource, /redirectTo: returnUrl\.toString\(\)/);
+assert.match(appSource, /auth\.signUp\(\{[\s\S]*?email: email\.trim\(\)\.toLowerCase\(\)/);
+assert.match(appSource, /signInWithPassword\(\{ email: email\.trim\(\)\.toLowerCase\(\), password \}\)/);
 assert.match(appSource, /client\.rpc\('link_google_signup_referral'/);
 assert.match(loginPageSource, /onGoogleAuth\(isSignUp \? 'signup' : 'login'\)/);
 assert.match(referralMigration, /current_profile\.created_at < now\(\) - interval '1 hour'/i);

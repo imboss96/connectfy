@@ -1,6 +1,7 @@
 import { AttachmentFile, BugReport, PayoutRequest, Project, ProjectResource, SubmissionStatus, TaskSubmission } from '../types';
 import { normalizeProjectStatus } from './projectStatus';
 import { supabase } from './supabase';
+import { getMissingTesterProfileFields } from './testerProfileCompleteness.js';
 
 type ProjectRow = {
   id: string;
@@ -240,6 +241,69 @@ export interface RegisteredTester {
   id: string;
   name: string;
   email: string;
+}
+
+export interface TesterNeedingProfileUpdate extends RegisteredTester {
+  missingFields: string[];
+}
+
+export async function fetchTestersNeedingProfileUpdatesFromSupabase(): Promise<TesterNeedingProfileUpdate[]> {
+  if (!supabase) throw new Error('Connectfy user directory is not configured.');
+
+  const pageSize = 1000;
+  const profiles: Array<{
+    id: string;
+    name: string | null;
+    email: string | null;
+    country: string | null;
+    profile_data: Record<string, unknown> | null;
+  }> = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id,name,email,country,profile_data')
+      .eq('role', 'tester')
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    profiles.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+
+  const testerIds = profiles.map((profile) => profile.id);
+  const detailsByTester = new Map<string, Record<string, unknown>[]>();
+  const testerBatchSize = 200;
+  for (let batchStart = 0; batchStart < testerIds.length; batchStart += testerBatchSize) {
+    const testerBatch = testerIds.slice(batchStart, batchStart + testerBatchSize);
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('application_utest_details')
+        .select('tester_id,full_name,utest_id,utest_email,date_of_birth,phone_number,country')
+        .in('tester_id', testerBatch)
+        .order('tester_id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      (data || []).forEach((details) => {
+        const current = detailsByTester.get(details.tester_id) || [];
+        current.push(details);
+        detailsByTester.set(details.tester_id, current);
+      });
+      if (!data || data.length < pageSize) break;
+    }
+  }
+
+  return profiles.flatMap((profile) => {
+    if (!profile.email) return [];
+    const missingFields = getMissingTesterProfileFields(profile, detailsByTester.get(profile.id) || []);
+    return missingFields.length > 0
+      ? [{
+          id: profile.id,
+          name: profile.name || profile.email.split('@')[0] || 'Tester',
+          email: profile.email,
+          missingFields
+        }]
+      : [];
+  });
 }
 
 export async function fetchRegisteredTestersFromSupabase(): Promise<RegisteredTester[]> {
