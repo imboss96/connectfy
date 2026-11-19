@@ -107,7 +107,7 @@ interface AppContextType {
   fetchApplicationDraft: (projectId: string) => Promise<Record<string, unknown> | null>;
   saveApplicationDraft: (projectId: string, draftData: Record<string, unknown>) => Promise<void>;
   deleteApplicationDraft: (projectId: string) => Promise<void>;
-  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => Promise<{ saved: boolean; applicationId?: string; screener?: ApplicationScreenerResult; error?: string }>;
+  applyToProject: (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }, applicationFeePaymentId?: string) => Promise<{ saved: boolean; applicationId?: string; screener?: ApplicationScreenerResult; error?: string }>;
   approveApplication: (appId: string, screenerSubmitted: boolean) => Promise<void>;
   resendInvite: (appId: string) => void;
   requestUtestAccountUpdate: (appId: string) => Promise<void>;
@@ -920,6 +920,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           acceptedInviteAt: app.accepted_invite_at ? new Date(app.accepted_invite_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
           lastInviteSentAt: app.last_invite_sent_at ? new Date(app.last_invite_sent_at).toISOString().replace('T', ' ').substring(0, 16) : undefined,
           inviteHistory: normalizeInviteHistory(app.invite_history),
+          applicationFeePaymentId: app.application_fee_payment_id || undefined,
           projectTitle: app.project?.title || undefined,
             projectCompany: app.project?.company || undefined
           };
@@ -1500,7 +1501,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 1. Tester applies to project
-  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }) => {
+  const applyToProject = async (projectId: string, devices: string[], experienceNote: string, emailDetails?: Pick<ProjectEmailPayload, 'applicantCountry' | 'applicantDevice' | 'uTestId' | 'uTestEmail' | 'applicantFullName' | 'applicantDateOfBirth' | 'applicantAgeRange' | 'applicantSmartphone' | 'applicantHasValidId' | 'applicantWillingVoiceRecording' | 'applicationReference' | 'submittedAt'> & { applicantPhone?: string; applicantUtestScreenshotUrl?: string; applicantGmailEmail: string; applicantGender: string; applicantGenderOther: string; applicantFluentLanguages: string[]; applicantLanguageOther: string; applicantRecordingSpaceAvailable: boolean; applicantScreenerDeviceType: string; applicantScreenerDeviceOther: string; applicantScreenerOsVersion: string; applicantScreenerConsent: boolean }, applicationFeePaymentId?: string) => {
     if (!emailDetails?.applicantUtestScreenshotUrl) return { saved: false };
     const {
       applicantPhone = '',
@@ -1535,7 +1536,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (existing && existing.status !== 'needs_utest_update') return { saved: false };
 
     const project = projects.find(p => p.id === projectId);
-    if (!existing && !isProjectOpenForApplications(project)) return { saved: false };
+    const effectiveFeePaymentId = applicationFeePaymentId || existing?.applicationFeePaymentId;
+    if (!existing && !isProjectOpenForApplications(project) && !effectiveFeePaymentId) return { saved: false };
+    if ((project?.applicationFeeKes || 0) > 0 && !effectiveFeePaymentId) {
+      return { saved: false, error: 'Complete the project application fee payment before submitting.' };
+    }
     let blockingApplication: ProjectApplicationLock | null = null;
     if (isSupabaseConfigured && supabase) {
       try {
@@ -1604,7 +1609,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       selectedDevices: devices,
       experienceNote,
       status: 'pending',
-      inviteHistory: existing?.inviteHistory || []
+      inviteHistory: existing?.inviteHistory || [],
+      applicationFeePaymentId: effectiveFeePaymentId
     };
 
     if (isSupabaseConfigured && supabase && effectiveTesterId) {
@@ -1619,6 +1625,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           experience_note: experienceNote,
           applied_at: new Date().toISOString(),
           invite_history: [],
+          application_fee_payment_id: effectiveFeePaymentId || null,
           last_invite_sent_at: null
         });
 

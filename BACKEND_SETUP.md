@@ -224,13 +224,27 @@ The seed script reads `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and optional 
 
 The command imports the current project catalog, stores the complete project object in `project_data`, and upserts the projects safely. Once seeded, the app loads active projects from Supabase instead of using the browser's hardcoded project catalog.
 
-## Safaricom M-Pesa B2C tester payouts
+## TinyPesa M-Pesa collection and Safaricom tester payouts
 
-Connectfy uses Daraja **Business-to-Customer (B2C)** to send approved tester payouts to Kenyan Safaricom numbers. It does not use B2C to collect customer payments. M-Pesa requests remain pending until an administrator reviews the recipient and converted KES amount and confirms the transfer.
+Connectfy uses TinyPesa **STK Push** to collect the optional KES application security fee configured on each project listing. Testers must approve the prompt on their M-Pesa phone; the application is recorded only after the backend verifies the TinyPesa status and matches the amount, phone number, transaction reference, and receipt. Unpaid checkout holds reserve a slot for 10 minutes. Administrators can manually refund confirmed fees through the existing Safaricom Daraja **Business-to-Customer (B2C)** integration.
 
-Apply for Safaricom Daraja access as a business and enable the B2C product for the organization shortcode. Use Safaricom's sandbox credentials and test data first; request production access, production credentials, and the required B2C transaction limits before enabling production. Set the following values only in the email/payment backend's server environment:
+Connectfy also uses B2C to send approved tester payouts to Kenyan Safaricom numbers. Payout requests remain pending until an administrator reviews the recipient and converted KES amount and confirms the transfer.
+
+Create and verify a TinyPesa account, create a short link, and obtain its link username and API key. Configure the link's webhook in the TinyPesa dashboard to:
+
+```text
+https://api.connectfy.tech/api/tinypesa/stk/application-fee?token=<TINYPESA_CALLBACK_TOKEN>
+```
+
+TinyPesa's webhook has no signature header, so Connectfy requires this high-entropy callback token and independently checks each reported payment using TinyPesa's transaction-status API before marking it paid. Do not send the callback token or API key to the browser. TinyPesa's pre-KYC transaction limits apply; complete KYC before accepting production payments. Test with a small payment to a phone you control.
+
+Set the following TinyPesa and Safaricom B2C values only in the email/payment backend's server environment:
 
 ```env
+TINYPESA_API_URL=https://api.tinypesa.com/api/v1
+TINYPESA_USERNAME=your-tinypesa-link-username
+TINYPESA_LINK_API_KEY=your-tinypesa-link-api-key
+TINYPESA_CALLBACK_TOKEN=long-random-secret-value
 MPESA_ENV=sandbox
 MPESA_CONSUMER_KEY=your-daraja-consumer-key
 MPESA_CONSUMER_SECRET=your-daraja-consumer-secret
@@ -242,9 +256,11 @@ MPESA_CALLBACK_BASE_URL=https://api.connectfy.tech
 MPESA_CALLBACK_TOKEN=long-random-secret-value
 ```
 
-`MPESA_SECURITY_CREDENTIAL` is the Safaricom-certificate-encrypted initiator password supplied/configured for the Daraja B2C integration; it is not the plain-text initiator password. Keep all Daraja values, `SUPABASE_SERVICE_ROLE_KEY`, and the callback token out of browser/Vite variables and Git. The public callback base URL must resolve to this backend over HTTPS. Safaricom callback URLs include the configured high-entropy token; keep it private and rotate it if exposed.
+`MPESA_SECURITY_CREDENTIAL` is the Safaricom-certificate-encrypted initiator password for B2C; it is not the plain-text initiator password. Configure Daraja B2C credentials and callbacks only if manual fee refunds or tester payouts are enabled. Keep all provider keys, `SUPABASE_SERVICE_ROLE_KEY`, and callback tokens out of browser/Vite variables and Git. Generate separate high-entropy callback tokens for TinyPesa and Safaricom; rotate them if exposed.
 
 Apply `supabase/migrations/202610050003_safaricom_b2c_payouts.sql` and then `supabase/migrations/202610060003_paypal_payouts.sql` after the prior project migrations. They add the USD-to-KES quote snapshot, Safaricom reconciliation fields, and PayPal payout tracking fields; move payout creation behind a server-only database function; and restrict new withdrawals to PayPal or Safaricom M-Pesa. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend too. Obtain the FX rate from ExchangeRate-API's public USD feed; the quote rate timestamp/source are stored with the payout request, displayed to the reviewer, and the administrator confirms the whole KES amount before dispatch.
+
+Apply `supabase/migrations/202611190001_application_fees_tinypesa.sql` after the existing project migrations. It adds per-project KES fees, TinyPesa payment references, ten-minute pending slot holds, and server-only payment/refund operations. The application-fee refund button submits a Daraja B2C transfer and keeps the refund in processing until Safaricom confirms it. Set the fee to `0` on a listing to disable collection for that project.
 
 Configure PayPal Payouts in the PayPal Developer Dashboard and enable the Payouts permission for the REST app. Use sandbox credentials and PayPal sandbox accounts for testing before switching to a live app and live credentials. Add these server-only values to the backend environment:
 

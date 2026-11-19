@@ -18,6 +18,7 @@ type ProjectRow = {
   starts_at: string | null;
   slots_total: number;
   slots_filled: number;
+  application_fee_kes: number;
   total_budget: number;
   budget_disbursed: number;
   project_data: Partial<Project>;
@@ -63,6 +64,7 @@ export async function fetchProjectsFromSupabase(): Promise<Project[]> {
     startsAt: row.starts_at || '',
     slotsTotal: row.slots_total,
     slotsFilled: row.slots_filled,
+    applicationFeeKes: Number(row.application_fee_kes || 0),
     totalBudget: Number(row.total_budget),
     budgetDisbursed: Number(row.budget_disbursed),
     resources: resourcesByProject.get(row.id) || (Array.isArray(row.project_data?.resources) ? row.project_data.resources : [])
@@ -109,6 +111,7 @@ export function normalizeProjectForPersistence(project: Partial<Project>) {
     ...(project.supportedCountries !== undefined && { supportedCountries: project.supportedCountries }),
     ...(project.slotsTotal !== undefined && { slotsTotal: project.slotsTotal }),
     ...(project.slotsFilled !== undefined && { slotsFilled: project.slotsFilled }),
+    ...(project.applicationFeeKes !== undefined && { applicationFeeKes: project.applicationFeeKes }),
     ...(project.deadline !== undefined && { deadline: project.deadline }),
     ...(project.startsAt !== undefined && { startsAt: project.startsAt }),
     ...(project.status !== undefined && { status: normalizedStatus }),
@@ -137,6 +140,7 @@ function toProjectRow(project: Project, clientId: string) {
     starts_at: project.startsAt || null,
     slots_total: project.slotsTotal,
     slots_filled: project.slotsFilled,
+    application_fee_kes: project.applicationFeeKes || 0,
     total_budget: project.totalBudget,
     budget_disbursed: project.budgetDisbursed,
     project_data: normalizeProjectForPersistence(project)
@@ -177,6 +181,7 @@ export async function updateProjectInSupabase(projectId: string, updates: Partia
     ...(updates.startsAt !== undefined && { starts_at: updates.startsAt || null }),
     ...(updates.slotsTotal !== undefined && { slots_total: updates.slotsTotal }),
     ...(updates.slotsFilled !== undefined && { slots_filled: updates.slotsFilled }),
+    ...(updates.applicationFeeKes !== undefined && { application_fee_kes: updates.applicationFeeKes }),
     ...(updates.totalBudget !== undefined && { total_budget: updates.totalBudget }),
     ...(updates.budgetDisbursed !== undefined && { budget_disbursed: updates.budgetDisbursed }),
     project_data: projectPayload,
@@ -500,6 +505,7 @@ export async function upsertApplicationInSupabase(app: {
   applied_at: string;
   last_invite_sent_at?: string | null;
   invite_history?: any[];
+  application_fee_payment_id?: string | null;
 }) {
   if (!supabase) return;
 
@@ -516,6 +522,7 @@ export async function upsertApplicationInSupabase(app: {
       applied_at: app.applied_at,
       last_invite_sent_at: app.last_invite_sent_at || null,
       invite_history: app.invite_history || [],
+      application_fee_payment_id: app.application_fee_payment_id || null,
       updated_at: new Date().toISOString()
     }, { onConflict: 'project_id,tester_id' });
 

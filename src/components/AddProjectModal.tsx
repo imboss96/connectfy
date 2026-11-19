@@ -82,6 +82,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   // Slots & Budget
   const [slotsTotal, setSlotsTotal] = useState('40');
   const [totalBudget, setTotalBudget] = useState('3500');
+  const [applicationFeeKes, setApplicationFeeKes] = useState('0');
   const [deadline, setDeadline] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 21);
@@ -201,6 +202,12 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       return;
     }
 
+    const applicationFeeKesNum = Number(applicationFeeKes);
+    if (!Number.isSafeInteger(applicationFeeKesNum) || applicationFeeKesNum < 0 || applicationFeeKesNum > 100000) {
+      setFormError('Enter an application fee between KES 0 and KES 100,000.');
+      return;
+    }
+
     const budgetNum = parseFloat(totalBudget) || 1000;
     const slotsNum = parseInt(slotsTotal, 10) || 20;
 
@@ -265,6 +272,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       requiredDevices: selectedDevices,
       supportedCountries: countriesList.length > 0 ? countriesList : ['Global'],
       slotsTotal: slotsNum,
+      applicationFeeKes: applicationFeeKesNum,
       deadline: deadline || '2026-10-31',
       status: 'active',
       bountyStructure,
@@ -687,7 +695,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
           </div>
 
           {/* Section 7: Budget, Slots & Deadline */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#1E2E4E]">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-[#1E2E4E]">
             <div>
               <label className="block font-bold text-slate-200 mb-1 flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
@@ -714,6 +722,22 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                 className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-3 py-2 text-white font-bold"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-200 mb-1">
+                Application security fee (KES)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100000"
+                step="1"
+                value={applicationFeeKes}
+                onChange={(e) => setApplicationFeeKes(e.target.value)}
+                className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-3 py-2 text-white font-bold"
+              />
+              <p className="mt-1 text-[10px] text-slate-400">Set 0 for no fee. Testers pay by M-Pesa.</p>
             </div>
 
             <div>

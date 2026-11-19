@@ -29,6 +29,12 @@ import {
 import { useApp } from '../context/AppContext';
 import { getProjectAvailabilityLabel, isProjectOpenForApplications, isProjectVisibleToTesters } from '../lib/projectStatus';
 import { isCloudinaryConfigured, uploadToCloudinary } from '../lib/cloudinary';
+import {
+  ApplicationFeeCheckout,
+  beginApplicationFeeCheckout,
+  fetchProjectApplicationFeeCheckout,
+  waitForApplicationFeePayment
+} from '../lib/applicationFeeService';
 import { Project, DeviceType, ProjectCategory, ProjectTrack, TesterProfile } from '../types';
 import { AddProjectModal } from './AddProjectModal';
 import { EditProjectModal } from './EditProjectModal';
@@ -202,6 +208,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
   const [shareFeedback, setShareFeedback] = useState<{ projectId: string; url: string; error: boolean } | null>(null);
   const [isUploadingUtestScreenshot, setIsUploadingUtestScreenshot] = useState(false);
   const [isSubmittingApplication, setIsSubmittingApplication] = useState(false);
+  const [isFeePolicyAccepted, setIsFeePolicyAccepted] = useState(false);
+  const [paymentStatusMessage, setPaymentStatusMessage] = useState('');
+  const [resumeFeePayment, setResumeFeePayment] = useState<ApplicationFeeCheckout | null>(null);
   const [showAddDeviceForm, setShowAddDeviceForm] = useState(false);
   const [deviceDraft, setDeviceDraft] = useState({
     category: 'Smartphone' as 'Smartphone' | 'Tablet' | 'Computer' | 'Smart TV' | 'Wearable' | 'Console',
@@ -371,7 +380,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     }
   };
 
-  const handleOpenApplyModal = (project: Project) => {
+  const handleOpenApplyModal = async (project: Project) => {
     if (role === 'tester' && !applicationRestrictionLoaded) {
       setApplyError('Verifying the project application policy. Please try again in a moment.');
       return;
@@ -388,8 +397,20 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       return;
     }
 
-    const canReapplyForExistingSlot = getApplicationForProject(project.id)?.status === 'needs_utest_update';
-    if (!isProjectOpenForApplications(project) && !canReapplyForExistingSlot) {
+    const existingApplication = getApplicationForProject(project.id);
+    const canReapplyForExistingSlot = existingApplication?.status === 'needs_utest_update';
+    let activeFeeCheckout: ApplicationFeeCheckout | null = null;
+    if ((project.applicationFeeKes || 0) > 0 && !existingApplication?.applicationFeePaymentId) {
+      try {
+        activeFeeCheckout = await fetchProjectApplicationFeeCheckout(project.id);
+      } catch (error) {
+        setApplyError(error instanceof Error ? error.message : 'Unable to verify your M-Pesa checkout.');
+        return;
+      }
+    }
+    const canResumeFeeCheckout = activeFeeCheckout
+      && ['pending', 'initiating', 'paid'].includes(activeFeeCheckout.status);
+    if (!isProjectOpenForApplications(project) && !canReapplyForExistingSlot && !canResumeFeeCheckout) {
       setApplyError('This project is no longer accepting applications.');
       return;
     }
@@ -417,6 +438,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
     setApplicationDraft(draft);
     setApplicationScreenerResult(null);
     setApplyError('');
+    setResumeFeePayment(activeFeeCheckout);
+    setIsFeePolicyAccepted(false);
+    setPaymentStatusMessage('');
     setSelectedDevices(draft.smartphone ? [draft.smartphone] : []);
 
     void fetchApplicationDraft(project.id).then((savedDraft) => {
@@ -622,9 +646,17 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
       setApplyError('Please choose at least one device you will use.');
       return;
     }
-    const isExistingAccountUpdate = getApplicationForProject(applyingProject.id)?.status === 'needs_utest_update';
-    if (!isProjectOpenForApplications(applyingProject) && !isExistingAccountUpdate) {
+    const existingApplication = getApplicationForProject(applyingProject.id);
+    const isExistingAccountUpdate = existingApplication?.status === 'needs_utest_update';
+    const feeAlreadyPaid = Boolean(existingApplication?.applicationFeePaymentId || resumeFeePayment?.status === 'paid');
+    const canResumeFeeCheckout = resumeFeePayment
+      && ['pending', 'initiating', 'paid'].includes(resumeFeePayment.status);
+    if (!isProjectOpenForApplications(applyingProject) && !isExistingAccountUpdate && !canResumeFeeCheckout) {
       setApplyError('This project has no remaining slots and is no longer accepting applications.');
+      return;
+    }
+    if ((applyingProject.applicationFeeKes || 0) > 0 && !feeAlreadyPaid && !isFeePolicyAccepted) {
+      setApplyError('Please review and accept the application fee and refund terms.');
       return;
     }
 
@@ -665,6 +697,27 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         uTestAccountScreenshotUrl: finalDraft.utestAccountScreenshotUrl
       });
 
+      let applicationFeePaymentId: string | undefined = feeAlreadyPaid
+        ? existingApplication?.applicationFeePaymentId || resumeFeePayment?.id
+        : undefined;
+      if ((applyingProject.applicationFeeKes || 0) > 0 && !feeAlreadyPaid) {
+        setPaymentStatusMessage('Sending an M-Pesa payment prompt to your phone…');
+        let checkout = await beginApplicationFeeCheckout(applyingProject.id, finalDraft.phoneNumber);
+        if (checkout.status === 'pending' || checkout.status === 'initiating') {
+          setPaymentStatusMessage('Approve the M-Pesa prompt on your phone. Your slot is held for 10 minutes.');
+          checkout = await waitForApplicationFeePayment(checkout.id);
+        }
+        if (checkout.status === 'refund_pending') {
+          throw new Error('Your payment was received, but the slot is no longer available. Contact support so an administrator can refund it.');
+        }
+        if (checkout.status !== 'paid') {
+          throw new Error(checkout.failureReason || 'M-Pesa payment was not confirmed. You can try submitting again.');
+        }
+        applicationFeePaymentId = checkout.id;
+        setResumeFeePayment(checkout);
+        setPaymentStatusMessage('Payment confirmed. Submitting your application…');
+      }
+
       const result = await applyToProject(applyingProject.id, finalDevices, combinedExperience, {
         applicantCountry: finalDraft.country,
         applicantDevice: finalDraft.smartphone,
@@ -689,9 +742,10 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
         applicantScreenerOsVersion: finalDraft.screenerOsVersion.trim(),
         applicantScreenerConsent: finalDraft.screenerConsent,
         submittedAt: finalDraft.updatedAt
-      });
+      }, applicationFeePaymentId);
       if (result.saved && result.applicationId && result.screener) {
         void deleteApplicationDraft(applyingProject.id);
+        setResumeFeePayment(null);
         setApplySuccess(true);
         setApplicationScreenerResult({
           applicationId: result.applicationId,
@@ -1064,6 +1118,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                           <span>{project.supportedCountries.join(', ') || 'Global'}</span>
                         </span>
                       </p>
+                      {(project.applicationFeeKes || 0) > 0 && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-300">M-Pesa application fee: KES {project.applicationFeeKes}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1237,6 +1294,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                   <p className="mt-1 text-[11px] font-semibold text-slate-500">
                     {Math.max(0, viewingProject.slotsTotal - viewingProject.slotsFilled)} of {viewingProject.slotsTotal} slots remaining
                   </p>
+                  {(viewingProject.applicationFeeKes || 0) > 0 && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700">M-Pesa application fee: KES {viewingProject.applicationFeeKes}</p>
+                  )}
                 </div>
               </div>
               <button
@@ -1502,9 +1562,28 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     >
                       uTest.com
                     </a>
-                    . Connectfy does not collect or process participant payments directly. Please sign up and share your uTest ID and uTest email so payments can be processed through the partner platform.
+                    . Please sign up and share your uTest ID and uTest email so project earnings can be processed through the partner platform.
                   </p>
                 </div>
+
+                {(applyingProject.applicationFeeKes || 0) > 0
+                  && !getApplicationForProject(applyingProject.id)?.applicationFeePaymentId
+                  && resumeFeePayment?.status !== 'paid' && (
+                  <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-950">
+                    <p className="font-bold">M-Pesa application security fee: KES {applyingProject.applicationFeeKes}</p>
+                    <p>Payment is required to apply and temporarily holds one slot. Unpaid holds expire after 10 minutes. Refunds are handled manually: fees are refundable if you are not selected, the project is canceled, or you complete the work; the fee is forfeited if you accept the project and abandon it.</p>
+                    <label className="flex items-start gap-2 font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={isFeePolicyAccepted}
+                        onChange={(event) => setIsFeePolicyAccepted(event.target.checked)}
+                        className="mt-0.5"
+                      />
+                      I understand and accept the application fee and refund terms.
+                    </label>
+                  </div>
+                )}
+                {paymentStatusMessage && <p role="status" className="text-xs font-semibold text-sky-800">{paymentStatusMessage}</p>}
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5 font-semibold text-slate-700">
@@ -1988,7 +2067,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({ onOpenWorkspace }) =
                     disabled={isUploadingUtestScreenshot || isSubmittingApplication}
                     className="px-5 py-2 bg-[#007AFF] hover:bg-[#0066EE] text-white font-bold rounded-xl shadow transition shadow-[#007AFF]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSubmittingApplication ? 'Submitting…' : 'Confirm & Send Application'}
+                    {isSubmittingApplication ? (paymentStatusMessage.includes('M-Pesa') ? 'Waiting for M-Pesa…' : 'Submitting…') : (applyingProject.applicationFeeKes || 0) > 0 && !getApplicationForProject(applyingProject.id)?.applicationFeePaymentId && resumeFeePayment?.status !== 'paid' ? `Pay KES ${applyingProject.applicationFeeKes} & Apply` : 'Confirm & Send Application'}
                   </button>
                 </div>
               </form>

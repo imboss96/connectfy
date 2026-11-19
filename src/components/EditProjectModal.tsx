@@ -19,6 +19,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
   const [deadline, setDeadline] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [slotsTotal, setSlotsTotal] = useState('');
+  const [applicationFeeKes, setApplicationFeeKes] = useState('');
   const [totalBudget, setTotalBudget] = useState('');
   const [taskRate, setTaskRate] = useState('');
   const [taskInstructions, setTaskInstructions] = useState('');
@@ -28,6 +29,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
   const [inScopeText, setInScopeText] = useState('');
   const [outOfScopeText, setOutOfScopeText] = useState('');
   const [status, setStatus] = useState<Project['status']>('active');
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!project) return;
@@ -38,6 +40,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
     setDeadline(project.deadline || '');
     setStartsAt(project.startsAt || '');
     setSlotsTotal(String(project.slotsTotal));
+    setApplicationFeeKes(String(project.applicationFeeKes || 0));
     setTotalBudget(String(project.totalBudget));
     setTaskRate(String(project.taskRate || project.bountyStructure.testCaseBounty || ''));
     const instructions = project.deliverablesGuide?.instructions;
@@ -54,6 +57,12 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    const parsedApplicationFeeKes = Number(applicationFeeKes);
+    if (!Number.isSafeInteger(parsedApplicationFeeKes) || parsedApplicationFeeKes < 0 || parsedApplicationFeeKes > 100000) {
+      setFormError('Enter an application fee between KES 0 and KES 100,000.');
+      return;
+    }
+    setFormError('');
     const parsedTaskRate = Number(taskRate);
     const savedTaskRate = Number.isFinite(parsedTaskRate) && taskRate.trim() !== ''
       ? parsedTaskRate
@@ -83,6 +92,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
       deadline,
       startsAt,
       slotsTotal: Math.max(project.slotsFilled, Number(slotsTotal) || project.slotsTotal),
+      applicationFeeKes: parsedApplicationFeeKes,
       totalBudget: Number(totalBudget) || project.totalBudget,
       taskRate: project.deliverablesGuide ? savedTaskRate : project.taskRate,
       deliverablesGuide: project.deliverablesGuide
@@ -164,13 +174,16 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({ project, onC
             <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1"><ExternalLink className="w-3 h-3" /> One labeled HTTPS link per line.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="text-slate-300"><span className="block font-bold mb-1">Starts at</span><input type="date" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-2 py-2 text-white" /></label>
             <label className="text-slate-300"> <span className="block font-bold mb-1">Deadline</span><span className="relative block"><Calendar className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-amber-400" /><input type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl pl-8 pr-2 py-2 text-white" /></span></label>
             <label className="text-slate-300"><span className="block font-bold mb-1">Max slots</span><input type="number" min={project.slotsFilled} value={slotsTotal} onChange={(event) => setSlotsTotal(event.target.value)} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-2 py-2 text-white" /></label>
+            <label className="text-slate-300"><span className="block font-bold mb-1">Application fee (KES)</span><input type="number" min="0" max="100000" step="1" value={applicationFeeKes} onChange={(event) => setApplicationFeeKes(event.target.value)} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-2 py-2 text-white" /></label>
             <label className="text-slate-300"><span className="block font-bold mb-1">Budget</span><input type="number" min="0" value={totalBudget} onChange={(event) => setTotalBudget(event.target.value)} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-2 py-2 text-white" /></label>
             <label className="text-slate-300"><span className="block font-bold mb-1">Status</span><select value={status} onChange={(event) => setStatus(event.target.value as Project['status'])} className="w-full bg-[#080D1A] border border-[#1E2E4E] rounded-xl px-2 py-2 text-white"><option value="active">Open</option><option value="upcoming">Coming soon</option><option value="paused">Paused</option><option value="closed">Closed</option><option value="ended">Ended</option><option value="hidden">Hidden</option></select></label>
           </div>
+
+          {formError && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-950/30 p-3 text-xs text-rose-200">{formError}</p>}
 
           <div className="pt-4 border-t border-[#1E2E4E] flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 bg-[#111C33] text-slate-300 font-bold rounded-xl border border-[#1E2E4E]">Cancel</button>

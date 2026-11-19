@@ -128,6 +128,7 @@ export interface ProjectApplication {
   acceptedInviteAt?: string;
   lastInviteSentAt?: string;
   inviteHistory?: InviteHistoryEntry[];
+  applicationFeePaymentId?: string;
 }
 
 export interface ProjectBountyStructure {
@@ -198,6 +199,7 @@ export interface Project {
   supportedCountries: string[];
   slotsTotal: number;
   slotsFilled: number;
+  applicationFeeKes?: number;
   deadline: string;
   status: 'active' | 'upcoming' | 'paused' | 'closed' | 'ended' | 'hidden';
   startsAt?: string;

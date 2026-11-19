@@ -11,7 +11,7 @@ const backendUrl = () => {
   return url;
 };
 
-async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(new URL(path, backendUrl()), {
     ...options,
     headers: {
@@ -92,7 +92,7 @@ export async function approvePayoutRequest(payoutId: string, approvedKesAmount?:
   });
 }
 
-async function requireAccessToken() {
+export async function requireAccessToken() {
   if (!supabase) throw new Error('Payment service is unavailable until Supabase is configured.');
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;

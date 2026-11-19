@@ -977,6 +977,70 @@ const getMpesaConfiguration = () => {
   return { baseUrl, callbackBaseUrl: callbackBaseUrl.toString().replace(/\/$/, '') };
 };
 
+const getTinyPesaConfiguration = () => {
+  const required = ['TINYPESA_USERNAME', 'TINYPESA_LINK_API_KEY', 'TINYPESA_CALLBACK_TOKEN'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length) {
+    throw createHttpError(
+      503,
+      `TinyPesa collection configuration is incomplete: ${missing.join(', ')}. Configure these server environment variables and restart the payment backend.`
+    );
+  }
+  if (process.env.TINYPESA_CALLBACK_TOKEN.length < 32) {
+    throw createHttpError(503, 'TINYPESA_CALLBACK_TOKEN must contain at least 32 characters.');
+  }
+  let apiUrl;
+  try {
+    apiUrl = new URL(process.env.TINYPESA_API_URL || 'https://api.tinypesa.com/api/v1');
+  } catch {
+    throw createHttpError(503, 'TINYPESA_API_URL must be a valid HTTPS URL.');
+  }
+  if (apiUrl.protocol !== 'https:' || apiUrl.username || apiUrl.password || apiUrl.search || apiUrl.hash) {
+    throw createHttpError(503, 'TINYPESA_API_URL must be an HTTPS base URL without credentials, query, or fragment.');
+  }
+  return {
+    apiUrl: apiUrl.toString().replace(/\/$/, ''),
+    username: process.env.TINYPESA_USERNAME,
+    linkApiKey: process.env.TINYPESA_LINK_API_KEY
+  };
+};
+
+const requestTinyPesa = async (path, { method = 'GET', body } = {}) => {
+  const configuration = getTinyPesaConfiguration();
+  const url = new URL(`${configuration.apiUrl}${path}`);
+  url.searchParams.set('username', configuration.username);
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Apikey: configuration.linkApiKey
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(20000)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown connection error';
+    throw createHttpError(502, `Unable to reach TinyPesa: ${message}`);
+  }
+  const text = await response.text();
+  let providerBody = {};
+  try {
+    providerBody = text ? JSON.parse(text) : {};
+  } catch {
+    throw createHttpError(502, 'TinyPesa returned an invalid JSON response.');
+  }
+  if (!response.ok) {
+    const message = providerBody.message || providerBody.detail || text || 'TinyPesa rejected the request.';
+    const error = createHttpError(502, `TinyPesa request failed (${response.status}): ${message}`);
+    error.providerRejected = true;
+    throw error;
+  }
+  return providerBody;
+};
+
 const getMpesaAccessToken = async (baseUrl) => {
   const credentials = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
   let response;
@@ -1064,6 +1128,23 @@ const callPayPalApi = async (configuration, accessToken, path, options = {}) => 
   return { response, body, responseText };
 };
 
+const isValidCallbackToken = (providedToken, configuredToken) => {
+  const receivedToken = String(providedToken || '');
+  if (!configuredToken || !receivedToken) return false;
+  const expected = Buffer.from(configuredToken);
+  const received = Buffer.from(receivedToken);
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+};
+
+const isValidMpesaCallback = (providedToken) => isValidCallbackToken(providedToken, process.env.MPESA_CALLBACK_TOKEN || '');
+const isValidTinyPesaCallback = (providedToken) => isValidCallbackToken(providedToken, process.env.TINYPESA_CALLBACK_TOKEN || '');
+
+const buildMpesaCallbackUrl = (baseUrl, endpoint) => {
+  const url = new URL(`${baseUrl}/api/mpesa/b2c/${endpoint}`);
+  url.searchParams.set('token', process.env.MPESA_CALLBACK_TOKEN);
+  return url.toString();
+};
+
 const updatePayoutCallback = async (body, timedOut) => {
   const result = body?.Result || body?.result;
   const conversationId = result?.ConversationID || result?.conversationId;
@@ -1089,26 +1170,84 @@ const updatePayoutCallback = async (body, timedOut) => {
     updated_at: new Date().toISOString()
   };
 
-  const isValidMpesaCallback = (providedToken) => {
-    const configuredToken = process.env.MPESA_CALLBACK_TOKEN || '';
-    const receivedToken = String(providedToken || '');
-    if (!configuredToken || !receivedToken) return false;
-    const expected = Buffer.from(configuredToken);
-    const received = Buffer.from(receivedToken);
-    return expected.length === received.length && crypto.timingSafeEqual(expected, received);
-  };
-
-  const buildMpesaCallbackUrl = (baseUrl, endpoint) => {
-    const url = new URL(`${baseUrl}/api/mpesa/b2c/${endpoint}`);
-    url.searchParams.set('token', process.env.MPESA_CALLBACK_TOKEN);
-    return url.toString();
-  };
   await callSupabaseRest(`payout_requests?id=eq.${encodeURIComponent(rows[0].id)}&status=eq.processing`, {
     method: 'PATCH',
     headers: { Prefer: 'return=minimal' },
     body: JSON.stringify(updates)
   });
   console.info('Safaricom payout callback recorded.', { payoutId: rows[0].id, succeeded });
+};
+
+const updateTinyPesaApplicationFeePaymentCallback = async (body) => {
+  const callback = body?.Body?.stkCallback || body?.stkCallback || body;
+  const tinyPesaId = String(callback?.TinyPesaID || '');
+  const externalReference = String(callback?.ExternalReference || '');
+  const resultCode = Number(callback?.ResultCode);
+  if (!tinyPesaId || !externalReference || !Number.isInteger(resultCode)) {
+    throw new Error('TinyPesa application-fee callback is missing its transaction identifiers or result code.');
+  }
+  const rows = await callSupabaseRest(
+    `application_fee_payments?provider_external_reference=eq.${encodeURIComponent(externalReference)}`
+      + '&select=id,amount_kes,phone_number,tinypesa_request_id&limit=1'
+  );
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    throw new Error('TinyPesa callback does not match an application-fee checkout.');
+  }
+  const payment = rows[0];
+  if (payment.tinypesa_request_id && payment.tinypesa_request_id !== tinyPesaId) {
+    throw new Error('TinyPesa callback request ID does not match the application-fee checkout.');
+  }
+
+  const status = await requestTinyPesa(`/express/get_status/${encodeURIComponent(externalReference)}/`);
+  if (String(status.id || '') !== tinyPesaId
+    || String(status.external_reference || '') !== externalReference
+    || !Number.isInteger(Number(status.amount))
+    || typeof status.is_complete !== 'boolean') {
+    throw new Error('TinyPesa transaction status does not match the application-fee checkout.');
+  }
+  if (resultCode === 0 && !status.is_complete) {
+    throw new Error('TinyPesa has not confirmed this payment yet.');
+  }
+
+  const result = await callSupabaseRest('rpc/record_application_fee_payment_result', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_tinypesa_id: tinyPesaId,
+      p_external_reference: externalReference,
+      p_merchant_request_id: status.merchant_request_id || null,
+      p_result_code: status.is_complete ? 0 : resultCode,
+      p_amount_kes: Number(status.amount),
+      p_receipt: status.ref_no ? String(status.ref_no) : null,
+      p_phone_number: String(status.msisdn || ''),
+      p_callback_payload: { webhook: body, verified_status: status }
+    })
+  });
+  console.info('TinyPesa application-fee callback recorded.', {
+    paymentId: result?.id,
+    status: result?.status
+  });
+};
+
+const updateApplicationFeeRefundCallback = async (body, timedOut) => {
+  const result = body?.Result || body?.result;
+  const conversationId = result?.ConversationID || result?.conversationId;
+  if (!conversationId) throw new Error('Safaricom application-fee refund callback did not include a conversation ID.');
+  const resultCode = Number(result?.ResultCode ?? result?.resultCode);
+  const parameters = result?.ResultParameters?.ResultParameter || [];
+  const parameterValue = (name) => parameters.find((item) => item.Key === name)?.Value;
+  await callSupabaseRest('rpc/record_application_fee_refund_result', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_conversation_id: String(conversationId),
+      p_succeeded: !timedOut && resultCode === 0,
+      p_timed_out: timedOut,
+      p_callback_payload: body,
+      p_failure_reason: timedOut
+        ? 'Safaricom refund timed out; reconcile the transfer before retrying.'
+        : String(result?.ResultDesc || result?.resultDesc || 'Safaricom reported a failed refund.'),
+      p_transaction_id: parameterValue('TransactionReceipt') || result?.TransactionID || null
+    })
+  });
 };
 
 const callOutboxRpc = async (functionName, body) => {
@@ -1486,6 +1625,327 @@ app.get('/api/mpesa/quote', async (req, res) => {
     const message = error instanceof Error ? error.message : 'Unable to get the current USD/KES quote.';
     console.error('Unable to quote M-Pesa payout:', error);
     return res.status(502).json({ ok: false, message });
+  }
+});
+
+app.post('/api/application-fee-checkouts', async (req, res) => {
+  let claimedPaymentId = null;
+  let stkDispatchStarted = false;
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) return res.status(401).json({ ok: false, message: 'Sign in before paying the project application fee.' });
+    const user = await getAuthUser(authorization);
+    const projectId = String(req.body?.projectId || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) {
+      return res.status(400).json({ ok: false, message: 'A valid project ID is required.' });
+    }
+    const phoneNumber = normalizeKenyanPhone(req.body?.phoneNumber);
+    const checkout = await callSupabaseRest('rpc/begin_application_fee_checkout', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_project_id: projectId,
+        p_tester_id: user.id,
+        p_phone_number: phoneNumber,
+        p_terms_accepted: req.body?.termsAccepted === true
+      })
+    });
+    let payment = Array.isArray(checkout) ? checkout[0] : checkout;
+    if (!payment?.id) throw new Error('Unable to reserve a project application slot.');
+    if (payment.status !== 'pending' || payment.tinypesa_request_id || payment.checkout_request_id) {
+      return res.status(202).json({ ok: true, checkout: {
+        id: payment.id,
+        status: payment.status,
+        amount_kes: payment.amount_kes,
+        hold_expires_at: payment.hold_expires_at,
+        failure_reason: payment.failure_reason
+      } });
+    }
+    const claimToken = crypto.randomUUID();
+    const claimed = await callSupabaseRest('rpc/claim_application_fee_stk_request', {
+      method: 'POST',
+      body: JSON.stringify({ p_payment_id: payment.id, p_claim_token: claimToken })
+    });
+    payment = Array.isArray(claimed) ? claimed[0] : claimed;
+    if (payment.status !== 'initiating' || payment.stk_claim_token !== claimToken) {
+      return res.status(202).json({ ok: true, checkout: {
+        id: payment.id,
+        status: payment.status,
+        amount_kes: payment.amount_kes,
+        hold_expires_at: payment.hold_expires_at,
+        failure_reason: payment.failure_reason
+      } });
+    }
+    claimedPaymentId = payment.id;
+
+    getTinyPesaConfiguration();
+    const externalReference = `CF${String(payment.id).replace(/-/g, '')}`;
+    const referenceRows = await callSupabaseRest(
+      `application_fee_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.initiating&stk_claim_token=eq.${encodeURIComponent(claimToken)}`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ provider_external_reference: externalReference, updated_at: new Date().toISOString() })
+      }
+    );
+    if (!Array.isArray(referenceRows) || referenceRows.length !== 1) {
+      throw new Error('Unable to prepare the TinyPesa transaction reference.');
+    }
+
+    stkDispatchStarted = true;
+    const providerBody = await requestTinyPesa('/express/initialize/', {
+      method: 'POST',
+      body: {
+        amount: payment.amount_kes,
+        msisdn: phoneNumber,
+        account_no: externalReference
+      }
+    });
+    if (providerBody.success !== true) {
+      const message = providerBody.message || providerBody.detail || 'TinyPesa rejected the payment request.';
+      await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.initiating`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          status: 'failed',
+          hold_expires_at: null,
+          failure_reason: String(message).slice(0, 1000),
+          callback_payload: providerBody,
+          updated_at: new Date().toISOString()
+        })
+      });
+      return res.status(502).json({ ok: false, message: `TinyPesa rejected the payment request: ${message}` });
+    }
+
+    const tinyPesaId = String(providerBody.request_id || '');
+    if (!tinyPesaId) {
+      console.error('TinyPesa accepted an application fee without a request ID.', { paymentId: payment.id });
+      return res.status(502).json({ ok: false, message: 'TinyPesa accepted the payment request but returned no reconciliation ID. Do not retry; contact support.' });
+    }
+    await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.initiating`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        status: 'pending',
+        tinypesa_request_id: tinyPesaId,
+        updated_at: new Date().toISOString()
+      })
+    });
+    return res.status(202).json({
+      ok: true,
+      checkout: {
+        id: payment.id,
+        status: 'pending',
+        amount_kes: payment.amount_kes,
+        hold_expires_at: payment.hold_expires_at
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to start TinyPesa payment.';
+    let cleanupMessage = '';
+    if (claimedPaymentId && (!stkDispatchStarted || error?.providerRejected)) {
+      try {
+        await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(claimedPaymentId)}&status=eq.initiating`, {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            status: 'failed',
+            hold_expires_at: null,
+            failure_reason: message.slice(0, 1000),
+            updated_at: new Date().toISOString()
+          })
+        });
+      } catch (cleanupError) {
+        cleanupMessage = ' Checkout cleanup failed; the temporary hold will expire automatically.';
+        console.error('Unable to release failed M-Pesa application-fee checkout:', cleanupError);
+      }
+    }
+    console.error('Application fee checkout could not be started:', error);
+    return res.status(error?.statusCode || 400).json({ ok: false, message: `${message}${cleanupMessage}` });
+  }
+});
+
+app.get('/api/application-fee-checkouts/:id', async (req, res) => {
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) return res.status(401).json({ ok: false, message: 'Sign in to check the application fee payment.' });
+    const user = await getAuthUser(authorization);
+    const rows = await callSupabaseRest(
+      `application_fee_payments?id=eq.${encodeURIComponent(req.params.id)}&tester_id=eq.${encodeURIComponent(user.id)}&select=id,status,amount_kes,hold_expires_at,failure_reason&limit=1`
+    );
+    if (!Array.isArray(rows) || rows.length !== 1) {
+      return res.status(404).json({ ok: false, message: 'Application fee checkout not found.' });
+    }
+    return res.json({ ok: true, checkout: rows[0] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to check M-Pesa payment status.';
+    return res.status(error?.statusCode || 400).json({ ok: false, message });
+  }
+});
+
+app.get('/api/application-fee-checkouts', async (req, res) => {
+  try {
+    const authorization = req.headers.authorization;
+    if (!authorization) return res.status(401).json({ ok: false, message: 'Sign in to check the application fee payment.' });
+    const user = await getAuthUser(authorization);
+    const projectId = String(req.query.projectId || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) {
+      return res.status(400).json({ ok: false, message: 'A valid project ID is required.' });
+    }
+    const rows = await callSupabaseRest(
+      `application_fee_payments?project_id=eq.${encodeURIComponent(projectId)}&tester_id=eq.${encodeURIComponent(user.id)}&status=in.(pending,initiating,paid)&select=id,status,amount_kes,hold_expires_at,failure_reason&order=created_at.desc&limit=1`
+    );
+    const checkout = Array.isArray(rows)
+      ? rows.find((row) => row.status === 'paid' || Date.parse(row.hold_expires_at) > Date.now()) || null
+      : null;
+    return res.json({ ok: true, checkout });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to check TinyPesa payment status.';
+    return res.status(error?.statusCode || 400).json({ ok: false, message });
+  }
+});
+
+app.post('/api/tinypesa/stk/application-fee', async (req, res) => {
+  if (!isValidTinyPesaCallback(req.query.token)) {
+    return res.status(401).json({ ResultCode: 1, ResultDesc: 'Unauthorized callback' });
+  }
+  try {
+    await updateTinyPesaApplicationFeePaymentCallback(req.body);
+    return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    console.error('Unable to process TinyPesa application-fee callback:', error);
+    return res.status(500).json({ ResultCode: 1, ResultDesc: 'Callback processing failed' });
+  }
+});
+
+app.get('/api/admin/application-fee-payments', async (req, res) => {
+  try {
+    await requireAdmin(req.headers.authorization);
+    const rows = await callSupabaseRest(
+      'application_fee_payments?select=id,project_id,tester_id,amount_kes,phone_number,status,refund_status,mpesa_receipt,created_at,refund_failure_reason'
+      + '&order=created_at.desc&limit=200'
+    );
+    const testerIds = [...new Set((rows || []).map((row) => row.tester_id).filter(Boolean))];
+    const projectIds = [...new Set((rows || []).map((row) => row.project_id).filter(Boolean))];
+    const profiles = testerIds.length
+      ? await callSupabaseRest(`profiles?id=in.(${testerIds.join(',')})&select=id,name,email`)
+      : [];
+    const projects = projectIds.length
+      ? await callSupabaseRest(`projects?id=in.(${projectIds.join(',')})&select=id,title`)
+      : [];
+    const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+    const projectsById = new Map((projects || []).map((project) => [project.id, project]));
+    return res.json({
+      ok: true,
+      payments: (rows || []).map((row) => ({
+        ...row,
+        tester_name: profilesById.get(row.tester_id)?.name || 'Tester',
+        tester_email: profilesById.get(row.tester_id)?.email || '',
+        project_title: projectsById.get(row.project_id)?.title || 'Project'
+      }))
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to load application fee payments.';
+    return res.status(error?.statusCode || 400).json({ ok: false, message });
+  }
+});
+
+app.post('/api/admin/application-fee-payments/:id/refund', async (req, res) => {
+  let refundClaimed = false;
+  let dispatchStarted = false;
+  let paymentId = req.params.id;
+  try {
+    const admin = await requireAdmin(req.headers.authorization);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(paymentId)) {
+      return res.status(400).json({ ok: false, message: 'A valid application fee payment ID is required.' });
+    }
+    const transactionRef = `APPFEE-REF-${crypto.randomUUID()}`;
+    const claimed = await callSupabaseRest('rpc/claim_application_fee_refund', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_payment_id: paymentId,
+        p_admin_id: admin.id,
+        p_transaction_ref: transactionRef
+      })
+    });
+    const payment = Array.isArray(claimed) ? claimed[0] : claimed;
+    if (!payment?.id) throw new Error('Unable to claim this application fee refund.');
+    refundClaimed = true;
+
+    const configuration = getMpesaConfiguration();
+    const accessToken = await getMpesaAccessToken(configuration.baseUrl);
+    dispatchStarted = true;
+    const result = await fetch(`${configuration.baseUrl}/mpesa/b2c/v1/paymentrequest`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        InitiatorName: process.env.MPESA_INITIATOR_NAME,
+        SecurityCredential: process.env.MPESA_SECURITY_CREDENTIAL,
+        CommandID: process.env.MPESA_B2C_COMMAND_ID || 'BusinessPayment',
+        Amount: payment.amount_kes,
+        PartyA: process.env.MPESA_SHORTCODE,
+        PartyB: normalizeKenyanPhone(payment.phone_number),
+        Remarks: `Application fee refund ${transactionRef}`.slice(0, 100),
+        QueueTimeOutURL: buildMpesaCallbackUrl(configuration.callbackBaseUrl, 'application-fee-refund/timeout'),
+        ResultURL: buildMpesaCallbackUrl(configuration.callbackBaseUrl, 'application-fee-refund/result'),
+        Occasion: transactionRef.slice(0, 100)
+      }),
+      signal: AbortSignal.timeout(25000)
+    });
+    const responseText = await result.text();
+    let responseBody = {};
+    try {
+      responseBody = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      throw new Error('Safaricom returned an invalid refund response. The refund remains processing for reconciliation.');
+    }
+    if (!result.ok) {
+      await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(paymentId)}&refund_status=eq.processing`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          refund_status: 'failed',
+          refund_failure_reason: `Safaricom rejected the refund (${result.status}): ${responseText}`.slice(0, 1000),
+          refund_callback_payload: responseBody,
+          updated_at: new Date().toISOString()
+        })
+      });
+      return res.status(502).json({ ok: false, message: `Safaricom rejected the refund: ${responseBody.errorMessage || responseText}` });
+    }
+    if (!responseBody.ConversationID || !responseBody.OriginatorConversationID) {
+      return res.status(502).json({ ok: false, message: 'Safaricom accepted the refund request but returned no reconciliation IDs. The refund remains processing; do not retry.' });
+    }
+    await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(paymentId)}&refund_status=eq.processing`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        refund_conversation_id: responseBody.ConversationID,
+        refund_originator_conversation_id: responseBody.OriginatorConversationID,
+        refund_callback_payload: responseBody,
+        updated_at: new Date().toISOString()
+      })
+    });
+    return res.json({ ok: true, status: 'processing' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to refund the application fee.';
+    if (refundClaimed) {
+      if (dispatchStarted) {
+        console.error('M-Pesa application-fee refund outcome is ambiguous; reconcile before retrying.', { paymentId, error: message });
+        return res.status(502).json({ ok: false, message: `${message} The refund may be processing; verify it with Safaricom before retrying.` });
+      }
+      await callSupabaseRest(`application_fee_payments?id=eq.${encodeURIComponent(paymentId)}&refund_status=eq.processing`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          refund_status: 'failed',
+          refund_failure_reason: message.slice(0, 1000),
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
+    return res.status(error?.statusCode || 400).json({ ok: false, message });
   }
 });
 
@@ -1867,6 +2327,32 @@ app.post('/api/mpesa/b2c/timeout', async (req, res) => {
     return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
   } catch (error) {
     console.error('Unable to process Safaricom B2C timeout callback:', error);
+    return res.status(500).json({ ResultCode: 1, ResultDesc: 'Callback processing failed' });
+  }
+});
+
+app.post('/api/mpesa/b2c/application-fee-refund/result', async (req, res) => {
+  if (!isValidMpesaCallback(req.query.token)) {
+    return res.status(401).json({ ResultCode: 1, ResultDesc: 'Unauthorized callback' });
+  }
+  try {
+    await updateApplicationFeeRefundCallback(req.body, false);
+    return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    console.error('Unable to process Safaricom application-fee refund result:', error);
+    return res.status(500).json({ ResultCode: 1, ResultDesc: 'Callback processing failed' });
+  }
+});
+
+app.post('/api/mpesa/b2c/application-fee-refund/timeout', async (req, res) => {
+  if (!isValidMpesaCallback(req.query.token)) {
+    return res.status(401).json({ ResultCode: 1, ResultDesc: 'Unauthorized callback' });
+  }
+  try {
+    await updateApplicationFeeRefundCallback(req.body, true);
+    return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  } catch (error) {
+    console.error('Unable to process Safaricom application-fee refund timeout:', error);
     return res.status(500).json({ ResultCode: 1, ResultDesc: 'Callback processing failed' });
   }
 });
@@ -2750,6 +3236,23 @@ if (applicationScreenerWorkerEnabled) {
 
 setInterval(() => void pollPayPalPayouts(), 30000);
 void pollPayPalPayouts();
+
+const expireApplicationFeeCheckouts = async () => {
+  if (!supabaseServiceUrl || !supabaseServiceRoleKey) return;
+  try {
+    const expiredCount = await callSupabaseRest('rpc/expire_application_fee_checkouts', {
+      method: 'POST',
+      body: '{}'
+    });
+    if (Number(expiredCount) > 0) {
+      console.info('Expired unpaid M-Pesa application-fee slot holds.', { count: Number(expiredCount) });
+    }
+  } catch (error) {
+    console.error('Unable to expire M-Pesa application-fee slot holds:', error);
+  }
+};
+setInterval(() => void expireApplicationFeeCheckouts(), 30000);
+void expireApplicationFeeCheckouts();
 
 const startServer = (portToUse = preferredPort) => {
   const server = app.listen(portToUse, host, () => {

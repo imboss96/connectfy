@@ -9,6 +9,7 @@
     "server:dev": "node --watch server.js",
     "build": "vite build",
     "preview": "vite preview",
+    "test:application-fee": "tsx scripts/application-fee-regression.test.ts",
     "seed:projects": "tsx scripts/seed-projects.ts",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Clock, RefreshCw, Send, Wallet } from 'lucide-react';
 import { approvePayoutRequest, fetchPendingPayoutRequests } from '../lib/mpesaPayoutService';
+import {
+  AdminApplicationFeePayment,
+  fetchAdminApplicationFeePayments,
+  refundApplicationFeePayment
+} from '../lib/applicationFeeService';
 
 type PayoutRow = {
   id: string;
@@ -25,6 +30,11 @@ export const PayoutOperationsSection: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [feePayments, setFeePayments] = useState<AdminApplicationFeePayment[]>([]);
+  const [isLoadingFeePayments, setIsLoadingFeePayments] = useState(true);
+  const [feeBusyId, setFeeBusyId] = useState<string | null>(null);
+  const [feeError, setFeeError] = useState('');
+  const [feeNotice, setFeeNotice] = useState('');
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -47,6 +57,22 @@ export const PayoutOperationsSection: React.FC = () => {
     void refresh();
   }, [refresh]);
 
+  const refreshFeePayments = useCallback(async () => {
+    setIsLoadingFeePayments(true);
+    setFeeError('');
+    try {
+      setFeePayments(await fetchAdminApplicationFeePayments());
+    } catch (loadError) {
+      setFeeError(loadError instanceof Error ? loadError.message : 'Unable to load application fee payments.');
+    } finally {
+      setIsLoadingFeePayments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFeePayments();
+  }, [refreshFeePayments]);
+
   const approve = async (payout: PayoutRow) => {
     setError('');
     setNotice('');
@@ -68,6 +94,23 @@ export const PayoutOperationsSection: React.FC = () => {
     }
   };
 
+  const refundFee = async (payment: AdminApplicationFeePayment) => {
+    if (!window.confirm(`Send a refund of KES ${payment.amount_kes} to ${payment.phone_number}?`)) return;
+    setFeeError('');
+    setFeeNotice('');
+    setFeeBusyId(payment.id);
+    try {
+      await refundApplicationFeePayment(payment.id);
+      setFeeNotice('Refund submitted to Safaricom. It will remain processing until Safaricom confirms the transfer.');
+      await refreshFeePayments();
+    } catch (refundError) {
+      setFeeError(refundError instanceof Error ? refundError.message : 'Unable to submit the refund.');
+      await refreshFeePayments();
+    } finally {
+      setFeeBusyId(null);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -78,7 +121,10 @@ export const PayoutOperationsSection: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() => void refresh()}
+          onClick={() => {
+            void refresh();
+            void refreshFeePayments();
+          }}
           disabled={isLoading}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
         >
@@ -176,6 +222,57 @@ export const PayoutOperationsSection: React.FC = () => {
           ))}
         </div>
       )}
+
+      <section className="space-y-4 border-t border-slate-200 pt-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-950">Project application fees</h2>
+          <p className="mt-1 text-sm text-slate-600">Review M-Pesa security fees and manually refund eligible payments. Confirm the project outcome before sending a refund.</p>
+        </div>
+        {feeError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{feeError}</div>}
+        {feeNotice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{feeNotice}</div>}
+        {isLoadingFeePayments ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading application fees…</div>
+        ) : feePayments.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No application fee payments have been recorded.</div>
+        ) : (
+          <div className="space-y-3">
+            {feePayments.map((payment) => {
+              const canRefund = ['paid', 'applied', 'refund_pending'].includes(payment.status)
+                && !['processing', 'completed'].includes(payment.refund_status);
+              return (
+                <article key={payment.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-slate-950">{payment.tester_name}</h3>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">{payment.status.replaceAll('_', ' ')}</span>
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase text-amber-900">Refund: {payment.refund_status.replaceAll('_', ' ')}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-700">{payment.project_title} · {payment.tester_email || payment.tester_id}</p>
+                      <p className="mt-1 font-mono text-[11px] text-slate-500">{payment.phone_number} · {payment.mpesa_receipt || new Date(payment.created_at).toLocaleString()}</p>
+                      {payment.refund_failure_reason && <p className="mt-2 text-xs text-rose-700">Last refund error: {payment.refund_failure_reason}</p>}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-bold text-slate-950">KES {Number(payment.amount_kes).toLocaleString()}</p>
+                      {canRefund && (
+                        <button
+                          type="button"
+                          onClick={() => void refundFee(payment)}
+                          disabled={feeBusyId === payment.id}
+                          className="mt-2 inline-flex items-center gap-2 rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {feeBusyId === payment.id ? <Clock className="h-4 w-4 animate-pulse" /> : <Send className="h-4 w-4" />}
+                          {feeBusyId === payment.id ? 'Submitting…' : 'Refund via M-Pesa'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </div>
   );
 };
